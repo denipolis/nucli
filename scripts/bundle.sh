@@ -24,7 +24,8 @@ cp .build/checkouts/swift-png/LICENSE "$NOTICES/swift-png-LICENSE.txt"
 cp .build/checkouts/swift-png/NOTICE "$NOTICES/swift-png-NOTICE.txt"
 cp .build/checkouts/h/LICENSE "$NOTICES/h-LICENSE.txt"
 cp .build/checkouts/h/NOTICE "$NOTICES/h-NOTICE.txt"
-cp "Resources/$ICON.icns" "$APP/Contents/Resources/AppIcon.icns"
+ACTOOL="$(xcrun --find actool 2>/dev/null || echo /Applications/Xcode.app/Contents/Developer/usr/bin/actool)"
+"$ACTOOL" "$PWD/Resources/$ICON.icon" --compile "$PWD/$APP/Contents/Resources" --platform macosx --minimum-deployment-target 14.0 --app-icon "$ICON" --output-partial-info-plist "$PWD/.build/icon-partial.plist" >/dev/null
 cp LEGAL.md "$APP/Contents/Resources/LEGAL.md"
 cp Resources/Vitesse-LICENSE.txt "$NOTICES/Vitesse-LICENSE.txt"
 VERSION="$(git describe --tags --always 2>/dev/null || echo 0.1.0)"
@@ -38,7 +39,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key><string>$NAME</string>
     <key>CFBundleIdentifier</key><string>$ID</string>
     <key>CFBundleExecutable</key><string>Nucli</string>
-    <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundleIconFile</key><string>$ICON</string>
+    <key>CFBundleIconName</key><string>$ICON</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${SHORT_VERSION:-0.1.0}</string>
     <key>CFBundleVersion</key><string>$VERSION</string>

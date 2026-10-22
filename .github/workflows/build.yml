@@ -34,7 +34,7 @@ jobs:
           brew install create-dmg
           mkdir build/dmg
           cp -R build/Nucli.app build/dmg/
-          create-dmg --volname Nucli --volicon Resources/AppIcon.icns --background Resources/dmg-background.tiff \
+          create-dmg --volname Nucli --volicon build/Nucli.app/Contents/Resources/AppIcon.icns --background Resources/dmg-background.tiff \
             --window-pos 200 200 --window-size 660 400 --icon-size 128 --text-size 13 \
             --icon Nucli.app 180 190 --app-drop-link 480 190 --hide-extension Nucli.app --no-internet-enable \
             build/Nucli.dmg build/dmg
