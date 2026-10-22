@@ -85,6 +85,7 @@ final class Session: NSObject, TerminalViewDelegate, LocalProcessDelegate {
         env["TERM_PROGRAM"] = "Nucli"
         env["SHELL"] = shell
         env["CLICOLOR"] = "1"
+        env["FORCE_HYPERLINK"] = "1"
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
         let args = command.map { ["-l", "-i", "-c", $0] } ?? ["-l"]
         process.startProcess(
