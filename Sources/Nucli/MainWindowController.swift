@@ -45,9 +45,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         content.terminals.onNew = { AppController.shared.newTerminal(nil) }
         content.terminals.onHide = { [weak self] in self?.hideTerminals() }
         content.terminals.onMaximize = { [weak self] in self?.content.toggleMaximizedTerminals() }
-        git.content = content
-        history.content = content
-        files.content = content
         files.git = git
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
         sidebarItem.minimumThickness = 180
@@ -262,8 +259,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func openFile(_ path: String, in project: Project, line: Int? = nil) {
-        if currentProject !== project || currentSession != nil { showOverview(of: project) }
         let change = git.status?.changes.first { $0.path == path } ?? FileChange(path: path, status: " ", added: 0, removed: 0)
+        show(change, in: project, line: line)
+    }
+
+    func show(_ change: FileChange, in project: Project, line: Int? = nil) {
+        if currentProject !== project || currentSession != nil { showOverview(of: project) }
         content.showFileDiff(change, in: project, line: line)
     }
 

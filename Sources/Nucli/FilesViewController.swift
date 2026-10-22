@@ -18,7 +18,6 @@ final class FileCell: NSTableCellView {
 }
 
 final class FilesViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
-    weak var content: ContentViewController?
     weak var git: GitPanelViewController?
     private let outline = NSOutlineView()
     private let header = NSTextField(labelWithString: "")
@@ -240,7 +239,7 @@ final class FilesViewController: NSViewController, NSOutlineViewDataSource, NSOu
         guard let project else { return }
         let path = relative(node)
         let change = git?.status?.changes.first { $0.path == path } ?? FileChange(path: path, status: " ", added: 0, removed: 0)
-        content?.showFileDiff(change, in: project)
+        (view.window?.windowController as? MainWindowController)?.show(change, in: project)
     }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {

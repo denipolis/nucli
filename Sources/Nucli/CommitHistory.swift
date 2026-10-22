@@ -185,7 +185,6 @@ final class CommitHistoryViewController: NSViewController, NSTableViewDataSource
     private let summary = NSTextField(labelWithString: "")
     private let table = NSTableView()
     private let empty = NSTextField(labelWithString: "")
-    weak var content: ContentViewController?
     private enum Item {
         case commit(Int)
         case file(Int, FileChange)
@@ -334,7 +333,7 @@ final class CommitHistoryViewController: NSViewController, NSTableViewDataSource
         guard let project, table.clickedRow >= 0, table.clickedRow < items.count else { return }
         switch items[table.clickedRow] {
         case .file(_, let change):
-            content?.showFileDiff(change, in: project)
+            (view.window?.windowController as? MainWindowController)?.show(change, in: project)
         case .commit(let index):
             let commit = commits[index]
             if expanded.remove(commit.hash) != nil { return rebuildItems() }

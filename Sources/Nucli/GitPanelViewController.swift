@@ -1,7 +1,6 @@
 import AppKit
 
 final class GitPanelViewController: NSViewController {
-    weak var content: ContentViewController?
     private let header = NSTextField(labelWithString: "")
     private let summary = NSTextField(labelWithString: "")
     private let rows = NSStackView()
@@ -175,7 +174,7 @@ final class GitPanelViewController: NSViewController {
             guard !collapsed.contains(staged) else { continue }
             for change in changes {
                 let row = ChangeFileRow(change: change, isStaged: staged)
-                row.onOpen = { [weak self] in self?.content?.showFileDiff(change, in: project) }
+                row.onOpen = { [weak self] in (self?.view.window?.windowController as? MainWindowController)?.show(change, in: project) }
                 row.onStage = { [weak self] in if staged { self?.unstage([change.path]) } else { self?.stage([change.path]) } }
                 row.onDiscard = staged ? nil : { [weak self] in self?.discard([change]) }
                 rows.addArrangedSubview(row)
