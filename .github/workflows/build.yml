@@ -1,0 +1,49 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+      - name: Build app bundle
+        run: ./scripts/bundle.sh release
+      - name: Package
+        run: |
+          brew install create-dmg
+          mkdir build/dmg
+          cp -R build/Nucli.app build/dmg/
+          create-dmg --volname Nucli --volicon Resources/AppIcon.icns --background Resources/dmg-background.tiff \
+            --window-pos 200 200 --window-size 660 400 --icon-size 128 --text-size 13 \
+            --icon Nucli.app 180 190 --app-drop-link 480 190 --hide-extension Nucli.app --no-internet-enable \
+            build/Nucli.dmg build/dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nucli
+          path: build/Nucli.dmg
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" build/Nucli.dmg --generate-notes
