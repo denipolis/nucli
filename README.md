@@ -26,6 +26,8 @@ Requires macOS 14 or newer to run, Xcode 26 to build.
 3. `./scripts/bundle.sh`
 4. `open build/Nucli.app`
 
+For development, `./scripts/bundle.sh dev` builds `build/Nucli Dev.app`, a debug build.
+
 ## License
 
 [MIT](LICENSE). Nucli is not affiliated with Anthropic, OpenAI or any other agent vendor. Agent names are trademarks of their owners.

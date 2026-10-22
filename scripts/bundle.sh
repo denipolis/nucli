@@ -1,9 +1,18 @@
 #!/bin/sh
 set -e
 cd "$(dirname "$0")/.."
+NAME=Nucli
+ID=uk.polishch.nucli
+ICON=AppIcon
 CONFIG="${1:-release}"
+if [ "$CONFIG" = dev ]; then
+    NAME="Nucli Dev"
+    ID=uk.polishch.nucli.dev
+    ICON=AppIcon-Dev
+    CONFIG=debug
+fi
 swift build -c "$CONFIG"
-APP=build/Nucli.app
+APP="build/$NAME.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp ".build/$CONFIG/Nucli" "$APP/Contents/MacOS/Nucli"
@@ -15,7 +24,7 @@ cp .build/checkouts/swift-png/LICENSE "$NOTICES/swift-png-LICENSE.txt"
 cp .build/checkouts/swift-png/NOTICE "$NOTICES/swift-png-NOTICE.txt"
 cp .build/checkouts/h/LICENSE "$NOTICES/h-LICENSE.txt"
 cp .build/checkouts/h/NOTICE "$NOTICES/h-NOTICE.txt"
-cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp "Resources/$ICON.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp LEGAL.md "$APP/Contents/Resources/LEGAL.md"
 cp Resources/Vitesse-LICENSE.txt "$NOTICES/Vitesse-LICENSE.txt"
 VERSION="$(git describe --tags --always 2>/dev/null || echo 0.1.0)"
@@ -25,9 +34,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>Nucli</string>
-    <key>CFBundleDisplayName</key><string>Nucli</string>
-    <key>CFBundleIdentifier</key><string>uk.polishch.nucli</string>
+    <key>CFBundleName</key><string>$NAME</string>
+    <key>CFBundleDisplayName</key><string>$NAME</string>
+    <key>CFBundleIdentifier</key><string>$ID</string>
     <key>CFBundleExecutable</key><string>Nucli</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>

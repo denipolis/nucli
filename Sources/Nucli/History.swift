@@ -104,7 +104,7 @@ enum ConversationHistory {
     }
 
     private static let cacheLock = NSLock()
-    private static let cacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Nucli/conversations.json")
+    private static let cacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent((Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Nucli") + "/conversations.json")
     nonisolated(unsafe) private static var cache: [String: Meta]?
     nonisolated(unsafe) private static var cacheChanged = false
 

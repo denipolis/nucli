@@ -24,7 +24,7 @@ Think "VS Code for agents without the code editor": the terminal is the editor.
 ## Tech
 
 - Swift, AppKit only (no SwiftUI, no Electron, no web views). Target macOS 14+, built with the macOS 26 SDK (Xcode 26).
-- Swift Package Manager. No Xcode project. Build: `swift build`. App bundle: `./scripts/bundle.sh` → `build/Nucli.app`. Run: `open build/Nucli.app`.
+- Swift Package Manager. No Xcode project. Build: `swift build`. App bundle: `./scripts/bundle.sh` → `build/Nucli.app`. Development bundle: `./scripts/bundle.sh dev` → `build/Nucli Dev.app` (debug build, green icon, bundle id `uk.polishch.nucli.dev`, own settings, scrollback and cache), safe to run next to the installed Nucli.
 - Terminal emulation: [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) (`TerminalView` + `LocalProcess`, driven by `Session`).
 - Git: shell out to `/usr/bin/git`. File watching: FSEvents.
 - Persistence: `UserDefaults` (domain `uk.polishch.nucli` when run from the bundle).

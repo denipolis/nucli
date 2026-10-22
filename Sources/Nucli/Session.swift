@@ -112,7 +112,7 @@ final class Session: NSObject, TerminalViewDelegate, LocalProcessDelegate {
 
     private static let restoredMarker = "── restored ──"
 
-    static let scrollbackDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Nucli/Scrollback")
+    static let scrollbackDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent((Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Nucli") + "/Scrollback")
 
     func saveScrollback() {
         let lines = String(decoding: terminal.getBufferAsData(kind: .normal), as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false).filter { $0.trimmingCharacters(in: .whitespaces) != Self.restoredMarker }

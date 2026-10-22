@@ -111,7 +111,7 @@ All menu shortcuts are rebindable. `MainMenu.build()` records each command's def
 ## File tabs
 
 - Every project keeps `openFiles` (ordered) and `activeFile`, persisted. Opening a file (Files, Changes, `⌘P`) inserts it after the active tab. `ContentViewController` caches one `FileDiffViewController` per open file (key: project path + file path), so switching tabs keeps scroll position and selection; a cached view is rebuilt only when its `FileChange` differs.
-- Opening a file from anywhere (terminal link, Files, Changes, `⌘P`) while a tab is shown switches the window to the project overview first (`MainWindowController.openFile`), so the sidebar selects the project row instead of keeping the agent tab highlighted under the file.
+- Opening a file from anywhere (terminal link, Files, Changes, Git History, `⌘P`) while a tab is shown switches the window to the project overview first (`MainWindowController.show`; never call `ContentViewController.showFileDiff` directly), so the sidebar selects the project row instead of keeping the agent tab highlighted under the file.
 - `Esc` hides the file view (tabs stay); `⌘W` with a file shown closes that tab and shows its neighbor, or hides the view after the last one. Clicking a project row shows its overview with the last active file on top (`MainWindowController.showProject`); the house button in the tab strip goes to the overview.
 
 ## Tab switcher
@@ -130,7 +130,7 @@ All menu shortcuts are rebindable. `MainMenu.build()` records each command's def
 
 - Shell: `$SHELL -l`. Agent: `$SHELL -l -i -c "<profile command>"`, so PATH, aliases and env from the user's dotfiles work.
 - Started with `currentDirectory = project.path`. The project never reads the shell's cwd back; OSC 7 cwd is only shown as a subtitle.
-- Env: clean, like Terminal.app. Only `HOME`, `USER`, `LOGNAME`, `TMPDIR`, `SSH_AUTH_SOCK`, `__CF_USER_TEXT_ENCODING`, `LANG` are inherited; `PATH` starts at `/usr/bin:/bin:/usr/sbin:/sbin` and the login shell (`path_helper`, dotfiles) builds the rest. Plus `TERM=xterm-256color`, `COLORTERM=truecolor`, `TERM_PROGRAM=Nucli`, `SHELL`. Never pass the app's own env through: when Nucli is launched from another tool (e.g. Claude Code) it carries that tool's private variables (`CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CONFIG_DIR`, …), which break agents started in Nucli.
+- Env: clean, like Terminal.app. Only `HOME`, `USER`, `LOGNAME`, `TMPDIR`, `SSH_AUTH_SOCK`, `__CF_USER_TEXT_ENCODING`, `LANG` are inherited; `PATH` starts at `/usr/bin:/bin:/usr/sbin:/sbin` and the login shell (`path_helper`, dotfiles) builds the rest. Plus `TERM=xterm-256color`, `COLORTERM=truecolor`, `TERM_PROGRAM=Nucli`, `SHELL`, and `FORCE_HYPERLINK=1`: tools that use the `supports-hyperlinks` check (Claude Code's `[Image #N]`, file paths) only emit OSC 8 links for terminals on their allowlist, and Nucli is not on it. Never pass the app's own env through: when Nucli is launched from another tool (e.g. Claude Code) it carries that tool's private variables (`CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CONFIG_DIR`, …), which break agents started in Nucli.
 - Terminal views stay alive when not shown (only removed from the view hierarchy), so background agents keep running.
 - Closing the shown tab selects the next tab of the same project, or the previous one when it was the last.
 - `⌘W` on a running agent asks first, except when the agent printed nothing for 2 hours (`Session.lastOutput`) or "Don't ask again for 1 hour" was checked (`skipCloseAgentConfirmUntil` default).
