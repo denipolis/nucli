@@ -1,10 +1,6 @@
-<h1 align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/icon-dark.png"/>
-    <img src="docs/icon.png" width="64" height="64" align="center" alt="Nucli Icon"/>
-  </picture>
-  Nucli
-</h1>
+<p align="center">
+  <img src="docs/banner.png" width="100%" alt="Nucli"/>
+</p>
 
 ### Nucli is a native macOS agents-first terminal. It launches the agent CLIs you already use in real terminal tabs and conveniently organizes them.
 
