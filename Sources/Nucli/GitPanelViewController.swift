@@ -13,6 +13,7 @@ final class GitPanelViewController: NSViewController {
     private var watcher: FileWatcher?
     private var isRefreshing = false
     private var needsRefresh = false
+    private static let rowLimit = 500
 
     var project: Project? {
         didSet {
@@ -172,12 +173,20 @@ final class GitPanelViewController: NSViewController {
             section.onDiscard = staged ? nil : { [weak self] in self?.discard(changes) }
             rows.addArrangedSubview(section)
             guard !collapsed.contains(staged) else { continue }
-            for change in changes {
+            for change in changes.prefix(Self.rowLimit) {
                 let row = ChangeFileRow(change: change, isStaged: staged)
                 row.onOpen = { [weak self] in (self?.view.window?.windowController as? MainWindowController)?.show(change, in: project) }
                 row.onStage = { [weak self] in if staged { self?.unstage([change.path]) } else { self?.stage([change.path]) } }
                 row.onDiscard = staged ? nil : { [weak self] in self?.discard([change]) }
                 rows.addArrangedSubview(row)
+            }
+            if changes.count > Self.rowLimit {
+                let more = NSTextField(labelWithString: "\(changes.count - Self.rowLimit) more files not shown")
+                more.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+                more.textColor = .tertiaryLabelColor
+                more.alignment = .center
+                rows.addArrangedSubview(more)
+                more.widthAnchor.constraint(equalTo: rows.widthAnchor, constant: -12).isActive = true
             }
         }
         if status.changes.isEmpty {

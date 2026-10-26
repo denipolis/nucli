@@ -117,11 +117,13 @@ enum Git {
     }
 
     private static func lineCount(of path: String) -> Int {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
-              (attrs[.size] as? Int ?? 0) < 4000000,
-              let data = FileManager.default.contents(atPath: path) else { return 0 }
-        let count = data.reduce(0) { $1 == 10 ? $0 + 1 : $0 }
-        return data.last == 10 || data.isEmpty ? count : count + 1
+        autoreleasepool {
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+                  (attrs[.size] as? Int ?? 0) < 4000000,
+                  let data = FileManager.default.contents(atPath: path) else { return 0 }
+            let count = data.reduce(0) { $1 == 10 ? $0 + 1 : $0 }
+            return data.last == 10 || data.isEmpty ? count : count + 1
+        }
     }
 
     static func stage(_ paths: [String], in dir: String) -> String? {
