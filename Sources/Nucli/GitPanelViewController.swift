@@ -280,6 +280,7 @@ class HoverRow: NSView {
         button.contentTintColor = .secondaryLabelColor
         button.toolTip = tip
         button.widthAnchor.constraint(equalToConstant: 20).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 20).isActive = true
         actions.addArrangedSubview(button)
     }
 
