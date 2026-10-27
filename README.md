@@ -17,6 +17,8 @@
 2. Open it and drag `Nucli.app` to `Applications`
 3. Builds are not notarized, so run `xattr -dr com.apple.quarantine /Applications/Nucli.app` once
 
+Or run `./scripts/install_latest_github.sh` (needs `gh`): it installs the latest release to `/Applications`.
+
 ## Building
 
 Requires macOS 14 or newer to run, Xcode 26 to build.
