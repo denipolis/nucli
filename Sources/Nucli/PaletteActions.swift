@@ -59,7 +59,7 @@ extension AppController {
             })
         }
         for workspace in state.workspaces {
-            items.append(PaletteItem(title: workspace.name, subtitle: "\(state.projects(inWindow: workspace.windowId).count) projects", image: NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil), tint: .secondaryLabelColor, detail: "Workspace", rank: 6) { [weak self] in
+            items.append(PaletteItem(title: workspace.name, subtitle: "\(state.projects(inWindow: workspace.windowId).count) projects" + (workspace.isClosed ? ", closed" : ""), image: NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil), tint: .secondaryLabelColor, detail: "Workspace", rank: 6) { [weak self] in
                 self?.controller(forWindowId: workspace.windowId).showWindow(nil)
             })
         }

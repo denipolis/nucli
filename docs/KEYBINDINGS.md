@@ -42,6 +42,6 @@ Defaults below. Every menu shortcut can be changed in Settings › Keybindings (
 
 Agent picker: arrows, `Return`, `1`–`9` (profiles), `Esc`. Rows under "Recent conversations" resume that conversation.
 
-`⌘N` creates a new workspace (its own window); switch workspaces with the system `` ⌘` ``. Closing a workspace window asks to delete the workspace; `⌘Q` keeps all workspaces and reopens them.
+`⌘N` creates a new workspace (its own window); switch workspaces with the system `` ⌘` ``. Closing a workspace window closes the workspace: it keeps its projects and tabs and reopens them from File › Reopen Workspace, the workspace popup at the bottom of the sidebar or `⇧⌘P`. File › Delete Workspace… deletes it. `⌘Q` keeps all workspaces and reopens the open ones.
 
 Sidebar: double-click a tab or project to rename it inline (`Return` saves, `Esc` cancels, empty name restores the default). File › Rename Tab… renames the current tab.

@@ -18,6 +18,8 @@ enum MainMenu {
         main.addItem(submenu("File", [
             item("New Workspace…", #selector(AppController.newWindow(_:)), "n"),
             item("Rename Workspace…", #selector(AppController.renameWorkspace(_:)), ""),
+            reopenWorkspace(),
+            item("Delete Workspace…", #selector(AppController.deleteWorkspace(_:)), ""),
             item("New Tab", #selector(AppController.newAgentWithLastProfile(_:)), "t"),
             item("New Tab…", #selector(AppController.newAgent(_:)), "t", [.command, .shift]),
             alternate(item("New Tab in Folder…", #selector(AppController.newAgentInFolder(_:)), "t", [.command, .shift, .option])),
@@ -143,6 +145,12 @@ enum MainMenu {
         let item = item(title, #selector(NSTextView.performFindPanelAction(_:)), key, mods)
         item.tag = Int(action.rawValue)
         return item
+    }
+
+    private static func reopenWorkspace() -> NSMenuItem {
+        let root = submenu("Reopen Workspace", [])
+        root.submenu?.delegate = AppController.shared
+        return root
     }
 
     private static func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {

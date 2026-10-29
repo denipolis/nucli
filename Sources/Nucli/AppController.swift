@@ -19,7 +19,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.build()
-        for id in state.windowIds.isEmpty ? [0] : state.windowIds {
+        let last = UserDefaults.standard.integer(forKey: "lastWindow")
+        var ids = state.windowIds.filter { state.workspace(forWindow: $0)?.isClosed != true }
+        if ids.isEmpty { ids = [state.windowIds.contains(last) ? last : state.windowIds.first ?? 0] }
+        ids.forEach { state.ensureWorkspace(windowId: $0).isClosed = false }
+        for id in ids {
             _ = makeWindow(id: id)
         }
         installKeyMonitor()
@@ -32,9 +36,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             DispatchQueue.main.async { self?.applyTheme() }
         }
         windows.forEach { $0.window?.layoutIfNeeded() }
-        restoreTabs()
+        restoreTabs(in: state.projects.filter { ids.contains($0.windowId) })
         state.projects.forEach { conversations.refresh($0.path, profiles: state.profiles) }
-        let last = UserDefaults.standard.integer(forKey: "lastWindow")
         windows.sorted { ($0.id == last ? 1 : 0, $1.id) < ($1.id == last ? 1 : 0, $0.id) }.forEach { $0.showWindow(nil) }
         NSApp.activate()
     }
@@ -52,7 +55,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
 
     func applicationWillTerminate(_ notification: Notification) {
         resolveConversationIds()
-        try? FileManager.default.removeItem(at: Session.scrollbackDirectory)
+        let kept = Set(state.projects.flatMap(\.restoredTabs).compactMap { $0["scrollback"].map { $0 + ".txt" } })
+        for file in (try? FileManager.default.contentsOfDirectory(at: Session.scrollbackDirectory, includingPropertiesForKeys: nil)) ?? [] where !kept.contains(file.lastPathComponent) {
+            try? FileManager.default.removeItem(at: file)
+        }
         state.allSessions.filter { $0.kind != .agent && $0.isRunning }.forEach { $0.saveScrollback() }
         windows.forEach { $0.currentProject?.lastSelected = Date() }
         state.save()
@@ -94,7 +100,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
 
     @discardableResult
     private func makeWindow(id: Int) -> MainWindowController {
-        _ = state.ensureWorkspace(windowId: id)
+        let workspace = state.ensureWorkspace(windowId: id)
+        let reopening = workspace.isClosed
+        workspace.isClosed = false
         let controller = MainWindowController(id: id)
         controller.onProjectChange = { [weak self] project in
             guard let self else { return }
@@ -102,16 +110,45 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         }
         controller.shouldClose = { [weak self] controller in self?.closeWindow(controller) ?? true }
         windows.append(controller)
+        if reopening {
+            controller.window?.layoutIfNeeded()
+            restoreTabs(in: state.projects(inWindow: id))
+            state.changed()
+        }
         return controller
     }
 
     private func closeWindow(_ controller: MainWindowController) -> Bool {
+        if controller.content.hasUnsavedFiles, !confirm("Close workspace?", "Some open files have unsaved changes. They will be lost.", button: "Close") { return false }
         let projects = state.projects.filter { $0.windowId == controller.id }
         let sessions = projects.flatMap { $0.sessions + $0.terminals }
         let name = state.workspace(forWindow: controller.id)?.name ?? "Workspace"
         let running = sessions.filter(\.isRunning).count
-        let detail = running > 0 ? "\(running) running \(running == 1 ? "session" : "sessions") will be terminated." : "Its projects will be removed from Nucli. Files on disk are not touched."
-        guard projects.isEmpty || confirm("Delete workspace \(name)?", detail, button: "Delete") else { return false }
+        guard running == 0 || confirm("Close workspace \(name)?", "\(running) running \(running == 1 ? "session" : "sessions") will be closed and reopened when you open the workspace again.", button: "Close") else { return false }
+        resolveConversationIds()
+        sessions.filter { $0.kind != .agent && $0.isRunning }.forEach { $0.saveScrollback() }
+        controller.currentProject?.lastSelected = Date()
+        for project in projects {
+            project.restoredTabs = state.tabs(of: project)
+            project.restoredActiveTab = state.activeTab(of: project)
+        }
+        sessions.forEach { $0.kill() }
+        projects.forEach { $0.sessions.removeAll(); $0.terminals.removeAll() }
+        state.workspace(forWindow: controller.id)?.isClosed = true
+        windows.removeAll { $0 === controller }
+        state.changed()
+        updateDockBadge()
+        return true
+    }
+
+    @objc func deleteWorkspace(_ sender: Any?) {
+        guard let controller = active else { return }
+        let projects = state.projects.filter { $0.windowId == controller.id }
+        let sessions = projects.flatMap { $0.sessions + $0.terminals }
+        let name = state.workspace(forWindow: controller.id)?.name ?? "Workspace"
+        let running = sessions.filter(\.isRunning).count
+        let detail = (running > 0 ? "\(running) running \(running == 1 ? "session" : "sessions") will be terminated. " : "") + "Its projects will be removed from Nucli. Files on disk are not touched."
+        guard confirm("Delete workspace \(name)?", detail, button: "Delete") else { return }
         sessions.forEach { $0.kill() }
         projects.forEach { $0.sessions.removeAll(); $0.terminals.removeAll() }
         state.projects.removeAll { $0.windowId == controller.id }
@@ -119,7 +156,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         windows.removeAll { $0 === controller }
         state.changed()
         updateDockBadge()
-        return true
+        controller.window?.close()
     }
 
     func openFolders(_ paths: [String], windowId: Int) {
@@ -163,13 +200,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         controller.showWindow(nil)
     }
 
-    private func restoreTabs() {
+    private func restoreTabs(in projects: [Project]) {
         state.isRestoring = true
         defer {
             state.isRestoring = false
             state.save()
         }
-        for project in state.projects {
+        for project in projects {
             if !state.restoresTabs { project.restoredTabs = [] }
             for tab in project.restoredTabs {
                 if tab["kind"] == "terminal" {
@@ -199,7 +236,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
             project.restoredTabs = []
             if let index = project.restoredActiveTab { project.activeSession = project.sessions[safe: index] }
         }
-        for controller in windows {
+        for controller in windows where projects.contains(where: { $0.windowId == controller.id }) {
             controller.select(controller.projects.max { $0.lastSelected < $1.lastSelected })
         }
     }

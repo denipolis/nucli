@@ -321,7 +321,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             workspacePopup.lastItem?.action = #selector(workspaceChosen(_:))
         }
         workspacePopup.menu?.addItem(.separator())
-        for (title, action) in [("New Workspace…", #selector(AppController.newWindow(_:))), ("Rename Workspace…", #selector(AppController.renameWorkspace(_:)))] {
+        for (title, action) in [("New Workspace…", #selector(AppController.newWindow(_:))), ("Rename Workspace…", #selector(AppController.renameWorkspace(_:))), ("Delete Workspace…", #selector(AppController.deleteWorkspace(_:)))] {
             workspacePopup.menu?.addItem(withTitle: title, action: action, keyEquivalent: "").target = AppController.shared
         }
         if let current, let index = state.workspaces.firstIndex(where: { $0 === current }) { workspacePopup.selectItem(at: index) }
@@ -705,6 +705,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             add("Rename Workspace…", #selector(AppController.renameWorkspace(_:)), nil)
             menu.addItem(.separator())
             add("New Workspace…", #selector(AppController.newWindow(_:)), nil)
+            add("Delete Workspace…", #selector(AppController.deleteWorkspace(_:)), nil)
         }
         setTargets(menu)
     }

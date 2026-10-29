@@ -75,6 +75,7 @@ final class Workspace {
     let id: String
     var name: String
     var windowId: Int
+    var isClosed = false
 
     init(id: String = UUID().uuidString, name: String, windowId: Int) {
         self.id = id
@@ -188,7 +189,9 @@ final class AppState {
         let workspaceKey = isLegacy ? "group" : "workspace"
         workspaces = savedWorkspaces.compactMap { dict in
             guard let id = dict["id"] as? String, let name = dict["name"] as? String else { return nil }
-            return Workspace(id: id, name: name, windowId: dict["window"] as? Int ?? 0)
+            let workspace = Workspace(id: id, name: name, windowId: dict["window"] as? Int ?? 0)
+            workspace.isClosed = dict["closed"] as? Bool ?? false
+            return workspace
         }
         var members: [String: [Project]] = [:]
         projects = savedProjects.compactMap { dict in
@@ -245,9 +248,8 @@ final class AppState {
         defaults.set(keyBindings, forKey: "keyBindings")
         defaults.set(profiles.map(\.dictionary), forKey: "profiles")
         defaults.set(shells.map(\.dictionary), forKey: "shells")
-        defaults.set(workspaces.map { ["id": $0.id, "name": $0.name, "window": $0.windowId] as [String: Any] }, forKey: "workspaceList")
-        defaults.set(projects.filter { !$0.isScratch || !$0.sessions.isEmpty || !$0.terminals.isEmpty || isRestoring }.map { ws -> [String: Any] in
-            let running = (ws.sessions + ws.terminals).filter(\.isRunning)
+        defaults.set(workspaces.map { ["id": $0.id, "name": $0.name, "window": $0.windowId, "closed": $0.isClosed] as [String: Any] }, forKey: "workspaceList")
+        defaults.set(projects.filter { !$0.isScratch || !$0.sessions.isEmpty || !$0.terminals.isEmpty || !$0.restoredTabs.isEmpty || isRestoring }.map { ws -> [String: Any] in
             var dict: [String: Any] = ["path": ws.path, "window": ws.windowId, "collapsed": ws.isCollapsed, "lastSelected": ws.lastSelected]
             dict["lastProfile"] = ws.lastProfile
             dict["recentFiles"] = ws.recentFiles
@@ -257,22 +259,31 @@ final class AppState {
             dict["terminalsShown"] = ws.showsTerminals
             dict["name"] = ws.customName
             dict["color"] = ws.color?.rawValue
-            dict["activeTab"] = ws.activeSession.flatMap { active in running.firstIndex { $0 === active } }
-            dict["tabs"] = running.map { session -> [String: String] in
-                var tab = ["kind": session.kind.rawValue]
-                tab["profile"] = session.profile?.name
-                tab["conversation"] = session.conversationId
-                tab["name"] = session.customName
-                tab["color"] = session.color?.rawValue
-                if session.kind != .agent {
-                    tab["shell"] = session.shell
-                    tab["cwd"] = session.directory
-                    tab["scrollback"] = session.scrollbackId
-                }
-                return tab
-            }
+            let snapshot = tabs(of: ws)
+            dict["activeTab"] = snapshot.isEmpty ? ws.restoredActiveTab : activeTab(of: ws)
+            dict["tabs"] = snapshot.isEmpty ? ws.restoredTabs : snapshot
             return dict
         }, forKey: "projects")
+    }
+
+    func tabs(of project: Project) -> [[String: String]] {
+        (project.sessions + project.terminals).filter(\.isRunning).map { session -> [String: String] in
+            var tab = ["kind": session.kind.rawValue]
+            tab["profile"] = session.profile?.name
+            tab["conversation"] = session.conversationId
+            tab["name"] = session.customName
+            tab["color"] = session.color?.rawValue
+            if session.kind != .agent {
+                tab["shell"] = session.shell
+                tab["cwd"] = session.directory
+                tab["scrollback"] = session.scrollbackId
+            }
+            return tab
+        }
+    }
+
+    func activeTab(of project: Project) -> Int? {
+        project.activeSession.flatMap { active in (project.sessions + project.terminals).filter(\.isRunning).firstIndex { $0 === active } }
     }
 
     func project(for path: String, windowId: Int) -> Project {

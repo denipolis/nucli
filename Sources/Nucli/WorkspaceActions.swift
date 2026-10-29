@@ -140,3 +140,16 @@ extension AppController {
         }
     }
 }
+
+extension AppController: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let closed = state.workspaces.filter(\.isClosed)
+        for workspace in closed {
+            menu.addItem(MenuAction.item(workspace.name) { [weak self] in
+                self?.controller(forWindowId: workspace.windowId).showWindow(nil)
+            })
+        }
+        if closed.isEmpty { menu.addItem(NSMenuItem(title: "No Closed Workspaces", action: nil, keyEquivalent: "")) }
+    }
+}

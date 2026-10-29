@@ -156,7 +156,7 @@ All menu shortcuts are rebindable. `MainMenu.build()` records each command's def
 - Reloads (watcher, settings) are skipped while dirty, so an agent writing the file never discards unsaved edits; saving overwrites the agent's version. The caret is kept by file line and column across reloads. Each view has its own `UndoManager`, cleared on reload because the storage is replaced.
 - Suggestions: after a letter, digit or `_` with a partial word of 2+ characters, `DiffTextView` opens the system completion popup (`complete(_:)`) with words of the file (3+ chars, case-insensitive prefix, max 30, word list rebuilt at most every 2 s). `insertCompletion` only inserts on `Return`/`Tab`, so typing continues normally while the popup is shown and `Esc` keeps what was typed.
 - `Return` keeps the current line's leading spaces/tabs.
-- Closing a dirty tab asks Save / Cancel / Don't Save; quitting with dirty files asks first. Closing a workspace window does not check yet.
+- Closing a dirty tab asks Save / Cancel / Don't Save; quitting with dirty files or closing a workspace window with dirty files asks first.
 
 ## Appearance
 
@@ -203,7 +203,7 @@ Detection: no hardcoded profiles. On first launch (`didDetectAgents` unset) `Age
 
 ## Persistence (`UserDefaults`)
 
-`profiles` (`[{name, executable, arguments, configDirectory, environment}]`), `didDetectAgents`, `shells`, `lastShell`, `fontSize`, `fontName` (nil = SF Mono), `restoresTabs`, `notifications`, `appearance` (`system`/`light`/`dark`), `keyBindings` (`{"File/New Terminal": {key, modifiers}}`, only overrides), `lastProfile`, `lastFolder`, `workspaceList` (`[{id, name, color, window, collapsed}]`) and `projects` (`[{path, lastProfile, window, name, color, workspace, collapsed, lastSelected, activeTab, tabs: [{kind, profile, conversation}]}]`), written on every change and on quit.
+`profiles` (`[{name, executable, arguments, configDirectory, environment}]`), `didDetectAgents`, `shells`, `lastShell`, `fontSize`, `fontName` (nil = SF Mono), `restoresTabs`, `notifications`, `appearance` (`system`/`light`/`dark`), `keyBindings` (`{"File/New Terminal": {key, modifiers}}`, only overrides), `lastProfile`, `lastFolder`, `workspaceList` (`[{id, name, window, closed}]`) and `projects` (`[{path, lastProfile, window, name, color, workspace, collapsed, lastSelected, activeTab, tabs: [{kind, profile, conversation}]}]`), written on every change and on quit.
 
 Legacy keys: if `projects` is missing, projects are read from `workspaces` (with `group` as the workspace id) and workspaces from `groups`. Do not reuse the key `workspaces` for anything else.
 
@@ -252,7 +252,10 @@ Shell tabs start with the prompt on the last row and output grows upward. `Sessi
 - Legacy data on load: projects of an old workspace take its window id; when several old workspaces shared a window, every extra one gets a new window id and its projects follow. Loose projects stay in their window and join its workspace.
 - The sidebar root lists `AppState.projects(inWindow:)`; the workspace name sits in the toolbar next to the traffic lights (`MainWindowController.workspaceLabel`) and in the workspace popup at the bottom of the sidebar (`SidebarViewController.updateWorkspaceTitle`). Rename via File › Rename Workspace… or the sidebar's empty-space context menu.
 - `⌘N` (File › New Workspace…) asks for a name and opens a new window. The window title is the workspace name (hidden in the titlebar, used by the Window menu and Mission Control); the subtitle is the current project.
-- Closing a window (`AppController.closeWindow`) confirms and deletes the workspace: kills its agents and terminals and removes its projects. Quitting does not go through it, so all workspaces come back.
+- Closing a window (`AppController.closeWindow`) closes the workspace: like quitting, it saves the running tabs of its projects into `Project.restoredTabs` (`AppState.tabs(of:)`, scrollback of shells and terminals included), kills them and sets `Workspace.isClosed`. It asks first only when sessions are running or files are unsaved. While closed, `save()` writes `restoredTabs` for projects without running tabs, and quitting keeps the scrollback files they reference.
+- A closed workspace reopens whenever `makeWindow` creates its window: from File › Reopen Workspace (filled in `AppController.menuNeedsUpdate`), the sidebar workspace popup, `⇧⌘P` (subtitle "closed"), or selecting one of its projects. `makeWindow` then runs `restoreTabs(in:)` for its projects.
+- On launch only open workspaces get a window. If every workspace is closed (closing the last window quits the app), the `lastWindow` one is reopened.
+- File › Delete Workspace… (`AppController.deleteWorkspace`, also in the sidebar popup and empty-space menu) confirms, kills its agents and terminals, removes its projects and the workspace, and closes the window.
 - The key window's id is saved as the `lastWindow` default (`windowDidBecomeKey`); on launch that workspace window is shown last so it comes up in front.
 - `ResponsiveSegmentedControl` (sidebar and panel tabs) shows icon + title, and drops the titles when narrower than ~92pt per segment.
 - Gotcha: a vertical `NSStackView` with `.width` alignment does not reliably stretch its arranged views; pin widths with explicit constraints (`HoverRow.viewDidMoveToSuperview`, the commit field).
