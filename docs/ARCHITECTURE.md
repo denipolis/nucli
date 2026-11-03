@@ -218,6 +218,7 @@ Shell tabs start with the prompt on the last row and output grows upward. `Sessi
 - SwiftTerm supports the kitty keyboard protocol, which Claude Code uses for `⇧↩`.
 - The underlying `Terminal` is internal; use `send(_:)`, `send(txt:)`, `feed(text:)` on the view.
 - Find (`⌘F`) works through `performFindPanelAction` menu items with `NSFindPanelAction` tags.
+- SwiftTerm shows a find match as the selection, and its selection text color defaults to black. `TerminalTheme.apply` sets the theme foreground for selected text. While the find bar is open (`DropTerminalView` checks for its `NSVisualEffectView` subview), `selectionChanged` switches the selection to black on yellow and flashes it orange twice whenever the match moves, so the current match is easy to spot. Closing the bar and changing the selection restores the theme colors.
 
 ## Attention (finished / waiting tabs)
 

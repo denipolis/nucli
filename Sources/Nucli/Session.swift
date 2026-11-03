@@ -18,7 +18,7 @@ final class Session: NSObject, TerminalViewDelegate, LocalProcessDelegate {
     let profile: AgentProfile?
     unowned var project: Project
     let id = UUID().uuidString
-    let terminal: TerminalView
+    let terminal: DropTerminalView
     private var process: LocalProcess!
     private var isAnchored = false
     private var isAltScreen = false

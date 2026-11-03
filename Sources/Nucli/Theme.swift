@@ -109,12 +109,12 @@ struct TerminalTheme {
     var foregroundColor: NSColor { Self.color(foreground) }
     var ansiColors: [NSColor] { ansi.map(Self.color) }
 
-    func apply(to terminal: TerminalView) {
+    func apply(to terminal: DropTerminalView) {
         terminal.installColors(ansi.map { Color(red8: UInt16($0 >> 16 & 0xFF), green8: UInt16($0 >> 8 & 0xFF), blue8: UInt16($0 & 0xFF)) })
         terminal.nativeBackgroundColor = Self.color(background)
         terminal.nativeForegroundColor = Self.color(foreground)
         terminal.caretColor = .controlAccentColor
-        terminal.selectedTextBackgroundColor = selection.map(Self.color) ?? NSColor.controlAccentColor.withAlphaComponent(0.35)
+        terminal.themeSelection = (selection.map(Self.color) ?? NSColor.controlAccentColor.withAlphaComponent(0.35), Self.color(foreground))
     }
 
     static func color(_ hex: UInt32) -> NSColor {
