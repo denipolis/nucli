@@ -23,6 +23,7 @@ enum MainMenu {
             item("New Tab", #selector(AppController.newAgentWithLastProfile(_:)), "t"),
             item("New Tab…", #selector(AppController.newAgent(_:)), "t", [.command, .shift]),
             alternate(item("New Tab in Folder…", #selector(AppController.newAgentInFolder(_:)), "t", [.command, .shift, .option])),
+            item("New Tab Without Project…", #selector(AppController.newAgentWithoutProject(_:)), ""),
             item("Open Project…", #selector(AppController.openProject(_:)), "o"),
             item("Quick Open…", #selector(AppController.quickOpen(_:)), "p"),
             .separator(),

@@ -526,6 +526,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, NS
         withProject(askFolder: true) { [weak self] in self?.pickAgent(in: $0) }
     }
 
+    @objc func newAgentWithoutProject(_ sender: Any?) {
+        guard let controller = active ?? windows.first else { return }
+        pickAgent(in: state.scratchProject(windowId: controller.id))
+    }
+
     @objc func newTerminal(in sender: NSMenuItem) {
         guard let project = sender.representedObject as? Project else { return }
         open(.terminal, profile: nil, in: project)

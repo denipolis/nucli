@@ -104,7 +104,7 @@ All menu shortcuts are rebindable. `MainMenu.build()` records each command's def
 
 ## Tabs without a project
 
-- Clicking empty sidebar space deselects everything (window title "Nucli", empty viewport). `⌘T` / `⇧⌘T` with nothing selected open the tab in a per-window scratch `Project` (`isScratch`, path `~`, named "No Project"); `⌥⌘T` / `⌥⇧⌘T` still ask for a folder.
+- Clicking empty sidebar space deselects everything (window title "Nucli", empty viewport). `⌘T` / `⇧⌘T` with nothing selected open the tab in a per-window scratch `Project` (`isScratch`, path `~`, named "No Project"); `⌥⌘T` / `⌥⇧⌘T` still ask for a folder. File › New Tab Without Project… and the sidebar `+` menu open the picker in the scratch project whatever is selected.
 - The scratch project is a normal `Project` so sessions, restore and drag and drop need no special cases. It is listed last among loose projects and only while it has tabs, saved with `scratch: true`, never matched by `project(for:)`, identified as `scratch:<window>` in drags, not draggable itself, not renameable, and hidden from the palette's project list. The Files and Changes panel and `⌘P` ignore it so `~` is never watched or indexed.
 - Tabs can be dragged from "No Project" into any project.
 

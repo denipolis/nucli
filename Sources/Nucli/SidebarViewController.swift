@@ -237,7 +237,7 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         addButton.controlSize = .small
         let addMenu = addButton.menu!
         addMenu.addItem(withTitle: "", action: nil, keyEquivalent: "").image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")
-        for (title, action) in [("New Agent", #selector(AppController.newAgentWithLastProfile(_:))), ("New Agent…", #selector(AppController.newAgent(_:))), ("New Terminal", #selector(AppController.newTerminal(_:))), ("Open Project…", #selector(AppController.openProject(_:)))] {
+        for (title, action) in [("New Agent", #selector(AppController.newAgentWithLastProfile(_:))), ("New Agent…", #selector(AppController.newAgent(_:))), ("New Agent Without Project…", #selector(AppController.newAgentWithoutProject(_:))), ("New Terminal", #selector(AppController.newTerminal(_:))), ("Open Project…", #selector(AppController.openProject(_:)))] {
             addMenu.addItem(withTitle: title, action: action, keyEquivalent: "").target = AppController.shared
         }
         addButton.toolTip = "Add"
