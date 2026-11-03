@@ -409,7 +409,7 @@ final class FileDiffViewController: NSViewController, NSTextViewDelegate {
         stats.textColor = .secondaryLabelColor
         let previous = button("chevron.up", "Previous Change (⇧F7)", #selector(previousChange))
         let next = button("chevron.down", "Next Change (F7)", #selector(nextChange))
-        let open = button("arrow.up.forward.app", "Open with Default App", #selector(openExternally))
+        let open = button("arrow.up.forward.app", "Open With", #selector(openExternally(_:)))
         let reveal = button("folder", "Reveal in Finder", #selector(revealInFinder))
         let isDiff = change.status != " "
         previous.isHidden = !isDiff
@@ -557,8 +557,8 @@ final class FileDiffViewController: NSViewController, NSTextViewDelegate {
         }
     }
 
-    @objc private func openExternally() {
-        NSWorkspace.shared.open(fileURL)
+    @objc private func openExternally(_ sender: NSButton) {
+        OpenWith.menu(for: fileURL).popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
     }
 
     @objc private func revealInFinder() {

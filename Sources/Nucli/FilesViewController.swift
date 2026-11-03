@@ -327,6 +327,7 @@ final class FilesViewController: NSViewController, NSOutlineViewDataSource, NSOu
             item.representedObject = node
             menu.addItem(item)
         }
+        menu.insertItem(OpenWith.submenuItem(for: URL(fileURLWithPath: node.path)), at: 2)
     }
 
     @objc private func reveal(_ sender: NSMenuItem) {

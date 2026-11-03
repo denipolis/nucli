@@ -30,6 +30,7 @@ AppKit app, built with SwiftPM, one window per workspace. Everything lives in `S
 | `FileIcon.swift` | SF Symbol and system color per file extension/name, used by the Files and Changes views. |
 | `Git.swift` | `git` CLI wrapper (status, full-file diff) and `FileWatcher` (FSEvents). |
 | `AgentDetector.swift` | First-run discovery of installed agent CLIs. |
+| `OpenWith.swift` | Open With menu for a file: default app, other registered apps, Other… (`NSOpenPanel` for any app). |
 | `Theme.swift` | `TerminalTheme` (terminal palette, selection, `SyntaxPalette` for the file and Changes views): Nucli Dark/Light, five Vitesse variants, automatic pairs. |
 | `ProcessInspector.swift` | Foreground process of a tab (`tcgetpgrp` + `KERN_PROCARGS2`) and agent monogram badges. |
 | `StatusBar.swift` | Warp-style chip bar under each tab: cwd, git branch, foreground program. |
@@ -143,7 +144,7 @@ All menu shortcuts are rebindable. `MainMenu.build()` records each command's def
 - Files: `git diff <base> --numstat/--name-status --relative --no-renames` plus `git ls-files --others --exclude-standard`. `--relative` scopes everything to the project folder when it is a subfolder of a repo.
 - Full-file view: `git diff <base> -U100000000 -- file`, a context so large that the hunk is the whole file.
 - Changes view: VS Code Source Control style list (see `GitPanelViewController.swift` in the file map).
-- File view (`FileDiffViewController`): `+`/`-` line backgrounds are drawn full width by `DiffLayoutManager` (custom `.diffKind` attribute per line, painted in `drawBackground(forGlyphRange:at:)`), not with the text `.backgroundColor`, which stops at the last character. One line-number column unless the diff has removed lines; no `+`/`-` marker column for unchanged files. `F7` / `⇧F7` (also header chevrons) jump between change blocks; the first open of a changed file jumps to its first change. Header buttons reveal in Finder and open with the default app. `Esc` (`DiffTextView.cancelOperation`) and `⌘W` close the view.
+- File view (`FileDiffViewController`): `+`/`-` line backgrounds are drawn full width by `DiffLayoutManager` (custom `.diffKind` attribute per line, painted in `drawBackground(forGlyphRange:at:)`), not with the text `.backgroundColor`, which stops at the last character. One line-number column unless the diff has removed lines; no `+`/`-` marker column for unchanged files. `F7` / `⇧F7` (also header chevrons) jump between change blocks; the first open of a changed file jumps to its first change. Header buttons reveal in Finder and pop up Open With (`OpenWith.menu`: default app, other apps from `NSWorkspace.urlsForApplications(toOpen:)`, Other… to pick any app). The Files context menu has the same Open With submenu. `Esc` (`DiffTextView.cancelOperation`) and `⌘W` close the view.
 - Live updates: FSEvents on the project path, plus the git dir when it lies outside it (so staging is noticed). Refreshes are coalesced: one git run at a time, one queued rerun.
 - `.gitChanged` notification (object: project) lets an open full-file view reload.
 
