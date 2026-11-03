@@ -66,7 +66,9 @@ final class ProfilePicker: NSObject, NSTableViewDataSource, NSTableViewDelegate 
         scroll.documentView = table
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
-        let stack = NSStackView(views: [label, scroll])
+        let header = NSStackView(views: [label])
+        header.edgeInsets = NSEdgeInsets(top: 6, left: 18, bottom: 2, right: 18)
+        let stack = NSStackView(views: [header, scroll])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
@@ -80,6 +82,7 @@ final class ProfilePicker: NSObject, NSTableViewDataSource, NSTableViewDelegate 
             stack.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -24),
+            header.widthAnchor.constraint(equalTo: scroll.widthAnchor),
         ])
         parent.beginSheet(panel)
         panel.makeFirstResponder(table)
