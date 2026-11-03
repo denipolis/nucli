@@ -104,6 +104,11 @@ final class SidebarOutlineView: NSOutlineView {
         frame.size.width -= rootInset
         return frame
     }
+
+    override func mouseDown(with event: NSEvent) {
+        guard row(at: convert(event.locationInWindow, from: nil)) < 0 else { return super.mouseDown(with: event) }
+        deselectAll(nil)
+    }
 }
 
 final class TintedRowView: NSTableRowView {
