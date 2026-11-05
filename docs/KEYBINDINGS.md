@@ -1,47 +1,51 @@
 # Keybindings
 
-Defaults below. Every menu shortcut can be changed in Settings › Keybindings (double-click a shortcut, press the keys; `⌫` removes it).
+Defaults below. Every command can be rebound in `keybindings.json` (palette: "Open Keybindings"): `{"cmd-t": "new_tab", "cmd-shift-d": null}`. Keys use `cmd`, `ctrl`, `alt`, `shift` and names like `enter`, `escape`, `tab`, `space`, `left`, `pageup`, `f7`; `null` removes a default. The command palette shows each command's name and current key.
 
-| Shortcut | Action |
-|---|---|
-| `⌘N` | New window |
-| `⌘T` | New tab with the agent or shell last used in this project (fallback: last used globally, then the first agent) |
-| `⇧⌘T` | New tab (picker with agents and shells, last used preselected); without a selection the tab has no project |
-| `⌥⇧⌘T` | New tab in another folder |
-| `⌘O` | Open project |
-| `⌘P` | Quick open a file of the current project (`⌘Return` opens with the default app) |
-| `⇧⌘P` | Command palette: commands, tabs, projects, workspaces, agents, conversations, files |
-| `⌘W` | Close the open file tab, else close tab (asks for running agents), else clear the viewport. Never closes a project |
-| `⇧⌘W` | Close project |
-| `⌘D` / `⇧⌘D` | Split right / down with a new tab (last used agent or shell) |
-| `` ⌃` `` | Terminal panel: show and focus it (opens a shell if the project has none), hide it when it already has focus |
-| `` ⌃⇧` `` | New terminal in the project's terminal panel |
-| `⌘W` in the terminal panel | Close that terminal |
-| `⌥⌘W` | Close split (the tab keeps running) |
-| `⌥⌘←` `⌥⌘→` `⌥⌘↑` `⌥⌘↓` | Focus the split in that direction |
-| `⌃Tab` / `⌃⇧Tab`, `⇧⌘]` / `⇧⌘[` | Tab switcher (most recently used first); keep the modifier held and repeat, release to switch, `Esc` cancels |
-| `⌘1` … `⌘9` | Tab by position in this window's sidebar |
-| `⌘B` | Toggle sidebar |
-| `⌥⌘B` | Toggle Files and Changes panel (all windows) |
-| `⌥⌘F` | Filter the sidebar (`Return` selects the first match, `Esc` clears) |
-| `⌥⌘1` / `⌥⌘2` / `⌥⌘3` | Sidebar: Projects / Agents board / History (opens the sidebar if hidden) |
-| `⌃⌘1` / `⌃⌘2` / `⌃⌘3` | Panel: Files / Changes / Git History (opens the panel if hidden) |
-| `⌃⌘F` | Full screen |
-| `⌘=` / `⌘-` / `⌘0` | Font bigger / smaller / reset |
-| `⌘K` | Clear terminal and scrollback |
-| `⌘F`, `⌘G`, `⇧⌘G`, `⌘E` | Find, next, previous, use selection |
-| `⌘,` | Settings |
-| `⌘←` / `⌘→` | Line start / end (`^A` / `^E`) |
-| `⌘⌫` | Delete to line start (`^U`) |
-| `⌥←` / `⌥→` / `⌥⌫` | Word back / forward / delete word back (`ESC b` / `ESC f` / `^W`) |
-| `⌥` + key | Meta (`ESC` prefix) |
-| `Esc` in file view | Back to terminal (file tabs stay open) |
-| `F7` / `⇧F7` in file view | Next / previous change |
-| `⌘S` in file view | Save the edited file |
-| `Return` / `Tab` in the suggestion popup | Accept the suggestion (`Esc` dismisses) |
+On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ctrl-r`, …), so app commands use `ctrl-shift`. Inside the file view and text inputs the usual `ctrl-c`, `ctrl-v`, `ctrl-x`, `ctrl-a`, `ctrl-z` and `ctrl-s` work.
 
-Agent picker: arrows, `Return`, `1`–`9` (profiles), `Esc`. Rows under "Recent conversations" resume that conversation.
+| Command | Name | macOS | Linux, Windows |
+|---|---|---|---|
+| New workspace | `new_workspace` | `cmd-n` | `ctrl-shift-n` |
+| New tab (last used agent or shell) | `new_tab` | `cmd-t` | `ctrl-shift-t` |
+| New tab picker | `new_tab_picker` | `cmd-shift-t` | `ctrl-shift-space` |
+| New tab in another folder | `new_tab_in_folder` | `cmd-alt-shift-t` | `ctrl-alt-shift-t` |
+| New tab without project | `new_tab_without_project` | | |
+| Open project | `open_project` | `cmd-o` | `ctrl-shift-o` |
+| Quick open a file | `quick_open` | `cmd-p` | `ctrl-shift-e` |
+| Command palette | `command_palette` | `cmd-shift-p` | `ctrl-shift-p` |
+| Close file tab, else tab | `close` | `cmd-w` | `ctrl-shift-w` |
+| Close project | `close_project` | `cmd-shift-w` | `ctrl-alt-shift-w` |
+| Rename tab | `rename_tab` | | |
+| Split right / down | `split_right` / `split_down` | `cmd-d` / `cmd-shift-d` | `ctrl-shift-d` / `ctrl-alt-shift-d` |
+| Close split | `close_split` | `cmd-alt-w` | `ctrl-alt-w` |
+| Focus split left / right / up / down | `focus_left` … | `cmd-alt-left` … | `ctrl-alt-shift-left` … |
+| Terminal panel: show and focus, hide when focused | `toggle_terminal` | ``ctrl-` `` | ``ctrl-` `` |
+| New terminal in the panel | `new_terminal` | ``ctrl-shift-` `` | ``ctrl-shift-` `` |
+| Tab switcher (hold the modifier, release to switch) | `tab_switcher` / `tab_switcher_back` | `ctrl-tab` / `ctrl-shift-tab` | `ctrl-tab` / `ctrl-shift-tab` |
+| Next / previous tab | `next_tab` / `previous_tab` | `cmd-shift-]` / `cmd-shift-[` | `ctrl-pagedown` / `ctrl-pageup` |
+| Tab 1 … 9 | `select_tab_1` … | `cmd-1` … `cmd-9` | `alt-1` … `alt-9` |
+| Toggle sidebar | `toggle_sidebar` | `cmd-b` | `ctrl-shift-b` |
+| Toggle panel | `toggle_panel` | `cmd-alt-b` | `ctrl-alt-b` |
+| Move panel to the other side | `move_panel` | | |
+| Filter sidebar | `filter_sidebar` | `cmd-alt-f` | `ctrl-alt-f` |
+| Sidebar: Projects / Agents / History | `show_projects` … | `cmd-alt-1` … `3` | `ctrl-alt-1` … `3` |
+| Panel: Files / Changes / History | `show_files` … | `ctrl-cmd-1` … `3` | `ctrl-shift-1` … `3` |
+| Full screen | `toggle_full_screen` | `ctrl-cmd-f` | `f11` |
+| Font bigger / smaller / reset | `font_bigger` … | `cmd-=` / `cmd--` / `cmd-0` | `ctrl-=` / `ctrl--` / `ctrl-0` |
+| Clear terminal and scrollback | `clear` | `cmd-k` | `ctrl-shift-k` |
+| Find / next / previous | `find` / `find_next` / `find_previous` | `cmd-f` / `cmd-g` / `cmd-shift-g` | `ctrl-shift-f` / `f3` / `shift-f3` |
+| Copy / paste / select all in a terminal | `copy` / `paste` / `select_all` | `cmd-c` / `cmd-v` / `cmd-a` | `ctrl-shift-c` / `ctrl-shift-v` / `ctrl-shift-a` |
+| Save file | `save` | `cmd-s` | `ctrl-s` |
+| Next / previous change | `next_change` / `previous_change` | `f7` / `shift-f7` | `f7` / `shift-f7` |
+| Hide the file view | `hide_file_view` | `escape` | `escape` |
+| Settings | `open_settings` | `cmd-,` | `ctrl-,` |
+| Keybindings | `open_keybindings` | | |
+| Select theme | `select_theme` | | |
+| Quit | `quit` | `cmd-q` | `ctrl-shift-q` |
 
-`⌘N` creates a new workspace (its own window); switch workspaces with the system `` ⌘` ``. Closing a workspace window closes the workspace: it keeps its projects and tabs and reopens them from File › Reopen Workspace, the workspace popup at the bottom of the sidebar or `⇧⌘P`. File › Delete Workspace… deletes it. `⌘Q` keeps all workspaces and reopens the open ones.
+Terminal keys on macOS (fixed): `cmd-left` / `cmd-right` line start / end, `cmd-backspace` delete to line start, `alt-left` / `alt-right` word back / forward, `alt-backspace` delete word back, `alt` + key sends Meta (`ESC` prefix).
 
-Sidebar: double-click a tab or project to rename it inline (`Return` saves, `Esc` cancels, empty name restores the default). File › Rename Tab… renames the current tab.
+New tab picker: arrows, `enter`, `1`–`9` launch the numbered agent or shell, `esc` closes. Rows under CONVERSATIONS resume that conversation.
+
+Sidebar: double-click a project or tab to rename it inline (`enter` saves, `esc` cancels, empty restores the default name).
