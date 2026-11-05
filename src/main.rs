@@ -39,6 +39,7 @@ mod terminal;
 mod text_input;
 mod theme;
 mod ui;
+mod watcher;
 mod window;
 
 use std::borrow::Cow;
@@ -117,7 +118,10 @@ fn main() {
         }
         cx.on_action(|_: &Quit, cx| cx.quit());
         let store = store::init(cx);
-        store.update(cx, |store, cx| store.start_polling(cx));
+        store.update(cx, |store, cx| {
+            store.start_polling(cx);
+            store.start_watching(cx);
+        });
         cx.on_app_quit(|cx| {
             let state = store::store(cx).read(cx).snapshot(true, cx);
             state.write();

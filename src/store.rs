@@ -199,6 +199,8 @@ pub struct Store {
     pub tick: usize,
     pub tick_fast: usize,
     pub diffstats: HashMap<PathBuf, crate::git::DiffStat>,
+    pub revisions: HashMap<PathBuf, u64>,
+    pub watchers: crate::watcher::Watchers,
     save_task: Option<Task<()>>,
     pub(crate) poll_task: Option<Task<()>>,
 }
@@ -226,6 +228,8 @@ impl Store {
             tick: 0,
             tick_fast: 0,
             diffstats: HashMap::new(),
+            revisions: HashMap::new(),
+            watchers: Default::default(),
             save_task: None,
             poll_task: None,
         }

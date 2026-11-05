@@ -74,13 +74,15 @@ impl Store {
         .detach();
     }
 
-    fn refresh_diffstats(&mut self, cx: &mut Context<Self>) {
-        let projects: Vec<PathBuf> = self
-            .workspaces
+    fn open_projects(&self) -> Vec<PathBuf> {
+        self.workspaces
             .iter()
             .filter(|workspace| self.windows.contains_key(&workspace.id))
             .flat_map(|workspace| workspace.projects.iter().map(|project| project.path.clone()))
-            .collect();
+            .collect()
+    }
+
+    pub fn refresh_diffstats(&mut self, projects: Vec<PathBuf>, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             let stats: Vec<(PathBuf, Option<crate::git::DiffStat>)> = cx
                 .background_executor()
@@ -120,8 +122,10 @@ impl Store {
 
     fn poll(&mut self, cx: &mut Context<Self>) {
         self.tick += 1;
-        if self.tick % 3 == 1 {
-            self.refresh_diffstats(cx);
+        self.sync_watchers();
+        if self.tick % 15 == 1 {
+            let projects = self.open_projects();
+            self.refresh_diffstats(projects, cx);
         }
         let profiles = settings::get(cx).agents.clone();
         let mut claude_dirs: Vec<PathBuf> = profiles
