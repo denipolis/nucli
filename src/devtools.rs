@@ -41,6 +41,35 @@ fn run(line: &str, cx: &mut App) {
                 window.dispatch_keystroke(keystroke, cx);
             }
         }
+        "dump" => {
+            let state = crate::store::store(cx).read(cx).snapshot(false, cx);
+            eprintln!("DUMP {}", serde_json::to_string(&state).unwrap_or_default());
+            let store = crate::store::store(cx);
+            for (id, session) in store.read(cx).sessions.iter() {
+                let session = session.read(cx);
+                eprintln!(
+                    "SESSION {id} kind={:?} title={} fg={:?} activity={:?} attention={} exit={:?} grid={}x{}",
+                    session.kind,
+                    session.display_title(),
+                    session.foreground,
+                    session.activity,
+                    session.attention,
+                    session.exit,
+                    session.terminal.size.cols,
+                    session.terminal.size.rows
+                );
+            }
+        }
+        "text" => {
+            let store = crate::store::store(cx);
+            if let Some(session) = store.read(cx).sessions.get(rest.trim()) {
+                eprintln!("TEXT {}", session.read(cx).terminal.text(40));
+            }
+        }
+        "activate" => {
+            cx.activate(true);
+            window.activate_window();
+        }
         "capture" => {
             let mut parts = rest.split_whitespace();
             if let (Some(id), Some(path)) = (parts.next().and_then(|id| id.parse().ok()), parts.next()) {
@@ -60,11 +89,12 @@ fn run(line: &str, cx: &mut App) {
 fn capture(id: u32, path: &str) {
     use core_graphics::geometry::{CGPoint, CGRect, CGSize};
     use core_graphics::window::{create_image, kCGWindowImageBoundsIgnoreFraming, kCGWindowListOptionIncludingWindow};
-    let Some(image) =
-        create_image(
-            CGRect::new(&CGPoint::new(f64::INFINITY, f64::INFINITY), &CGSize::new(0.0, 0.0)),
-            kCGWindowListOptionIncludingWindow, id, kCGWindowImageBoundsIgnoreFraming)
-    else {
+    let Some(image) = create_image(
+        CGRect::new(&CGPoint::new(f64::INFINITY, f64::INFINITY), &CGSize::new(0.0, 0.0)),
+        kCGWindowListOptionIncludingWindow,
+        id,
+        kCGWindowImageBoundsIgnoreFraming,
+    ) else {
         eprintln!("capture failed");
         return;
     };

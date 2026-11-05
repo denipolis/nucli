@@ -10,40 +10,69 @@ on:
 permissions:
   contents: write
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   build:
-    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15
+            target: x86_64-apple-darwin
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Show toolchain
+      - name: Install Linux libraries
+        if: runner.os == 'Linux'
         run: |
-          xcodebuild -version
-          swift --version
-      - name: Cache SwiftPM
-        uses: actions/cache@v4
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev libxcb1-dev \
+            libfontconfig-dev libfreetype-dev libvulkan-dev libasound2-dev libssl-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          path: .build
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
-      - name: Build app bundle
-        run: ./scripts/bundle.sh release
+          targets: ${{ matrix.target }}
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Check formatting
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --locked --release --target ${{ matrix.target }} -- -D warnings
+      - name: Test
+        if: matrix.target != 'x86_64-apple-darwin'
+        run: cargo test --locked --release --target ${{ matrix.target }}
       - name: Package
-        run: |
-          brew install create-dmg
-          mkdir build/dmg
-          cp -R build/Nucli.app build/dmg/
-          create-dmg --volname Nucli --volicon build/Nucli.app/Contents/Resources/AppIcon.icns --background Resources/dmg-background.tiff \
-            --window-pos 200 200 --window-size 660 400 --icon-size 128 --text-size 13 \
-            --icon Nucli.app 180 190 --app-drop-link 480 190 --hide-extension Nucli.app --no-internet-enable \
-            build/Nucli.dmg build/dmg
+        shell: bash
+        run: ./scripts/package.sh ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
-          name: Nucli
-          path: build/Nucli.dmg
+          name: nucli-${{ matrix.target }}
+          path: dist/*
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" build/Nucli.dmg --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --repo "$GITHUB_REPOSITORY"

@@ -157,7 +157,11 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    pub fn spawn(launch: Launch, size: GridSize, cursor: CursorStyle) -> anyhow::Result<(Terminal, UnboundedReceiver<Event>)> {
+    pub fn spawn(
+        launch: Launch,
+        size: GridSize,
+        cursor: CursorStyle,
+    ) -> anyhow::Result<(Terminal, UnboundedReceiver<Event>)> {
         let pair = native_pty_system().openpty(size.pty())?;
         let mut command = CommandBuilder::new(&launch.program);
         command.args(&launch.args);
@@ -197,7 +201,17 @@ impl Terminal {
         spawn_reader(reader, term.clone(), listener.clone(), anchor.clone(), activity.clone());
         spawn_waiter(child, sender);
         Ok((
-            Terminal { term, listener, master: pair.master, killer, pid, anchor, activity, size, local: Processor::new() },
+            Terminal {
+                term,
+                listener,
+                master: pair.master,
+                killer,
+                pid,
+                anchor,
+                activity,
+                size,
+                local: Processor::new(),
+            },
             receiver,
         ))
     }

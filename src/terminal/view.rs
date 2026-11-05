@@ -166,13 +166,18 @@ impl Element for TerminalElement {
         let (font_size, cell) = cell_size(window, cx);
         let cols = (f32::from(bounds.size.width) / f32::from(cell.width)).floor().max(2.0) as usize;
         let rows = (f32::from(bounds.size.height) / f32::from(cell.height)).floor().max(1.0) as usize;
-        let grid = super::GridSize { cols, rows, cell_width: f32::from(cell.width), cell_height: f32::from(cell.height) };
+        let grid =
+            super::GridSize { cols, rows, cell_width: f32::from(cell.width), cell_height: f32::from(cell.height) };
         let ligatures = settings::get(cx).ligatures;
         let global_theme = ui::theme(cx);
         let (theme, marked, term) = self.session.update(cx, |session, _| {
             session.terminal.resize(grid);
             session.view.layout = Some((bounds.origin, cell));
-            (session.view.theme.clone().unwrap_or(global_theme), session.view.marked.clone(), session.terminal.term.clone())
+            (
+                session.view.theme.clone().unwrap_or(global_theme),
+                session.view.marked.clone(),
+                session.terminal.term.clone(),
+            )
         });
         let table = color_table(&theme);
         let background = Rgb {
@@ -208,7 +213,8 @@ impl Element for TerminalElement {
             }
             let selected = selection.is_some_and(|range| range.contains(indexed.point));
             let width = if cell_data.flags.contains(Flags::WIDE_CHAR) { 2.0 } else { 1.0 };
-            let origin = point(bounds.origin.x + cell.width * column as f32, bounds.origin.y + cell.height * row as f32);
+            let origin =
+                point(bounds.origin.x + cell.width * column as f32, bounds.origin.y + cell.height * row as f32);
             let cell_bounds = Bounds::new(origin, size(cell.width * width, cell.height));
             if selected {
                 frame.rects.push((cell_bounds, theme.selection));
@@ -231,7 +237,8 @@ impl Element for TerminalElement {
                 color: to_hsla(fg),
                 bold: cell_data.flags.contains(Flags::BOLD),
                 italic: cell_data.flags.contains(Flags::ITALIC),
-                underline: cell_data.flags.intersects(Flags::ALL_UNDERLINES) || cell_data.hyperlink().is_some() && false,
+                underline: cell_data.flags.intersects(Flags::ALL_UNDERLINES)
+                    || cell_data.hyperlink().is_some() && false,
                 strike: cell_data.flags.contains(Flags::STRIKEOUT),
             };
             let runs = &mut rows_runs[row as usize];
@@ -265,17 +272,19 @@ impl Element for TerminalElement {
                 frame.cursor.push(outline(block, color, gpui::BorderStyle::Solid));
             } else {
                 match cursor.shape {
-                    CursorShape::Beam => frame.cursor.push(fill(Bounds::new(origin, size(px(2.0), cell.height)), color)),
+                    CursorShape::Beam => {
+                        frame.cursor.push(fill(Bounds::new(origin, size(px(2.0), cell.height)), color))
+                    }
                     CursorShape::Underline => frame.cursor.push(fill(
                         Bounds::new(point(origin.x, origin.y + cell.height - px(2.0)), size(cell.width, px(2.0))),
                         color,
                     )),
                     _ => {
                         frame.rects.push((block, color));
-                        if let Some(run) = rows_runs[cursor_row as usize]
-                            .iter_mut()
-                            .find(|run| run.column <= cursor.point.column.0 && cursor.point.column.0 < run.column + run.text.chars().count())
-                        {
+                        if let Some(run) = rows_runs[cursor_row as usize].iter_mut().find(|run| {
+                            run.column <= cursor.point.column.0
+                                && cursor.point.column.0 < run.column + run.text.chars().count()
+                        }) {
                             let index = cursor.point.column.0 - run.column;
                             if run.text.is_ascii() && run.text.len() > 1 {
                                 let split: Vec<Run> = split_run(run, index, theme.on_accent);
@@ -316,7 +325,8 @@ impl Element for TerminalElement {
                     underline: run.underline.then_some(UnderlineStyle { thickness: px(1.0), color: None, wavy: false }),
                     strikethrough: run.strike.then_some(StrikethroughStyle { thickness: px(1.0), color: None }),
                 };
-                let shaped = window.text_system().shape_line(SharedString::from(run.text), font_size, &[text_run], None);
+                let shaped =
+                    window.text_system().shape_line(SharedString::from(run.text), font_size, &[text_run], None);
                 frame.lines.push((origin, shaped));
             }
         }
@@ -383,12 +393,19 @@ fn grid_point(session: &Session, position: Point<Pixels>) -> Option<(GridPoint, 
     Some((GridPoint::new(Line(row as i32 - offset), Column(column)), side))
 }
 
-fn mouse_report(session: &Session, button: u8, position: Point<Pixels>, pressed: bool, mods: &gpui::Modifiers) -> Option<Vec<u8>> {
+fn mouse_report(
+    session: &Session,
+    button: u8,
+    position: Point<Pixels>,
+    pressed: bool,
+    mods: &gpui::Modifiers,
+) -> Option<Vec<u8>> {
     let (column, row) = session.cell_at(position)?;
     let size = session.terminal.size;
     let column = column.min(size.cols - 1) + 1;
     let row = row.min(size.rows - 1) + 1;
-    let code = button + if mods.shift { 4 } else { 0 } + if mods.alt { 8 } else { 0 } + if mods.control { 16 } else { 0 };
+    let code =
+        button + if mods.shift { 4 } else { 0 } + if mods.alt { 8 } else { 0 } + if mods.control { 16 } else { 0 };
     let mode = session.terminal.mode();
     if mode.contains(TermMode::SGR_MOUSE) {
         Some(format!("\x1b[<{code};{column};{row}{}", if pressed { 'M' } else { 'm' }).into_bytes())
@@ -571,7 +588,8 @@ impl Session {
     }
 
     fn drop_paths(&mut self, paths: &ExternalPaths, _window: &mut Window, cx: &mut Context<Self>) {
-        let text: Vec<String> = paths.paths().iter().map(|path| crate::agents::quote(&path.to_string_lossy())).collect();
+        let text: Vec<String> =
+            paths.paths().iter().map(|path| crate::agents::quote(&path.to_string_lossy())).collect();
         if !text.is_empty() {
             let bytes = keys::paste(&format!("{} ", text.join(" ")), self.terminal.mode());
             self.input(&bytes, cx);

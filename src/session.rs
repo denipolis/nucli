@@ -34,6 +34,7 @@ pub enum SessionEvent {
 }
 
 pub struct Spec {
+    pub id: Option<String>,
     pub kind: Kind,
     pub profile: Option<AgentProfile>,
     pub shell: Option<String>,
@@ -61,6 +62,9 @@ pub struct Session {
     pub attention: bool,
     pub cwd: Option<PathBuf>,
     pub foreground: Option<String>,
+    pub running_agent: Option<String>,
+    pub branch: Option<String>,
+    pub subagents: Vec<crate::claude::Subagent>,
     pub started: SystemTime,
     pub view: terminal::view::ViewState,
     _events: Task<()>,
@@ -95,7 +99,7 @@ impl Session {
                 }
             });
             let mut session = Session {
-                id: uuid::Uuid::new_v4().to_string(),
+                id: spec.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
                 kind: spec.kind,
                 profile: spec.profile.as_ref().map(|profile| profile.name.clone()),
                 agent,
@@ -112,6 +116,9 @@ impl Session {
                 attention: false,
                 cwd: None,
                 foreground: None,
+                running_agent: None,
+                branch: None,
+                subagents: Vec::new(),
                 started: SystemTime::now(),
                 view: Default::default(),
                 _events: task,
@@ -180,7 +187,25 @@ impl Session {
 
     pub fn profile_theme(&self, cx: &App) -> Option<String> {
         let name = self.profile.as_ref()?;
-        settings::get(cx).agents.iter().find(|profile| &profile.name == name).map(|profile| profile.theme.clone()).filter(|theme| !theme.is_empty())
+        settings::get(cx)
+            .agents
+            .iter()
+            .find(|profile| &profile.name == name)
+            .map(|profile| profile.theme.clone())
+            .filter(|theme| !theme.is_empty())
+    }
+
+    pub fn saved_tab(&self) -> crate::persist::SavedTab {
+        crate::persist::SavedTab {
+            id: self.id.clone(),
+            kind: Some(self.kind),
+            profile: self.profile.clone(),
+            shell: self.shell.clone(),
+            name: self.name.clone(),
+            color: self.color,
+            conversation: self.conversation.clone(),
+            cwd: self.cwd.clone(),
+        }
     }
 
     pub fn kill(&mut self) {
@@ -231,7 +256,11 @@ fn command(spec: &Spec) -> (String, Vec<String>, Vec<(String, String)>) {
                     .collect();
                 ("cmd.exe".into(), vec!["/C".into(), profile.windows_command(&extra)], env)
             } else {
-                (agents::login_shell(), vec!["-l".into(), "-i".into(), "-c".into(), profile.shell_command(&extra)], Vec::new())
+                (
+                    agents::login_shell(),
+                    vec!["-l".into(), "-i".into(), "-c".into(), profile.shell_command(&extra)],
+                    Vec::new(),
+                )
             }
         }
         _ => {

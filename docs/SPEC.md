@@ -231,7 +231,7 @@ One row at the bottom of the window, for the focused tab or file:
 | What | macOS | Linux | Windows |
 |---|---|---|---|
 | Settings, keybindings | `~/.config/nucli` | `$XDG_CONFIG_HOME/nucli` | `%APPDATA%\Nucli` |
-| State, scrollback | `~/Library/Application Support/Nucli` | `$XDG_DATA_HOME/nucli` | `%LOCALAPPDATA%\Nucli` |
+| State, restored terminal output | `~/Library/Application Support/Nucli` | `$XDG_DATA_HOME/nucli` | `%LOCALAPPDATA%\Nucli` |
 | Conversation cache | `~/Library/Caches/Nucli` | `$XDG_CACHE_HOME/nucli` | `%LOCALAPPDATA%\Nucli\cache` |
 
 The development build uses `nucli-dev` / `Nucli Dev` instead.

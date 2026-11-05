@@ -193,10 +193,6 @@ pub fn find(name: &str) -> Option<&'static Command> {
     COMMANDS.iter().find(|command| command.name == name)
 }
 
-pub fn find_action(action: &dyn Action) -> Option<&'static Command> {
-    COMMANDS.iter().find(|command| (command.action)().partial_eq(action))
-}
-
 pub fn default_key(command: &Command) -> &'static str {
     if cfg!(target_os = "macos") { command.mac } else { command.other }
 }

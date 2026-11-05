@@ -25,7 +25,11 @@ fn cursor_key(letter: char, modifiers: u8, mode: TermMode) -> Vec<u8> {
 }
 
 fn tilde(number: u8, modifiers: u8) -> Vec<u8> {
-    if modifiers > 1 { format!("\x1b[{number};{modifiers}~").into_bytes() } else { format!("\x1b[{number}~").into_bytes() }
+    if modifiers > 1 {
+        format!("\x1b[{number};{modifiers}~").into_bytes()
+    } else {
+        format!("\x1b[{number}~").into_bytes()
+    }
 }
 
 pub fn mac_shortcut(keystroke: &Keystroke) -> Option<&'static [u8]> {
@@ -64,7 +68,9 @@ pub fn encode(keystroke: &Keystroke, mode: TermMode, option_as_meta: bool) -> Op
     };
     if let Some((code, legacy)) = special {
         if kitty && (modifiers > 1 || code == 27) {
-            return Some(if modifiers > 1 { format!("\x1b[{code};{modifiers}u") } else { format!("\x1b[{code}u") }.into_bytes());
+            return Some(
+                if modifiers > 1 { format!("\x1b[{code};{modifiers}u") } else { format!("\x1b[{code}u") }.into_bytes(),
+            );
         }
         if key == "tab" && m.shift {
             return Some(legacy);
@@ -111,7 +117,11 @@ pub fn encode(keystroke: &Keystroke, mode: TermMode, option_as_meta: bool) -> Op
         let text = if key == "space" {
             " ".to_string()
         } else if m.shift {
-            keystroke.key_char.clone().filter(|text| text.chars().count() == 1 && text.is_ascii()).unwrap_or_else(|| base.to_uppercase().collect())
+            keystroke
+                .key_char
+                .clone()
+                .filter(|text| text.chars().count() == 1 && text.is_ascii())
+                .unwrap_or_else(|| base.to_uppercase().collect())
         } else {
             base.to_string()
         };
