@@ -1,11 +1,16 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod agents;
+mod claude;
 mod commands;
 #[cfg(debug_assertions)]
 mod devtools;
+mod git;
+mod highlight;
+mod history;
 mod icons;
 mod paths;
+mod process;
 mod session;
 mod settings;
 mod terminal;

@@ -21,6 +21,9 @@ Direct dependencies, declared in `Cargo.toml`. Exact versions of everything, tra
 | [futures](https://github.com/rust-lang/futures-rs) | MIT OR Apache-2.0 | Channels from terminal threads to the UI |
 | [anyhow](https://github.com/dtolnay/anyhow) | MIT OR Apache-2.0 | Error values |
 | [uuid](https://github.com/uuid-rs/uuid) | MIT OR Apache-2.0 | Tab and conversation ids |
+| [sysinfo](https://github.com/GuillaumeGomez/sysinfo) | MIT | Foreground process name and folder of each tab |
+| [tree-sitter](https://github.com/tree-sitter/tree-sitter), tree-sitter-highlight | MIT | Syntax highlighting in the file view |
+| tree-sitter grammars: bash, c, cpp, css, go, html, java, javascript, json, lua, make, md, python, ruby, rust, swift, toml-ng, typescript, yaml | MIT | Language grammars and their highlight queries |
 | [core-graphics](https://github.com/servo/core-foundation-rs), [image](https://github.com/image-rs/image) | MIT OR Apache-2.0 | macOS only: window capture in the development build's control file |
 | [serde](https://github.com/serde-rs/serde), [serde_json](https://github.com/serde-rs/json) | MIT OR Apache-2.0 | Settings and state files |
 
