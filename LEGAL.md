@@ -24,7 +24,8 @@ Direct dependencies, declared in `Cargo.toml`. Exact versions of everything, tra
 | [sysinfo](https://github.com/GuillaumeGomez/sysinfo) | MIT | Foreground process name and folder of each tab |
 | [tree-sitter](https://github.com/tree-sitter/tree-sitter), tree-sitter-highlight | MIT | Syntax highlighting in the file view |
 | tree-sitter grammars: bash, c, cpp, css, go, html, java, javascript, json, lua, make, md, python, ruby, rust, swift, toml-ng, typescript, yaml | MIT | Language grammars and their highlight queries |
-| [core-graphics](https://github.com/servo/core-foundation-rs), [image](https://github.com/image-rs/image) | MIT OR Apache-2.0 | macOS only: window capture in the development build's control file |
+| [image](https://github.com/image-rs/image) | MIT OR Apache-2.0 | Pixel size of images in the file view, PNG writing in the development build |
+| [core-graphics](https://github.com/servo/core-foundation-rs) | MIT OR Apache-2.0 | macOS only: window capture in the development build's control file |
 | [serde](https://github.com/serde-rs/serde), [serde_json](https://github.com/serde-rs/json) | MIT OR Apache-2.0 | Settings and state files |
 
 Only `gpui` is used from its repository. The rest of that repository (its editor, terminal and UI crates) is GPL or AGPL licensed and must not be copied or depended on.

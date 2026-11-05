@@ -205,7 +205,7 @@ impl WorkspaceView {
             let focus = session.read(cx).focus.clone();
             window.focus(&focus);
         } else if self.file_shown(cx) {
-            self.files.focus(window, cx);
+            crate::file_view::focus_active(self, window, cx);
         } else {
             window.focus(&self.focus);
         }

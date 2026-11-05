@@ -8,6 +8,7 @@ mod commands;
 mod commits;
 #[cfg(debug_assertions)]
 mod devtools;
+mod editor;
 mod file_view;
 mod files;
 mod fuzzy;
@@ -99,7 +100,9 @@ fn watch_config(cx: &mut App) {
 }
 
 fn apply_keys(cx: &mut App) {
-    commands::apply(cx, text_input::bindings());
+    let mut bindings = text_input::bindings();
+    bindings.extend(editor::bindings());
+    commands::apply(cx, bindings);
 }
 
 fn main() {

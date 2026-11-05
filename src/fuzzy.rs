@@ -13,14 +13,14 @@ pub fn score(query: &str, candidate: &str) -> Option<(i32, Vec<usize>)> {
     }
     let bonus = |index: usize| -> i32 {
         if index == 0 {
-            return 8;
+            return 16;
         }
         let previous = chars[index - 1];
         let current = chars[index];
         if matches!(previous, '/' | '\\' | '_' | '-' | ' ' | '.' | ':') {
-            7
+            14
         } else if previous.is_lowercase() && current.is_uppercase() {
-            6
+            12
         } else {
             0
         }
@@ -49,7 +49,7 @@ pub fn score(query: &str, candidate: &str) -> Option<(i32, Vec<usize>)> {
                 best[i][j] = base - j as i32 / 4;
                 continue;
             }
-            let consecutive = if j >= 1 && best[i - 1][j - 1] > unset { best[i - 1][j - 1] + base + 12 } else { unset };
+            let consecutive = if j >= 1 && best[i - 1][j - 1] > unset { best[i - 1][j - 1] + base + 8 } else { unset };
             let gap = if running > unset { running - (j as i32 - 1) + base } else { unset };
             if consecutive > unset && consecutive >= gap {
                 best[i][j] = consecutive;
