@@ -15,7 +15,13 @@ Direct dependencies, declared in `Cargo.toml`. Exact versions of everything, tra
 | Crate | License | Used for |
 |---|---|---|
 | [gpui](https://github.com/zed-industries/zed/tree/main/crates/gpui) | Apache-2.0 | UI framework: windows, layout, text, input, rendering |
+| [alacritty_terminal](https://github.com/alacritty/alacritty) | Apache-2.0 | Terminal emulation (parser, grid, selection, search) |
+| [portable-pty](https://github.com/wezterm/wezterm/tree/main/pty) | MIT | Pseudo terminals and child processes on every platform |
 | [dirs](https://github.com/dirs-dev/dirs-rs) | MIT OR Apache-2.0 | Platform config, data and cache folders |
+| [futures](https://github.com/rust-lang/futures-rs) | MIT OR Apache-2.0 | Channels from terminal threads to the UI |
+| [anyhow](https://github.com/dtolnay/anyhow) | MIT OR Apache-2.0 | Error values |
+| [uuid](https://github.com/uuid-rs/uuid) | MIT OR Apache-2.0 | Tab and conversation ids |
+| [core-graphics](https://github.com/servo/core-foundation-rs), [image](https://github.com/image-rs/image) | MIT OR Apache-2.0 | macOS only: window capture in the development build's control file |
 | [serde](https://github.com/serde-rs/serde), [serde_json](https://github.com/serde-rs/json) | MIT OR Apache-2.0 | Settings and state files |
 
 Only `gpui` is used from its repository. The rest of that repository (its editor, terminal and UI crates) is GPL or AGPL licensed and must not be copied or depended on.

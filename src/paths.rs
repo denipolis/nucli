@@ -38,7 +38,9 @@ pub fn data_dir() -> &'static Path {
 pub fn cache_dir() -> &'static Path {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
-        if cfg!(windows) {
+        if cfg!(test) {
+            std::env::temp_dir().join("nucli-test-cache")
+        } else if cfg!(windows) {
             data_dir().join("cache")
         } else {
             dirs::cache_dir().unwrap_or_else(home).join(folder_name())

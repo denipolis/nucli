@@ -2,9 +2,13 @@
 
 mod agents;
 mod commands;
+#[cfg(debug_assertions)]
+mod devtools;
 mod icons;
 mod paths;
+mod session;
 mod settings;
+mod terminal;
 mod theme;
 mod ui;
 mod window;
@@ -52,6 +56,8 @@ fn main() {
             ..Default::default()
         };
         cx.open_window(options, |window, cx| cx.new(|cx| window::WorkspaceView::new(window, cx))).ok();
+        #[cfg(debug_assertions)]
+        devtools::start(cx);
         cx.activate(true);
     });
 }
