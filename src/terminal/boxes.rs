@@ -46,8 +46,24 @@ fn block(c: char) -> Option<(f32, f32, f32, f32, f32)> {
     })
 }
 
+fn quadrants(c: char) -> Option<[bool; 4]> {
+    Some(match c {
+        '▖' => [false, false, true, false],
+        '▗' => [false, false, false, true],
+        '▘' => [true, false, false, false],
+        '▙' => [true, false, true, true],
+        '▚' => [true, false, false, true],
+        '▛' => [true, true, true, false],
+        '▜' => [true, true, false, true],
+        '▝' => [false, true, false, false],
+        '▞' => [false, true, true, false],
+        '▟' => [false, true, true, true],
+        _ => return None,
+    })
+}
+
 pub fn is_drawn(c: char) -> bool {
-    lines(c).is_some() || block(c).is_some()
+    lines(c).is_some() || block(c).is_some() || quadrants(c).is_some()
 }
 
 pub fn rects(c: char, origin: Point<Pixels>, cell: Size<Pixels>, color: Hsla) -> Vec<(Bounds<Pixels>, Hsla)> {
@@ -56,6 +72,18 @@ pub fn rects(c: char, origin: Point<Pixels>, cell: Size<Pixels>, color: Hsla) ->
         let start = point(origin.x + px((x0 * width).round()), origin.y + px((y0 * height).round()));
         let extent = size(px(((x1 - x0) * width).round().max(1.0)), px(((y1 - y0) * height).round().max(1.0)));
         return vec![(Bounds::new(start, extent), color.opacity(alpha))];
+    }
+    if let Some(filled) = quadrants(c) {
+        let (middle_x, middle_y) = ((width / 2.0).round(), (height / 2.0).round());
+        let columns = [(0.0, middle_x), (middle_x, width.ceil() - middle_x)];
+        let rows = [(0.0, middle_y), (middle_y, height.ceil() - middle_y)];
+        return (0..filled.len())
+            .filter(|index| filled[*index])
+            .map(|index| {
+                let ((x, w), (y, h)) = (columns[index % 2], rows[index / 2]);
+                (Bounds::new(point(origin.x + px(x), origin.y + px(y)), size(px(w), px(h))), color)
+            })
+            .collect();
     }
     let Some((left, right, up, down, heavy)) = lines(c) else { return Vec::new() };
     let thin = (height / 16.0).round().max(1.0);
@@ -98,6 +126,11 @@ mod tests {
         assert_eq!(half[0].0.origin.y, px(8.0));
         let left = rects('▌', origin, cell, color);
         assert_eq!(left[0].0.size.width, px(4.0));
+        let corner = rects('▛', origin, cell, color);
+        assert_eq!(corner.len(), 3);
+        assert_eq!(corner[1].0, Bounds::new(point(px(4.0), px(0.0)), size(px(4.0), px(8.0))));
+        assert_eq!(corner[2].0, Bounds::new(point(px(0.0), px(8.0)), size(px(4.0), px(8.0))));
+        assert!(is_drawn('▝'));
         assert!(!is_drawn('a'));
     }
 }
