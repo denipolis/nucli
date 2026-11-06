@@ -106,4 +106,4 @@ Tabs for a commit's version of a file are stored as `path@@hash`.
 
 Debug builds read commands from the file named by `NUCLI_CONTROL`: `keys <keystrokes>`, `type <text>`, `action <command>`, `open <folder>`, `draw` (a full layout and paint without presenting, which also works while the screen is locked), `dump`, `text <tab id>`, `activate`, and on macOS `capture <window id> <png>`. Lines appended to the file run in order.
 
-Running in a Linux container under Xvfb with a window manager, a software Vulkan driver (`mesa-vulkan-drivers`) and `xdotool` allows real clicks, keys and screenshots with nothing reaching the host's desktop.
+Running in a Linux container under Xvfb with a window manager, a software Vulkan driver (`mesa-vulkan-drivers`) and `xdotool` allows real clicks, keys and screenshots with nothing reaching the host's desktop. Starting `dunst` in the app's D-Bus session shows its notifications, and `dunstctl action 0` clicks one.

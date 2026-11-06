@@ -10,7 +10,6 @@ pub fn clicks() -> UnboundedReceiver<String> {
     receiver
 }
 
-#[allow(dead_code)]
 fn clicked(id: String) {
     if let Some(sender) = CLICKS.get().and_then(|sender| sender.lock().ok()) {
         let _ = sender.unbounded_send(id);
@@ -30,26 +29,19 @@ pub fn post(title: &str, text: &str, id: &str) {
     });
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(not(target_os = "macos"))]
 pub fn post(title: &str, text: &str, id: &str) {
+    use notify_rust::{Notification, NotificationResponse};
     let (title, text, id) = (title.to_string(), text.to_string(), id.to_string());
     std::thread::spawn(move || {
-        let shown = notify_rust::Notification::new().summary(&title).body(&text).action("default", "Show").show();
+        let shown = Notification::new().summary(&title).body(&text).action("default", "Show").show();
         if let Ok(handle) = shown {
-            handle.wait_for_action(|action| {
-                if action == "default" {
+            let _ = handle.wait_for_response(|response: &NotificationResponse| {
+                if matches!(response, NotificationResponse::Default | NotificationResponse::Action(_)) {
                     clicked(id);
                 }
             });
         }
-    });
-}
-
-#[cfg(target_os = "windows")]
-pub fn post(title: &str, text: &str, _id: &str) {
-    let (title, text) = (title.to_string(), text.to_string());
-    std::thread::spawn(move || {
-        let _ = notify_rust::Notification::new().summary(&title).body(&text).show();
     });
 }
 

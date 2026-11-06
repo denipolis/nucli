@@ -113,7 +113,7 @@ An agent profile is `{name, executable, arguments, config_dir, env, theme}` in `
 - Any CLI started by hand in a shell tab is detected from the terminal's foreground process, gets its agent glyph, and gets the same status.
 - Shown in the sidebar on the right of the tab row: spinner (working), `?` in orange (waiting), `✓` in green with a green title (done), `✗` in red (exited with an error).
 - Done and waiting are ignored for the tab the user is looking at, and cleared when the tab is shown.
-- A desktop notification ("Claude finished", "Claude is waiting for input") is posted when a tab becomes done or waiting and is not the one being watched, if `notifications` is on. Clicking it shows the tab (macOS and Linux). On macOS the Dock icon shows the number of tabs that need attention; on Linux and Windows the window title does.
+- A desktop notification ("Claude finished", "Claude is waiting for input") is posted when a tab becomes done or waiting and is not the one being watched, if `notifications` is on. Clicking it shows the tab. On macOS the Dock icon shows the number of tabs that need attention; on Linux and Windows the window title does.
 
 ### Subagents
 
