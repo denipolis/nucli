@@ -18,7 +18,7 @@
 Download the build for your system from [Releases](https://github.com/denipolis/nucli/releases).
 
 - **macOS**: open `Nucli-*.dmg` and drag `Nucli.app` to `Applications`. Builds are not notarized, so run `xattr -dr com.apple.quarantine /Applications/Nucli.app` once.
-- **Linux**: unpack `nucli-*.tar.gz` and run `nucli`. It needs Vulkan drivers.
+- **Linux**: unpack `nucli-*.tar.gz` and run `nucli`. It needs Vulkan drivers and `libxkbcommon-x11`.
 - **Windows**: unpack `Nucli-*.zip` and run `nucli.exe`.
 
 On macOS and Linux, `./scripts/install_latest_github.sh` (needs `gh`) installs the latest release.
