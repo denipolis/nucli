@@ -142,6 +142,7 @@ impl Store {
     }
 
     fn poll(&mut self, cx: &mut Context<Self>) {
+        self.update_badge(cx);
         self.tick += 1;
         self.sync_watchers();
         if self.tick % 15 == 1 {
@@ -252,9 +253,22 @@ impl Store {
         cx.notify();
     }
 
-    pub fn update_badge(&self, cx: &mut Context<Self>) {
+    pub fn update_badge(&mut self, cx: &mut Context<Self>) {
         let count = self.sessions.values().filter(|session| session.read(cx).attention).count();
         crate::notify::badge(count);
+        if !cfg!(target_os = "macos") {
+            for workspace in self.workspaces.iter().filter(|workspace| !workspace.closed) {
+                let Some(handle) = self.windows.get(&workspace.id).copied() else { continue };
+                let title = if count > 0 { format!("({count}) {}", workspace.name) } else { workspace.name.clone() };
+                if self.titles.get(&workspace.id) == Some(&title) {
+                    continue;
+                }
+                self.titles.insert(workspace.id.clone(), title.clone());
+                cx.defer(move |cx| {
+                    let _ = handle.update(cx, |_, window, _| window.set_window_title(&title));
+                });
+            }
+        }
     }
 }
 
