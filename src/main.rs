@@ -27,6 +27,7 @@ mod panel;
 mod paths;
 mod persist;
 mod process;
+mod prompt;
 mod resize;
 mod session;
 mod settings;
@@ -182,6 +183,7 @@ fn main() {
         let settings = first_launch(cx);
         cx.set_global(settings);
         ui::init(cx);
+        cx.set_prompt_builder(prompt::build);
         apply_keys(cx);
         if cfg!(target_os = "macos") {
             cx.set_menus(commands::menus());

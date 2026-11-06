@@ -40,6 +40,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `switcher.rs` | Tab switcher overlay. |
 | `splits.rs`, `splits_view.rs` | Layout tree and panes. |
 | `menu.rs` | Context menu overlay. |
+| `prompt.rs` | Confirmation dialogs, installed with `set_prompt_builder`. |
 | `text_input.rs` | Single line input with IME. |
 | `resize.rs` | Pane resize handles. |
 | `statusbar.rs` | Status bar. |

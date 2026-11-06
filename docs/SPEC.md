@@ -24,6 +24,7 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 - Text tabs in caps (`PROJECTS  AGENTS  HISTORY`). The active tab, the selected row, focused list items and mode labels are inverted: accent background, background-colored text.
 - Key hints in brackets: `[enter] open  [esc] close`.
 - Spinners are character animations (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`).
+- Confirmations are Nucli's own square dialogs on every platform: arrows or `tab` move, `enter` chooses, `esc` cancels. File and folder choosers stay native.
 
 ## Workspaces
 
