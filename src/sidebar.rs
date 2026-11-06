@@ -40,7 +40,7 @@ pub struct TabInfo {
     pub id: String,
     pub title: String,
     pub subtitle: String,
-    pub glyph: &'static str,
+    pub glyph: (&'static str, Option<crate::theme::ItemColor>),
     pub color: Option<crate::theme::ItemColor>,
     pub attention: bool,
     pub running: bool,
@@ -81,7 +81,9 @@ pub fn matches(query: &str, texts: &[&str]) -> bool {
 }
 
 fn tab_texts(session: &Session) -> Vec<String> {
-    vec![session.display_title(), session.working_dir().to_string_lossy().into_owned()]
+    let mut texts = vec![session.display_title(), session.working_dir().to_string_lossy().into_owned()];
+    texts.extend(session.profile.clone());
+    texts
 }
 
 pub fn first_match(view: &WorkspaceView, query: &str, cx: &App) -> Option<Selected> {
@@ -123,10 +125,15 @@ pub fn status_glyph(session: &Session, theme: &crate::theme::Theme, tick: usize)
     None
 }
 
-pub fn tab_glyph(session: &Session) -> &'static str {
-    match (&session.running_agent, session.kind) {
-        (Some(_), _) | (None, Kind::Agent) => icons::AGENT,
-        _ => icons::TERMINAL,
+pub fn tab_glyph(session: &Session) -> (&'static str, Option<crate::theme::ItemColor>) {
+    let agent = session.running_agent.as_deref().or(session.agent.map(|kind| kind.command()));
+    match (agent, session.kind) {
+        (Some(name), _) => {
+            let (glyph, color) = icons::agent(name);
+            (glyph, Some(color))
+        }
+        (None, Kind::Agent) => (icons::AGENT, None),
+        _ => (icons::TERMINAL, None),
     }
 }
 
@@ -271,7 +278,7 @@ fn tab_row(
 ) -> AnyElement {
     let theme = ui::theme(cx);
     let id = info.id.clone();
-    let tint = info.color.or(project.color).map(|color| color.color(theme.dark));
+    let glyph_color = info.color.or(info.glyph.1).or(project.color).map(|color| color.color(theme.dark));
     let renaming = rename_field(view, |target| matches!(target, Rename::Tab(tab) if *tab == id));
     let title_color = if selected {
         theme.on_accent
@@ -301,7 +308,11 @@ fn tab_row(
                 .text_color(if selected { theme.on_accent } else { theme.faint })
                 .child(if (1..=9).contains(&number) { number.to_string() } else { String::new() }),
         )
-        .child(div().text_color(if selected { theme.on_accent } else { tint.unwrap_or(theme.muted) }).child(info.glyph))
+        .child(
+            div()
+                .text_color(if selected { theme.on_accent } else { glyph_color.unwrap_or(theme.muted) })
+                .child(info.glyph.0),
+        )
         .child(renaming.unwrap_or_else(|| {
             div()
                 .flex()
@@ -488,6 +499,7 @@ fn history(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -
         let age = relative_age(conversation.modified);
         let item = conversation.clone();
         rows.push(
+        let (glyph, color) = icons::agent(conversation.kind.command());
             div()
                 .id(("history", index))
                 .flex()

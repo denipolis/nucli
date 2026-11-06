@@ -137,12 +137,13 @@ pub fn everything(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Vec<
                 let Some(session) = store.session(id) else { continue };
                 let session = session.read(cx);
                 let (workspace_id, tab) = (workspace.id.clone(), id.clone());
+                let (glyph, color) = crate::sidebar::tab_glyph(session);
                 items.push(
                     Item::new(session.display_title(), move |view, window, cx| {
                         select_anywhere(view, workspace_id.clone(), Selected::Tab(tab.clone()), window, cx)
                     })
                     .subtitle(format!("{} · {}", project.display_name(), paths::display(session.working_dir())))
-                    .glyph(crate::sidebar::tab_glyph(session), None)
+                    .glyph(glyph, color.map(|color| color.color(theme.dark)))
                     .detail("tab")
                     .rank(if workspace.id == view.workspace { 12 } else { 8 }),
                 );
@@ -183,6 +184,7 @@ pub fn everything(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Vec<
     let target = view.current_project_path(cx).unwrap_or_default();
     for profile in settings::get(cx).agents.iter().filter(|profile| profile.is_launchable()) {
         let (target, launcher) = (target.clone(), Launcher::Agent(profile.clone()));
+        let (glyph, color) = icons::agent(&crate::agents::command_name(&profile.executable));
         items.push(
             Item::new(format!("New Tab: {}", profile.name), move |view, window, cx| {
                 crate::actions::launch(view, &target, launcher.clone(), window, cx)
@@ -210,6 +212,7 @@ pub fn everything(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Vec<
             let (target, title) = (target.clone(), conversation.title.clone());
             let subtitle =
                 format!("{} · {}", conversation.profile, crate::history::relative_age(conversation.modified));
+            let (glyph, color) = icons::agent(conversation.kind.command());
             let launcher = Launcher::Resume(conversation);
             items.push(
                 Item::new(title, move |view, window, cx| {

@@ -38,6 +38,25 @@ pub const THEME: &str = "\u{eb5c}";
 pub const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 pub fn file(name: &str) -> (&'static str, ItemColor) {
+pub fn agent(command: &str) -> (&'static str, ItemColor) {
+    match command {
+        "claude" => ("\u{f06c4}", ItemColor::Orange),
+        "codex" => ("\u{f02d9}", ItemColor::Mint),
+        "gemini" => ("\u{f0ae2}", ItemColor::Blue),
+        "opencode" => ("\u{eac4}", ItemColor::Gray),
+        "pi" => ("\u{f03ff}", ItemColor::Purple),
+        "amp" => ("\u{f140b}", ItemColor::Yellow),
+        "aider" => ("\u{f01a6}", ItemColor::Teal),
+        "cursor-agent" => ("\u{f01ff}", ItemColor::Indigo),
+        "goose" => ("\u{f01e5}", ItemColor::Brown),
+        "crush" => ("\u{f004}", ItemColor::Pink),
+        "qwen" => ("Q", ItemColor::Purple),
+        "copilot" => ("\u{f4b8}", ItemColor::Blue),
+        "droid" => ("\u{f0032}", ItemColor::Green),
+        _ => (AGENT, ItemColor::Gray),
+    }
+}
+
     let lower = name.to_lowercase();
     let by_name = match lower.as_str() {
         "dockerfile" | "containerfile" => Some(("\u{e650}", ItemColor::Blue)),

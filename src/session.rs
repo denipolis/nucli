@@ -179,14 +179,12 @@ impl Session {
         if let Some(name) = self.name.as_ref().filter(|name| !name.is_empty()) {
             return name.clone();
         }
-        let base = match self.kind {
+        if let Some(title) = self.title.as_deref().map(str::trim).filter(|title| !title.is_empty()) {
+            return title.to_string();
+        }
+        match self.kind {
             Kind::Agent => self.profile.clone().unwrap_or_else(|| "agent".into()),
             _ => self.shell.as_deref().map(agents::command_name).unwrap_or_else(|| "shell".into()),
-        };
-        match self.title.as_deref() {
-            Some(title) if self.kind != Kind::Agent => title.to_string(),
-            Some(title) if !title.is_empty() && title != base => format!("{base} · {title}"),
-            _ => base,
         }
     }
 

@@ -86,7 +86,7 @@ pub fn render(view: &WorkspaceView, switcher: &Switcher, cx: &mut Context<Worksp
         .child(div().px(px(10.0)).pb(px(4.0)).text_color(theme.faint).child("SWITCH  [release] open  [esc] cancel"));
     for (index, entry) in switcher.entries.iter().enumerate() {
         let active = index == switcher.highlighted;
-        let (glyph, title, subtitle, attention) = match entry {
+        let (glyph, color, title, subtitle, attention) = match entry {
             Selected::Tab(id) => {
                 let Some(session) = store.session(id) else { continue };
                 let session = session.read(cx);
@@ -94,12 +94,14 @@ pub fn render(view: &WorkspaceView, switcher: &Switcher, cx: &mut Context<Worksp
                     .and_then(|state| state.project_of(id))
                     .map(|project| project.display_name())
                     .unwrap_or_default();
-                (crate::sidebar::tab_glyph(session), session.display_title(), project, session.attention)
+                let (glyph, color) = crate::sidebar::tab_glyph(session);
+                (glyph, color, session.display_title(), project, session.attention)
             }
             Selected::Project(path) => {
                 let project = state.and_then(|state| state.project(path));
                 let file = project.and_then(|project| project.active_file.clone()).unwrap_or_default();
-                (icons::FILE, file, project.map(|project| project.display_name()).unwrap_or_default(), false)
+                let name = project.map(|project| project.display_name()).unwrap_or_default();
+                (icons::FILE, None, file, name, false)
             }
         };
         let row_index = index;
@@ -110,7 +112,12 @@ pub fn render(view: &WorkspaceView, switcher: &Switcher, cx: &mut Context<Worksp
                 .gap(px(8.0))
                 .px(px(10.0))
                 .when(active, |this| this.bg(theme.accent).text_color(theme.on_accent))
-                .child(div().w(px(16.0)).child(glyph))
+                .child(
+                    div()
+                        .w(px(16.0))
+                        .when_some(color.filter(|_| !active), |this, color| this.text_color(color.color(theme.dark)))
+                        .child(glyph),
+                )
                 .child(div().flex_1().truncate().child(SharedString::from(title)))
                 .child(div().text_color(if active { theme.on_accent } else { theme.faint }).child(subtitle))
                 .when(attention, |this| this.child(div().text_color(theme.green).child(icons::DOT)))

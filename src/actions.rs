@@ -99,6 +99,7 @@ pub fn picker(view: &mut WorkspaceView, project: &Path, window: &mut Window, cx:
         }
         let target = project.to_path_buf();
         let launcher = Launcher::Agent(profile.clone());
+        let (glyph, color) = icons::agent(&agents::command_name(&profile.executable));
         let mut item = palette::Item::new(profile.name.clone(), move |view, window, cx| {
             launch(view, &target, launcher.clone(), window, cx)
         })
@@ -150,6 +151,7 @@ pub fn picker(view: &mut WorkspaceView, project: &Path, window: &mut Window, cx:
                 if open.contains(&conversation.id) { " · open" } else { "" }
             );
             let launcher = Launcher::Resume(conversation.clone());
+            let (glyph, color) = icons::agent(conversation.kind.command());
             items.push(
                 palette::Item::new(conversation.title.clone(), move |view, window, cx| {
                     launch(view, &target, launcher.clone(), window, cx)

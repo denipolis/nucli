@@ -116,6 +116,7 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
         let target = project.path.clone();
         let summary = profile.summary();
         let title = format!("new {} session", profile.name);
+        let (glyph, color) = icons::agent(&crate::agents::command_name(&profile.executable));
         let run: Run = std::rc::Rc::new(move |view, window, cx| {
             crate::actions::launch(view, &target, Launcher::Agent(profile.clone()), window, cx);
         });
@@ -166,8 +167,8 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
             let status = info.status.clone().map(|(glyph, _)| glyph).unwrap_or_default();
             content = content.child(row(
                 SharedString::from(format!("open-{}", info.id)),
-                info.glyph,
-                theme.muted,
+                info.glyph.0,
+                info.glyph.1.map(|color| color.color(theme.dark)).unwrap_or(theme.muted),
                 info.title.clone(),
                 folder,
                 status,
@@ -190,6 +191,7 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
                 let subtitle = format!("{} · {}", conversation.profile, relative_age(conversation.modified));
                 let target = project.path.clone();
                 let title = conversation.title.clone();
+                let (glyph, color) = icons::agent(conversation.kind.command());
                 content = content.child(row(
                     format!("conversation-{index}").into(),
                     icons::HISTORY,

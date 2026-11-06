@@ -20,8 +20,8 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 
 - Square corners, 1px rules between panes, no shadows or blur.
 - Maple Mono NF everywhere, at two sizes: `ui_font_size` for chrome, `font_size` for terminals and the file view.
-- Icons are Nerd Font glyphs, colored by the theme. File types get their own glyph and color.
-- Text tabs in caps (`PROJECTS  AGENTS  HISTORY`). The active tab, the selected row, focused list items and mode labels are inverted: accent background, background-colored text.
+- Icons are Nerd Font glyphs, colored by the theme. File types and known agents get their own glyph and color.
+- Sidebar and panel tabs are glyphs with a tooltip. The active tab, the selected row, focused list items and mode labels are inverted: accent background, background-colored text.
 - Key hints in brackets: `[enter] open  [esc] close`.
 - Spinners are character animations (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`).
 - If the graphics system cannot start or no window can be opened, for example without a working driver, Nucli reports why (a message box on Windows, stderr elsewhere) and quits instead of running invisibly.
@@ -153,7 +153,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 
 - Text tabs at the top: `PROJECTS` (the tree), `AGENTS` (the board), `HISTORY`. `⌥⌘1`/`⌥⌘2`/`⌥⌘3` switch (and show the sidebar). The choice is remembered.
 - `⌘B` hides and shows the sidebar.
-- **Projects**: projects and their tabs. Tab rows: number, agent glyph, title, folder subtitle (`exited` when the process ended), status on the right.
+- **Projects**: projects and their tabs. Tab rows: number, the agent's glyph and color, title (the terminal's title, or the profile name until there is one), folder subtitle (`exited` when the process ended), status on the right.
 - **Agents**: this workspace's running agent tabs grouped by status: WAITING, DONE, WORKING, IDLE. Clicking selects the tab.
 - **History**: every conversation of every agent profile, newest first (max 150). Clicking resumes it in the project for its folder (opened as a project if needed).
 - **Filter** (`⌥⌘F`) at the bottom filters the visible list by name, path and title; a matching project shows all its tabs; `enter` selects the first match, `esc` clears.

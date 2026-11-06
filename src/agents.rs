@@ -40,6 +40,14 @@ impl AgentKind {
         }
     }
 
+    pub fn command(self) -> &'static str {
+        match self {
+            AgentKind::Claude => "claude",
+            AgentKind::Codex => "codex",
+            AgentKind::Pi => "pi",
+        }
+    }
+
     pub fn display_name(self) -> &'static str {
         match self {
             AgentKind::Claude => "Claude Code",
