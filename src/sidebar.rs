@@ -182,7 +182,25 @@ fn rename_field(view: &WorkspaceView, matches_target: impl Fn(&Rename) -> bool) 
     matches_target(target).then(|| div().flex_1().child(input.clone()).into_any_element())
 }
 
-fn project_row(view: &WorkspaceView, project: &Project, selected: bool, cx: &mut Context<WorkspaceView>) -> AnyElement {
+fn hidden_status(view: &WorkspaceView, project: &Project, cx: &App) -> Option<(SharedString, Hsla)> {
+    let store = view.store(cx);
+    let sessions: Vec<&Session> =
+        project.tabs.iter().filter_map(|id| store.session(id)).map(|session| session.read(cx)).collect();
+    let session = sessions
+        .iter()
+        .find(|session| session.activity == Activity::Waiting)
+        .or_else(|| sessions.iter().find(|session| session.activity == Activity::Working))
+        .or_else(|| sessions.iter().find(|session| session.attention))?;
+    status_glyph(session, &ui::theme(cx), store.tick_fast)
+}
+
+fn project_row(
+    view: &WorkspaceView,
+    project: &Project,
+    selected: bool,
+    status: Option<(SharedString, Hsla)>,
+    cx: &mut Context<WorkspaceView>,
+) -> AnyElement {
     let theme = ui::theme(cx);
     let tint = project.color.map(|color| color.color(theme.dark)).unwrap_or(theme.accent);
     let path = project.path.clone();
@@ -228,6 +246,9 @@ fn project_row(view: &WorkspaceView, project: &Project, selected: bool, cx: &mut
         )
         .child(div().text_color(if selected { theme.on_accent } else { tint }).child(icons::FOLDER))
         .child(renaming.unwrap_or_else(|| div().flex_1().min_w_0().truncate().child(name.clone()).into_any_element()))
+        .children(status.map(|(glyph, color)| {
+            div().flex_none().text_color(if selected { theme.on_accent } else { color }).child(glyph)
+        }))
         .children(stat.filter(|stat| stat.added + stat.removed > 0).map(|stat| {
             div()
                 .flex()
@@ -394,8 +415,10 @@ fn projects(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
             continue;
         }
         let selected = state.selected == Some(Selected::Project(project.path.clone()));
-        rows.push(project_row(view, project, selected, cx));
-        if project.collapsed && query.trim().is_empty() {
+        let collapsed = project.collapsed && query.trim().is_empty();
+        let status = if collapsed { hidden_status(view, project, cx) } else { None };
+        rows.push(project_row(view, project, selected, status, cx));
+        if collapsed {
             continue;
         }
         for id in tabs {
