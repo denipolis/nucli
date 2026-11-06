@@ -287,6 +287,46 @@ pub fn read_overrides() -> Result<Vec<(String, Option<String>)>, String> {
     Ok(map.into_iter().map(|(key, value)| (key, value.as_str().map(String::from))).collect())
 }
 
+pub fn shifted_alias(key: &str) -> Option<String> {
+    let (head, last) = key.rsplit_once('-')?;
+    let symbol = match last {
+        "1" => "!",
+        "2" => "@",
+        "3" => "#",
+        "4" => "$",
+        "5" => "%",
+        "6" => "^",
+        "7" => "&",
+        "8" => "*",
+        "9" => "(",
+        "0" => ")",
+        "`" => "~",
+        "[" => "{",
+        "]" => "}",
+        "=" => "+",
+        ";" => ":",
+        "'" => "\"",
+        "," => "<",
+        "." => ">",
+        "/" => "?",
+        "\\" => "|",
+        _ => return None,
+    };
+    let mut modifiers: Vec<&str> = head.split('-').collect();
+    let before = modifiers.len();
+    modifiers.retain(|modifier| *modifier != "shift");
+    if modifiers.len() == before {
+        return None;
+    }
+    modifiers.push(symbol);
+    Some(modifiers.join("-"))
+}
+
+fn bindings_for(key: &str, action: fn() -> Box<dyn Action>, context: Option<&str>) -> Vec<KeyBinding> {
+    let alias = shifted_alias(key);
+    std::iter::once(key).chain(alias.as_deref()).filter_map(|key| binding(key, action(), context)).collect()
+}
+
 pub fn binding(key: &str, action: Box<dyn Action>, context: Option<&str>) -> Option<KeyBinding> {
     let predicate = match context {
         Some(context) => Some(Rc::new(KeyBindingContextPredicate::parse(context).ok()?)),
@@ -304,7 +344,7 @@ pub fn apply(cx: &mut App, extra: Vec<KeyBinding>) {
         let key = default_key(command);
         if !key.is_empty() {
             keys.by_name.insert(command.name, key.to_string());
-            bindings.extend(binding(key, (command.action)(), command.context));
+            bindings.extend(bindings_for(key, command.action, command.context));
         }
     }
     match read_overrides() {
@@ -313,12 +353,12 @@ pub fn apply(cx: &mut App, extra: Vec<KeyBinding>) {
                 match name.as_deref().and_then(find) {
                     Some(command) => {
                         keys.by_name.insert(command.name, key.clone());
-                        bindings.extend(binding(&key, (command.action)(), command.context));
+                        bindings.extend(bindings_for(&key, command.action, command.context));
                     }
                     None => {
                         keys.by_name.retain(|_, bound| *bound != key);
                         for context in [None, Some("Terminal"), Some("FileView")] {
-                            bindings.extend(binding(&key, Box::new(NoAction), context));
+                            bindings.extend(bindings_for(&key, || Box::new(NoAction), context));
                         }
                     }
                 }
@@ -462,6 +502,15 @@ mod tests {
         names.sort();
         names.dedup();
         assert_eq!(names.len(), COMMANDS.len());
+    }
+
+    #[test]
+    fn aliases_shifted_symbols() {
+        assert_eq!(shifted_alias("ctrl-shift-2").as_deref(), Some("ctrl-@"));
+        assert_eq!(shifted_alias("cmd-shift-]").as_deref(), Some("cmd-}"));
+        assert_eq!(shifted_alias("ctrl-shift-`").as_deref(), Some("ctrl-~"));
+        assert_eq!(shifted_alias("ctrl-shift-t"), None);
+        assert_eq!(shifted_alias("cmd-1"), None);
     }
 
     #[test]
