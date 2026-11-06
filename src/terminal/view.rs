@@ -17,9 +17,11 @@ use gpui::{
 };
 
 use crate::commands;
-use crate::session::Session;
+use crate::session::{Session, SessionEvent};
 use crate::settings::{self, FONT};
-use crate::terminal::keys;
+use crate::terminal::find::Find;
+use crate::terminal::links::{self, Link, Target};
+use crate::terminal::{boxes, keys};
 use crate::theme::Theme;
 use crate::ui;
 
@@ -31,6 +33,12 @@ pub struct ViewState {
     pub scroll: f32,
     pub theme: Option<Rc<Theme>>,
     pub mouse_button: Option<u8>,
+    pub find: Option<Find>,
+    pub hover: Option<Link>,
+    pub cursor_hidden: bool,
+    pub focused: bool,
+    pub observing_focus: bool,
+    pub link_clicked: bool,
 }
 
 pub fn color_table(theme: &Theme) -> Vec<Rgb> {
@@ -170,13 +178,21 @@ impl Element for TerminalElement {
             super::GridSize { cols, rows, cell_width: f32::from(cell.width), cell_height: f32::from(cell.height) };
         let ligatures = settings::get(cx).ligatures;
         let global_theme = ui::theme(cx);
-        let (theme, marked, term) = self.session.update(cx, |session, _| {
+        let (theme, marked, term, hover, cursor_hidden, found, current) = self.session.update(cx, |session, _| {
             session.terminal.resize(grid);
             session.view.layout = Some((bounds.origin, cell));
+            let (found, current) = match &session.view.find {
+                Some(find) => (find.matches.clone(), find.current),
+                None => (Vec::new(), 0),
+            };
             (
                 session.view.theme.clone().unwrap_or(global_theme),
                 session.view.marked.clone(),
                 session.terminal.term.clone(),
+                session.view.hover.clone(),
+                session.view.cursor_hidden,
+                found,
+                current,
             )
         });
         let table = color_table(&theme);
@@ -193,6 +209,14 @@ impl Element for TerminalElement {
         let selection = content.selection;
         let cursor = content.cursor;
         let colors = content.colors;
+        let top_line = -offset;
+        let bottom_line = rows as i32 - 1 - offset;
+        let visible: Vec<(GridPoint, GridPoint, bool)> = found
+            .iter()
+            .enumerate()
+            .filter(|(_, (start, end))| end.line.0 >= top_line && start.line.0 <= bottom_line)
+            .map(|(index, (start, end))| (*start, *end, index == current))
+            .collect();
         for indexed in content.display_iter {
             let row = indexed.point.line.0 + offset;
             if row < 0 || row as usize >= rows {
@@ -216,7 +240,17 @@ impl Element for TerminalElement {
             let origin =
                 point(bounds.origin.x + cell.width * column as f32, bounds.origin.y + cell.height * row as f32);
             let cell_bounds = Bounds::new(origin, size(cell.width * width, cell.height));
-            if selected {
+            let matched = visible
+                .iter()
+                .find(|(start, end, _)| *start <= indexed.point && indexed.point <= *end)
+                .map(|(_, _, active)| *active);
+            let hovered = hover
+                .as_ref()
+                .is_some_and(|link| link.line == indexed.point.line.0 && (link.start..=link.end).contains(&column));
+            if let Some(active) = matched {
+                frame.rects.push((cell_bounds, if active { theme.orange } else { theme.yellow }));
+                fg = Rgb { r: 0, g: 0, b: 0 };
+            } else if selected {
                 frame.rects.push((cell_bounds, theme.selection));
                 fg = table[NamedColor::Foreground as usize];
             } else if bg != background {
@@ -224,6 +258,10 @@ impl Element for TerminalElement {
             }
             let character = cell_data.c;
             if character == ' ' || character == '\0' || cell_data.flags.contains(Flags::HIDDEN) {
+                continue;
+            }
+            if boxes::is_drawn(character) {
+                frame.rects.extend(boxes::rects(character, origin, cell, to_hsla(fg)));
                 continue;
             }
             let mut text = String::new();
@@ -237,8 +275,7 @@ impl Element for TerminalElement {
                 color: to_hsla(fg),
                 bold: cell_data.flags.contains(Flags::BOLD),
                 italic: cell_data.flags.contains(Flags::ITALIC),
-                underline: cell_data.flags.intersects(Flags::ALL_UNDERLINES)
-                    || cell_data.hyperlink().is_some() && false,
+                underline: cell_data.flags.intersects(Flags::ALL_UNDERLINES) || hovered,
                 strike: cell_data.flags.contains(Flags::STRIKEOUT),
             };
             let runs = &mut rows_runs[row as usize];
@@ -270,7 +307,7 @@ impl Element for TerminalElement {
             let block = Bounds::new(origin, cell);
             if !self.focused {
                 frame.cursor.push(outline(block, color, gpui::BorderStyle::Solid));
-            } else {
+            } else if !cursor_hidden {
                 match cursor.shape {
                     CursorShape::Beam => {
                         frame.cursor.push(fill(Bounds::new(origin, size(px(2.0), cell.height)), color))
@@ -441,6 +478,7 @@ impl Session {
             term.scroll_display(Scroll::Bottom);
             term.selection = None;
         }
+        self.view.cursor_hidden = false;
         self.terminal.write(bytes);
         cx.notify();
     }
@@ -483,8 +521,56 @@ impl Session {
         cx.notify();
     }
 
+    fn link_at(&self, position: Point<Pixels>) -> Option<Link> {
+        let (point, _) = grid_point(self, position)?;
+        let term = self.terminal.term.lock();
+        let grid = term.grid();
+        let row = &grid[point.line];
+        if let Some(link) = row[point.column].hyperlink() {
+            let same = |column: usize| row[Column(column)].hyperlink().is_some_and(|other| other.id() == link.id());
+            let mut start = point.column.0;
+            while start > 0 && same(start - 1) {
+                start -= 1;
+            }
+            let mut end = point.column.0;
+            while end + 1 < grid.columns() && same(end + 1) {
+                end += 1;
+            }
+            let uri = link.uri().to_string();
+            let target = match uri.strip_prefix("file://") {
+                Some(path) => links::classify(path, self.working_dir(), &self.project),
+                None => Some(Target::Url(uri)),
+            }?;
+            return Some(Link { line: point.line.0, start, end, target });
+        }
+        let text: Vec<char> = (0..grid.columns()).map(|column| row[Column(column)].c).collect();
+        let (start, end, token) = links::token_at(&text, point.column.0)?;
+        drop(term);
+        let target = links::classify(&token, self.working_dir(), &self.project)?;
+        Some(Link { line: point.line.0, start, end, target })
+    }
+
+    fn update_hover(&mut self, position: Point<Pixels>, modifiers: &gpui::Modifiers, cx: &mut Context<Self>) {
+        let hover = if modifiers.secondary() { self.link_at(position) } else { None };
+        if hover != self.view.hover {
+            self.view.hover = hover;
+            cx.notify();
+        }
+    }
+
     fn mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus);
+        if event.button == MouseButton::Left
+            && event.modifiers.secondary()
+            && let Some(link) = self.link_at(event.position)
+        {
+            self.view.link_clicked = true;
+            match link.target {
+                Target::Url(url) => cx.open_url(&url),
+                Target::File(path, line) => cx.emit(SessionEvent::OpenPath(path, line)),
+            }
+            return;
+        }
         if reports_mouse(self, &event.modifiers) {
             if let Some(code) = button_code(event.button)
                 && let Some(bytes) = mouse_report(self, code, event.position, true, &event.modifiers)
@@ -520,6 +606,7 @@ impl Session {
     }
 
     fn mouse_move(&mut self, event: &MouseMoveEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        self.update_hover(event.position, &event.modifiers, cx);
         if let Some(code) = self.view.mouse_button {
             if self.terminal.mode().intersects(TermMode::MOUSE_DRAG | TermMode::MOUSE_MOTION)
                 && let Some(bytes) = mouse_report(self, code + 32, event.position, true, &event.modifiers)
@@ -539,6 +626,9 @@ impl Session {
     }
 
     fn mouse_up(&mut self, event: &MouseUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        if std::mem::take(&mut self.view.link_clicked) {
+            return;
+        }
         if let Some(code) = self.view.mouse_button.take() {
             if let Some(bytes) = mouse_report(self, code, event.position, false, &event.modifiers) {
                 self.terminal.write(&bytes);
@@ -549,6 +639,15 @@ impl Session {
         let empty = self.terminal.term.lock().selection.as_ref().is_some_and(|selection| selection.is_empty());
         if empty {
             self.terminal.term.lock().selection = None;
+        }
+        cx.notify();
+    }
+
+    fn focus_changed(&mut self, focused: bool, cx: &mut Context<Self>) {
+        self.view.focused = focused;
+        self.view.cursor_hidden = false;
+        if self.terminal.mode().contains(TermMode::FOCUS_IN_OUT) {
+            self.terminal.write(if focused { b"\x1b[I" } else { b"\x1b[O" });
         }
         cx.notify();
     }
@@ -601,31 +700,50 @@ impl Render for Session {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = self.view.theme.clone().unwrap_or_else(|| ui::theme(cx));
         let focused = self.focus.is_focused(window);
+        if !self.view.observing_focus {
+            self.view.observing_focus = true;
+            cx.on_focus(&self.focus, window, |session, _, cx| session.focus_changed(true, cx)).detach();
+            cx.on_blur(&self.focus, window, |session, _, cx| session.focus_changed(false, cx)).detach();
+        }
+        let bar = self.view.find.as_ref().map(|find| self.find_bar(find, cx));
+        let pointer = if self.view.hover.is_some() { CursorStyle::PointingHand } else { CursorStyle::IBeam };
         div()
-            .id(ElementId::Name(SharedString::from(format!("terminal-{}", self.id))))
-            .key_context("Terminal")
-            .track_focus(&self.focus)
+            .relative()
             .size_full()
-            .bg(theme.background)
-            .px(px(10.0))
-            .py(px(6.0))
-            .cursor(CursorStyle::IBeam)
-            .on_key_down(cx.listener(Self::key_down))
-            .on_action(cx.listener(Self::copy))
-            .on_action(cx.listener(Self::paste))
-            .on_action(cx.listener(Self::select_all))
-            .on_action(cx.listener(Self::clear))
-            .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
-            .on_mouse_down(MouseButton::Middle, cx.listener(Self::mouse_down))
-            .on_mouse_down(MouseButton::Right, cx.listener(Self::mouse_down))
-            .on_mouse_move(cx.listener(Self::mouse_move))
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
-            .on_mouse_up(MouseButton::Middle, cx.listener(Self::mouse_up))
-            .on_mouse_up(MouseButton::Right, cx.listener(Self::mouse_up))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(Self::mouse_up))
-            .on_scroll_wheel(cx.listener(Self::scroll_wheel))
-            .on_drop(cx.listener(Self::drop_paths))
-            .child(TerminalElement { session: cx.entity(), focused })
+            .on_action(cx.listener(|session, _: &commands::Find, window, cx| session.open_find(window, cx)))
+            .on_action(cx.listener(|session, _: &commands::FindNext, _, cx| session.find_step(1, cx)))
+            .on_action(cx.listener(|session, _: &commands::FindPrevious, _, cx| session.find_step(-1, cx)))
+            .child(
+                div()
+                    .id(ElementId::Name(SharedString::from(format!("terminal-{}", self.id))))
+                    .key_context("Terminal")
+                    .track_focus(&self.focus)
+                    .size_full()
+                    .bg(theme.background)
+                    .px(px(10.0))
+                    .py(px(6.0))
+                    .cursor(pointer)
+                    .on_key_down(cx.listener(Self::key_down))
+                    .on_modifiers_changed(cx.listener(|session, event: &gpui::ModifiersChangedEvent, window, cx| {
+                        session.update_hover(window.mouse_position(), &event.modifiers, cx);
+                    }))
+                    .on_action(cx.listener(Self::copy))
+                    .on_action(cx.listener(Self::paste))
+                    .on_action(cx.listener(Self::select_all))
+                    .on_action(cx.listener(Self::clear))
+                    .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
+                    .on_mouse_down(MouseButton::Middle, cx.listener(Self::mouse_down))
+                    .on_mouse_down(MouseButton::Right, cx.listener(Self::mouse_down))
+                    .on_mouse_move(cx.listener(Self::mouse_move))
+                    .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
+                    .on_mouse_up(MouseButton::Middle, cx.listener(Self::mouse_up))
+                    .on_mouse_up(MouseButton::Right, cx.listener(Self::mouse_up))
+                    .on_mouse_up_out(MouseButton::Left, cx.listener(Self::mouse_up))
+                    .on_scroll_wheel(cx.listener(Self::scroll_wheel))
+                    .on_drop(cx.listener(Self::drop_paths))
+                    .child(TerminalElement { session: cx.entity(), focused }),
+            )
+            .children(bar)
     }
 }
 

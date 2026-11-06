@@ -245,6 +245,7 @@ impl Render for FilesPanel {
                         div()
                             .id(("file-row", index))
                             .h(line)
+                            .w_full()
                             .flex()
                             .items_center()
                             .gap(px(6.0))

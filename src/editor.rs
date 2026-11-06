@@ -1027,16 +1027,13 @@ impl Render for Editor {
             .on_action(cx.listener(|editor, _: &Redo, _, cx| editor.history(false, cx)))
             .child(list)
             .child(
-                canvas(
-                    {
-                        let focus = self.focus.clone();
-                        let entity = cx.entity();
-                        move |bounds, window, cx| {
-                            window.handle_input(&focus, ElementInputHandler::new(bounds, entity), cx);
-                        }
-                    },
-                    |_, _, _, _| {},
-                )
+                canvas(|_, _, _| {}, {
+                    let focus = self.focus.clone();
+                    let entity = cx.entity();
+                    move |bounds, _, window, cx| {
+                        window.handle_input(&focus, ElementInputHandler::new(bounds, entity), cx);
+                    }
+                })
                 .absolute()
                 .size_0(),
             )

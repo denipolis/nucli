@@ -1,4 +1,7 @@
+pub mod boxes;
+pub mod find;
 pub mod keys;
+pub mod links;
 pub mod view;
 
 use std::io::{Read, Write};
@@ -232,6 +235,16 @@ impl Terminal {
         if let Ok(mut current) = self.listener.colors.lock() {
             *current = colors;
         }
+    }
+
+    pub fn set_cursor(&self, cursor: CursorStyle) {
+        let config = Config {
+            scrolling_history: 10000,
+            kitty_keyboard: true,
+            default_cursor_style: cursor,
+            ..Config::default()
+        };
+        self.term.lock().set_options(config);
     }
 
     pub fn take_wakeup(&self) {

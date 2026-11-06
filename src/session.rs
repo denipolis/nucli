@@ -98,6 +98,21 @@ impl Session {
                     }
                 }
             });
+            cx.spawn(async move |this: gpui::WeakEntity<Session>, cx: &mut gpui::AsyncApp| {
+                loop {
+                    cx.background_executor().timer(std::time::Duration::from_millis(530)).await;
+                    let alive = this.update(cx, |session, cx| {
+                        if session.view.focused && settings::get(cx).cursor_blink && session.exit.is_none() {
+                            session.view.cursor_hidden = !session.view.cursor_hidden;
+                            cx.notify();
+                        }
+                    });
+                    if alive.is_err() {
+                        break;
+                    }
+                }
+            })
+            .detach();
             let mut session = Session {
                 id: spec.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
                 kind: spec.kind,
@@ -132,6 +147,7 @@ impl Session {
         match event {
             Event::Wakeup => {
                 self.terminal.take_wakeup();
+                self.refresh_search(cx);
                 cx.notify();
             }
             Event::Title(title) => {
@@ -178,11 +194,12 @@ impl Session {
     }
 
     pub fn apply_theme(&mut self, cx: &App) {
-        let theme = match self.profile_theme(cx) {
-            Some(id) => std::rc::Rc::new(crate::theme::resolve(&id, ui::system_dark(cx))),
-            None => ui::theme(cx),
-        };
+        let own = self.profile_theme(cx).map(|id| std::rc::Rc::new(crate::theme::resolve(&id, ui::system_dark(cx))));
+        let theme = own.clone().unwrap_or_else(|| ui::theme(cx));
         self.terminal.set_colors(terminal::view::color_table(&theme));
+        self.view.theme = own;
+        let settings = settings::get(cx);
+        self.terminal.set_cursor(terminal::cursor_style(settings.cursor, settings.cursor_blink));
     }
 
     pub fn profile_theme(&self, cx: &App) -> Option<String> {

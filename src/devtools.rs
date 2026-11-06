@@ -25,6 +25,14 @@ pub fn start(cx: &mut App) {
 
 fn run(line: &str, cx: &mut App) {
     let (command, rest) = line.split_once(' ').unwrap_or((line, ""));
+    if command == "open" {
+        let handle = crate::store::store(cx).read(cx).windows.values().next().copied();
+        if let Some(handle) = handle {
+            let path = std::path::PathBuf::from(rest.trim());
+            let _ = handle.update(cx, |view, window, cx| crate::actions::open_folder(view, path, window, cx));
+        }
+        return;
+    }
     let Some(window) = cx.active_window().or_else(|| cx.windows().first().copied()) else { return };
     let _ = window.update(cx, |_, window, cx| match command {
         "keys" => {

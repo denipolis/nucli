@@ -47,7 +47,20 @@ fn probe(job: &Job) -> Probe {
 }
 
 impl Store {
+    pub fn apply_settings(&mut self, cx: &mut Context<Self>) {
+        let sessions: Vec<_> = self.sessions.values().cloned().collect();
+        for session in sessions {
+            session.update(cx, |session, cx| {
+                session.apply_theme(cx);
+                cx.notify();
+            });
+        }
+        cx.notify();
+    }
+
     pub fn start_polling(&mut self, cx: &mut Context<Self>) {
+        cx.observe_global::<crate::settings::Settings>(|store, cx| store.apply_settings(cx)).detach();
+        cx.observe_global::<crate::ui::ActiveTheme>(|store, cx| store.apply_settings(cx)).detach();
         self.poll_task = Some(cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(Duration::from_millis(1000)).await;

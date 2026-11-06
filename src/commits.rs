@@ -236,11 +236,16 @@ impl Render for CommitsPanel {
             count,
             cx.processor(move |panel: &mut CommitsPanel, range: std::ops::Range<usize>, _, cx| {
                 let theme = ui::theme(cx);
+                let wide = store::store(cx)
+                    .read(cx)
+                    .workspace(&panel.workspace)
+                    .is_some_and(|state| state.window.panel_width > 460.0);
                 range
                     .map(|index| match rows[index].clone() {
                         Row::Note(text) => div()
                             .id(("commit-row", index))
                             .h(line)
+                            .w_full()
                             .pl(px(28.0))
                             .text_color(theme.faint)
                             .child(text)
@@ -261,6 +266,7 @@ impl Render for CommitsPanel {
                             div()
                                 .id(("commit-row", index))
                                 .h(line)
+                                .w_full()
                                 .flex()
                                 .items_center()
                                 .gap(px(6.0))
@@ -294,6 +300,7 @@ impl Render for CommitsPanel {
                             div()
                                 .id(("commit-row", index))
                                 .h(line)
+                                .w_full()
                                 .flex()
                                 .items_center()
                                 .gap(px(6.0))
@@ -310,13 +317,15 @@ impl Render for CommitsPanel {
                                         .truncate()
                                         .child(SharedString::from(commit.subject.clone())),
                                 )
-                                .child(
-                                    div()
-                                        .flex_none()
-                                        .text_color(theme.faint)
-                                        .child(commit.hash[..commit.hash.len().min(7)].to_string()),
-                                )
-                                .child(div().flex_none().text_color(theme.faint).child(commit.author.clone()))
+                                .when(wide, |this| {
+                                    this.child(
+                                        div()
+                                            .flex_none()
+                                            .text_color(theme.faint)
+                                            .child(commit.hash[..commit.hash.len().min(7)].to_string()),
+                                    )
+                                    .child(div().flex_none().text_color(theme.faint).child(commit.author.clone()))
+                                })
                                 .child(div().flex_none().text_color(theme.faint).child(relative_age(time)))
                                 .on_click(cx.listener(move |panel, _, _, cx| panel.toggle(commit_index, cx)))
                                 .on_mouse_down(
