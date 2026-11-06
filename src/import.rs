@@ -75,7 +75,7 @@ pub fn parse(root: &Value) -> Option<(Settings, StateFile)> {
         settings.restore_tabs = on;
     }
     if let Some(spacing) = dict.get("lineSpacing").and_then(Value::as_real) {
-        settings.line_height = spacing as f32;
+        settings.line_height = spacing as f32 * crate::settings::NATURAL_LINE_HEIGHT;
     }
     if let Some(on) = dict.get("cursorBlinks").and_then(Value::as_boolean) {
         settings.cursor_blink = on;
@@ -161,6 +161,7 @@ mod tests {
 <plist version="1.0"><dict>
 <key>theme</key><string>vitesse-dark</string>
 <key>fontSize</key><real>14</real>
+<key>lineSpacing</key><real>1</real>
 <key>notifications</key><false/>
 <key>profiles</key><array><dict>
 <key>name</key><string>work</string><key>executable</key><string>claude</string>
@@ -182,6 +183,7 @@ mod tests {
         let (settings, state) = parse(&value).unwrap();
         assert_eq!(settings.theme, "vitesse-dark");
         assert_eq!(settings.font_size, 14.0);
+        assert_eq!(settings.line_height, crate::settings::NATURAL_LINE_HEIGHT);
         assert!(!settings.notifications);
         assert_eq!(settings.agents.len(), 1);
         assert_eq!(settings.agents[0].config_dir, "~/.claude-work");

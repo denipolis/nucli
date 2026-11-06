@@ -45,8 +45,8 @@ impl Default for Settings {
             theme: "nucli".into(),
             appearance: Appearance::System,
             font_size: 13.0,
-            ui_font_size: 12.0,
-            line_height: 1.3,
+            ui_font_size: 13.0,
+            line_height: NATURAL_LINE_HEIGHT,
             cursor: CursorShape::Block,
             cursor_blink: true,
             ligatures: true,
@@ -66,6 +66,7 @@ pub struct SettingsError(pub Option<String>);
 impl Global for SettingsError {}
 
 pub const FONT: &str = "Maple Mono NF";
+pub const NATURAL_LINE_HEIGHT: f32 = 1.3;
 
 impl Settings {
     pub fn read() -> Result<Option<Settings>, String> {
