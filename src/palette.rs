@@ -302,7 +302,7 @@ impl Render for Palette {
                             .flex()
                             .items_end()
                             .text_color(theme.faint)
-                            .child(ui::caps(title))
+                            .child(ui::title(title))
                             .into_any_element(),
                         Row::Item { index, positions } => {
                             let item = &palette.items[*index];
@@ -374,7 +374,7 @@ impl Render for Palette {
                             .px(px(4.0))
                             .bg(theme.accent)
                             .text_color(theme.on_accent)
-                            .child(ui::caps(&self.title)),
+                            .child(ui::title(&self.title)),
                     )
                     .child(self.input.clone()),
             );

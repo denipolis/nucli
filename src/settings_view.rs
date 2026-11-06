@@ -151,9 +151,10 @@ fn build_rows(
                         input.set_text(text, cx);
                         input
                     });
-                    subscriptions.push(cx.subscribe_in(&input, window, |view, _, event, window, cx| match event {
+                    subscriptions.push(cx.subscribe_in(&input, window, |view, input, event, window, cx| match event {
                         InputEvent::Changed => store_fields(view, cx),
                         InputEvent::Submit | InputEvent::Cancel => view.focus_current(window, cx),
+                        InputEvent::NextField => focus_next_field(view, input, window, cx),
                         _ => {}
                     }));
                     input
@@ -161,6 +162,14 @@ fn build_rows(
                 .collect()
         })
         .collect()
+}
+
+fn focus_next_field(view: &WorkspaceView, input: &Entity<TextInput>, window: &mut Window, cx: &App) {
+    let Some(page) = &view.settings else { return };
+    let rows = if page.agents.iter().flatten().any(|field| field == input) { &page.agents } else { &page.shells };
+    let fields: Vec<&Entity<TextInput>> = rows.iter().flatten().collect();
+    let Some(position) = fields.iter().position(|field| *field == input) else { return };
+    fields[(position + 1) % fields.len()].read(cx).focus(window);
 }
 
 fn sync_fields(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {

@@ -545,6 +545,16 @@ mod tests {
     }
 
     #[test]
+    fn default_keys_do_not_conflict() {
+        for key in [|command: &Command| command.mac, |command: &Command| command.other] {
+            let mut seen = std::collections::HashSet::new();
+            for command in COMMANDS.iter().filter(|command| !key(command).is_empty()) {
+                assert!(seen.insert((key(command), command.context)), "{} {}", command.name, key(command));
+            }
+        }
+    }
+
+    #[test]
     fn names_are_unique() {
         let mut names: Vec<&str> = COMMANDS.iter().map(|command| command.name).collect();
         names.sort();

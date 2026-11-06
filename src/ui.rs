@@ -45,8 +45,12 @@ pub fn watch_appearance<T: 'static>(window: &mut Window, cx: &mut gpui::Context<
     cx.observe_window_appearance(window, |_, _, cx| refresh_theme(cx)).detach();
 }
 
-pub fn caps(text: &str) -> SharedString {
-    text.to_uppercase().into()
+pub fn title(text: &str) -> SharedString {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect::<String>().into(),
+        None => SharedString::default(),
+    }
 }
 
 struct Tooltip(SharedString);

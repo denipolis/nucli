@@ -46,6 +46,10 @@ On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ct
 | Keybindings in settings | `open_keybindings` | | |
 | Keybindings file | `open_keybindings_file` | | |
 | Select theme | `select_theme` | | |
+| Select language of the shown file | `select_language` | | |
+| Rename / delete workspace | `rename_workspace` / `delete_workspace` | | |
+| Detect agents / shells | `detect_agents` / `detect_shells` | | |
+| Toggle notifications | `toggle_notifications` | | |
 | Quit | `quit` | `cmd-q` | `ctrl-shift-q` |
 
 Terminal keys on macOS (fixed): `cmd-left` / `cmd-right` line start / end, `cmd-backspace` delete to line start, `alt-left` / `alt-right` word back / forward, `alt-backspace` delete word back, `alt` + key sends Meta (`ESC` prefix).

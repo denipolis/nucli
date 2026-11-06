@@ -48,9 +48,9 @@ impl Render for Prompt {
         let theme = ui::theme(cx);
         let size = settings::get(cx).ui_font_size();
         let (label, color) = match self.level {
-            PromptLevel::Info => ("CONFIRM", theme.accent),
-            PromptLevel::Warning => ("WARNING", theme.orange),
-            PromptLevel::Critical => ("DANGER", theme.red),
+            PromptLevel::Info => ("Confirm", theme.accent),
+            PromptLevel::Warning => ("Warning", theme.orange),
+            PromptLevel::Critical => ("Danger", theme.red),
         };
         let mut buttons = div().flex().flex_col().gap(px(4.0)).mt(px(12.0));
         for (index, action) in self.actions.iter().enumerate() {

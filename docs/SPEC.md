@@ -154,7 +154,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 - Tabs at the top: Projects (the tree), Agents (the board), History. `⌥⌘1`/`⌥⌘2`/`⌥⌘3` switch (and show the sidebar). The choice is remembered.
 - `⌘B` hides and shows the sidebar.
 - **Projects**: projects and their tabs. Tab rows: number, the agent's glyph and color, title (the terminal's title, or the profile name until there is one), folder subtitle (`exited` when the process ended), status on the right.
-- **Agents**: this workspace's running agent tabs grouped by status: WAITING, DONE, WORKING, IDLE. Clicking selects the tab.
+- **Agents**: this workspace's running agent tabs grouped by status: Waiting, Done, Working, Idle. Clicking selects the tab.
 - **History**: every conversation of every agent profile, newest first (max 150). Clicking resumes it in the project for its folder (opened as a project if needed).
 - **Filter** (`⌥⌘F`) at the bottom filters the visible list by name, path and title; a matching project shows all its tabs; `enter` selects the first match, `esc` clears.
 - **Workspace popup** at the bottom: all workspaces (closed ones marked), New, Rename, Delete.
@@ -264,7 +264,7 @@ The development build uses `nucli-dev` / `Nucli Dev` instead.
 
 ## Import from Nucli 1
 
-On macOS, when `settings.json` does not exist yet and the `uk.polishch.nucli` defaults do, the first launch imports agent profiles, shells, appearance and terminal options, workspaces and projects (path, name, color). Tabs, scrollback and keybindings are not imported.
+On macOS, when `settings.json` does not exist yet and the `uk.polishch.nucli` defaults do, the first launch of a release build imports agent profiles, shells, appearance and terminal options, workspaces and projects (path, name, color). Tabs, scrollback and keybindings are not imported.
 
 ## Privacy
 

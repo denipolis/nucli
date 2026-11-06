@@ -123,7 +123,7 @@ pub fn render(menu: &Menu, cx: &mut Context<WorkspaceView>) -> AnyElement {
                 row.into_any_element()
             }
             Item::Header(label) => {
-                div().px(px(10.0)).pt(px(4.0)).text_color(theme.faint).child(ui::caps(label)).into_any_element()
+                div().px(px(10.0)).pt(px(4.0)).text_color(theme.faint).child(ui::title(label)).into_any_element()
             }
             Item::Separator => div().my(px(4.0)).h(px(1.0)).bg(theme.border).into_any_element(),
         };

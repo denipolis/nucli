@@ -467,7 +467,7 @@ fn board(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> 
     let store = view.store(cx);
     let tick = store.tick_fast;
     let mut groups: Vec<(&str, BoardGroup)> =
-        vec![("WAITING", Vec::new()), ("DONE", Vec::new()), ("WORKING", Vec::new()), ("IDLE", Vec::new())];
+        vec![("Waiting", Vec::new()), ("Done", Vec::new()), ("Working", Vec::new()), ("Idle", Vec::new())];
     for project in state.all_projects() {
         for id in &project.tabs {
             let Some(session) = store.session(id) else { continue };

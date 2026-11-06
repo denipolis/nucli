@@ -107,6 +107,9 @@ fn first_launch(cx: &mut App) -> Settings {
 
 #[cfg(target_os = "macos")]
 fn imported() -> Option<Settings> {
+    if paths::DEV {
+        return None;
+    }
     let (mut settings, state) = import::read()?;
     if settings.agents.is_empty() {
         settings.agents = agents::detect_agents();

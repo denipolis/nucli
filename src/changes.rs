@@ -415,17 +415,17 @@ impl Render for ChangesPanel {
                     .mb(px(6.0))
                     .when(can_commit, |this| this.bg(theme.green).text_color(theme.on_accent))
                     .when(!can_commit, |this| this.bg(theme.hover).text_color(theme.faint))
-                    .child(format!("{} COMMIT", icons::CHECK))
+                    .child(format!("{} Commit", icons::CHECK))
                     .on_click(cx.listener(|panel, _, _, cx| panel.commit(cx))),
             );
         if status.changes.is_empty() {
             body = body.child(div().px(px(10.0)).py(px(6.0)).text_color(theme.faint).child("working tree clean"));
         }
         if !staged.is_empty() {
-            body = body.child(self.section("STAGED", true, staged, cx));
+            body = body.child(self.section("Staged", true, staged, cx));
         }
         if !unstaged.is_empty() {
-            body = body.child(self.section("CHANGES", false, unstaged, cx));
+            body = body.child(self.section("Changes", false, unstaged, cx));
         }
         body.into_any_element()
     }

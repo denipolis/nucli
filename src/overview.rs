@@ -24,7 +24,7 @@ fn section(title: &str, cx: &Context<WorkspaceView>) -> AnyElement {
         .gap(px(8.0))
         .items_center()
         .text_color(theme.faint)
-        .child(ui::caps(title))
+        .child(ui::title(title))
         .child(div().flex_1().h(px(1.0)).bg(theme.border))
         .into_any_element()
 }
