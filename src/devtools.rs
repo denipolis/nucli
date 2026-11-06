@@ -154,9 +154,24 @@ fn send_event(line: &str) {
             }
             return;
         }
+        let content: *mut Object = msg_send![window, contentView];
+        if *kind == "text" || *kind == "mark" {
+            #[repr(C)]
+            struct Range(usize, usize);
+            let Ok(text) = std::ffi::CString::new(rest.join(" ")) else { return };
+            let chars: *mut Object = msg_send![class!(NSString), stringWithUTF8String: text.as_ptr()];
+            let none = || Range(isize::MAX as usize, 0);
+            let responder: *mut Object = msg_send![window, firstResponder];
+            if *kind == "text" {
+                let _: () = msg_send![responder, insertText: chars replacementRange: none()];
+            } else {
+                let _: () =
+                    msg_send![responder, setMarkedText: chars selectedRange: Range(0, 0) replacementRange: none()];
+            }
+            return;
+        }
         let [x, y] = rest else { return };
         let (Ok(x), Ok(y)) = (x.parse::<f64>(), y.parse::<f64>()) else { return };
-        let content: *mut Object = msg_send![window, contentView];
         let frame: CGRect = msg_send![content, frame];
         let code: usize = match *kind {
             "down" => 1,
