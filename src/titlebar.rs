@@ -11,6 +11,8 @@ use crate::store::PROGRESS_DELAY;
 use crate::ui;
 use crate::window::WorkspaceView;
 
+const TRAFFIC_LIGHT_CENTER: f32 = 17.0;
+
 fn location(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
     let project = view.state(cx).and_then(|state| state.current_project());
@@ -156,6 +158,9 @@ pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceV
                 div()
                     .id("workspace-name")
                     .flex_none()
+                    .when(cfg!(target_os = "macos"), |this| {
+                        this.relative().top(px(TRAFFIC_LIGHT_CENTER) - (height - px(1.0)) / 2.0)
+                    })
                     .font_weight(gpui::FontWeight::BOLD)
                     .text_color(theme.text)
                     .child(name)
