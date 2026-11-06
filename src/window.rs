@@ -398,12 +398,12 @@ impl WorkspaceView {
                         .hover(|style| style.text_color(theme.accent))
                         .child(glyph)
                 };
+                let id = self.workspace.clone();
                 this.child(control("window-minimize", icons::REMOVE).on_click(|_, window, _| window.minimize_window()))
                     .child(control("window-zoom", icons::MAXIMIZE).on_click(|_, window, _| window.zoom_window()))
-                    .child(control("window-close", icons::CLOSE).on_click(cx.listener(|view, _, window, cx| {
-                        let id = view.workspace.clone();
+                    .child(control("window-close", icons::CLOSE).on_click(move |_, window, cx| {
                         crate::actions::close_workspace_window(&id, window, cx);
-                    })))
+                    }))
             })
     }
 

@@ -94,7 +94,7 @@ Tabs for a commit's version of a file are stored as `path@@hash`.
 - Platforms consume shift for symbols, so `ctrl-shift-2` arrives as `ctrl-@`. `commands::shifted_alias` also binds the US layout's shifted form of every such key.
 - `Window::handle_input` panics outside paint: call it from a `canvas` paint closure, not prepaint.
 - Inside `Store::update`, never call anything that reads the store through its global, such as `WorkspaceView` methods: GPUI panics. Put such logic on `Workspace`.
-- Never call `WindowHandle::update` from inside a window update, for example from a panel's click handler: use `cx.defer`.
+- Never call `WindowHandle::update` or `WindowHandle::read` from inside a window update, for example from a key action or a panel's click handler: they fail because the window is taken out while it updates, and `read` looks like the window is gone. Use `cx.defer`.
 - `Window::dispatch_event` returns a private type, so input cannot be simulated with it from outside `gpui`.
 - GPUI does not paint while the macOS screen is locked, and window captures come back black.
 - On X11 GPUI starts painting only after a window manager reports the window as visible, so a bare Xvfb stays black.

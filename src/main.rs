@@ -186,7 +186,7 @@ fn main() {
         if cfg!(target_os = "macos") {
             cx.set_menus(commands::menus());
         }
-        cx.on_action(|_: &Quit, cx| actions::request_quit(cx));
+        cx.on_action(|_: &Quit, cx| cx.defer(actions::request_quit));
         let store = store::init(cx);
         store.update(cx, |store, cx| {
             store.start_polling(cx);

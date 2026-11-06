@@ -746,8 +746,8 @@ pub fn close_workspace_window(id: &str, window: &mut Window, cx: &mut App) {
             .flat_map(|project| project.tabs.iter().chain(&project.terminals))
             .any(|tab| store.read(cx).session(tab).is_some_and(|session| session.read(cx).is_running()))
     });
-    let view = store.read(cx).windows.get(id).copied();
-    let dirty = view.is_some_and(|handle| handle.read(cx).is_ok_and(|view| crate::file_view::any_dirty(view, cx)));
+    let view = window.root::<WorkspaceView>().flatten();
+    let dirty = view.as_ref().is_some_and(|view| crate::file_view::any_dirty(view.read(cx), cx));
     let id = id.to_string();
     let finish = move |window: &mut Window, cx: &mut App| {
         store::store(cx).update(cx, |store, cx| store.close_workspace(&id, cx));
@@ -780,7 +780,7 @@ pub fn close_workspace_window(id: &str, window: &mut Window, cx: &mut App) {
                 if choice == 0
                     && let Some(view) = view
                 {
-                    let _ = view.update(cx, |view, _, cx| crate::file_view::save_all(view, cx));
+                    view.update(cx, |view, cx| crate::file_view::save_all(view, cx));
                 }
                 let _ = handle.update(cx, |_, window, cx| finish(window, cx));
             });
