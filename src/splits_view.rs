@@ -52,6 +52,8 @@ fn pane(view: &WorkspaceView, id: &str, focused: &str, cx: &mut Context<Workspac
                 |_, _, _, _| {},
             )
             .absolute()
+            .top_0()
+            .left_0()
             .size_full(),
         )
         .into_any_element()
