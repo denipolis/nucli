@@ -19,6 +19,7 @@ use crate::ui;
 use crate::window::WorkspaceView;
 
 const LANE: f32 = 12.0;
+const CARD_LINES: usize = 20;
 const KNOWN_KINDS: [&str; 7] = ["feat", "fix", "docs", "chore", "style", "refactor", "perf"];
 const LANE_COLORS: [ItemColor; 8] = [
     ItemColor::Blue,
@@ -381,6 +382,9 @@ impl Render for CommitTooltip {
         let message = details.as_ref().map(|details| details.message.clone()).unwrap_or(self.commit.subject.clone());
         let mut lines = message.lines().map(str::to_string);
         let subject = lines.next().unwrap_or_default();
+        let mut body: Vec<String> = lines.filter(|line| !line.trim().is_empty()).collect();
+        let hidden_lines = body.len().saturating_sub(CARD_LINES);
+        body.truncate(CARD_LINES);
         let date = details.as_ref().map(|details| format!("({})", details.date)).unwrap_or_default();
         let authors = co_authors(&message);
         let lane = self.lane;
@@ -431,10 +435,13 @@ impl Render for CommitTooltip {
             })
             .child(rule())
             .child(div().font_weight(gpui::FontWeight::BOLD).child(subject_text(subject, &theme)))
-            .children(lines.filter(|line| !line.trim().is_empty()).map(|line| {
+            .children(body.into_iter().map(|line| {
                 let ranges = link_ranges(&line, &theme);
                 div().text_color(theme.muted).child(highlighted(line, ranges))
             }))
+            .when(hidden_lines > 0, |this| {
+                this.child(div().text_color(theme.faint).child(format!("{hidden_lines} more lines")))
+            })
             .child(rule())
             .when_some(details.filter(|details| !details.stats.is_empty()), |this, details| {
                 let ranges = stat_ranges(&details.stats, &theme);
