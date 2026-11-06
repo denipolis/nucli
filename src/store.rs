@@ -386,15 +386,15 @@ impl Store {
     }
 
     pub fn select(&mut self, workspace: &str, selected: Option<Selected>, cx: &mut Context<Self>) {
-        if let Some(Selected::Tab(id)) = &selected {
-            if let Some(session) = self.sessions.get(id) {
-                session.update(cx, |session, cx| {
-                    if session.attention {
-                        session.attention = false;
-                        cx.notify();
-                    }
-                });
-            }
+        if let Some(Selected::Tab(id)) = &selected
+            && let Some(session) = self.sessions.get(id)
+        {
+            session.update(cx, |session, cx| {
+                if session.attention {
+                    session.attention = false;
+                    cx.notify();
+                }
+            });
         }
         let Some(target) = self.workspace_mut(workspace) else { return };
         if let Some(Selected::Tab(id)) = &selected {
@@ -467,6 +467,8 @@ impl Store {
             let _ = std::fs::create_dir_all(paths::scrollback_dir());
         }
         let restore = settings::get(cx).restore_tabs;
+        let taken: std::collections::HashSet<String> =
+            self.sessions.values().filter_map(|session| session.read(cx).conversation.clone()).collect();
         let saved = |ids: &[String], fallback: &[SavedTab]| -> Vec<SavedTab> {
             if ids.is_empty() && !fallback.is_empty() {
                 return fallback.to_vec();
@@ -484,7 +486,14 @@ impl Store {
                             let _ = std::fs::write(crate::persist::scrollback_file(&session.id), text);
                         }
                     }
-                    session.saved_tab()
+                    let mut tab = session.saved_tab();
+                    if with_output
+                        && session.agent == Some(crate::agents::AgentKind::Codex)
+                        && tab.conversation.is_none()
+                    {
+                        tab.conversation = codex_conversation(session, &taken, cx);
+                    }
+                    tab
                 })
                 .collect()
         };
@@ -665,6 +674,12 @@ pub fn spec(
     cwd: PathBuf,
 ) -> Spec {
     Spec { id: None, kind, profile, shell, conversation, resume, cwd, restored: None }
+}
+
+fn codex_conversation(session: &Session, taken: &std::collections::HashSet<String>, cx: &App) -> Option<String> {
+    let name = session.profile.as_ref()?;
+    let profile = settings::get(cx).agents.iter().find(|profile| &profile.name == name)?;
+    crate::history::newest_codex_conversation(&profile.data_dir()?, &session.project, session.started, taken)
 }
 
 fn resume_target(profile: &AgentProfile, cwd: &Path, conversation: Option<String>) -> (Option<String>, bool) {

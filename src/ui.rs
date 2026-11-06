@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use gpui::{App, Global, Hsla, SharedString, Window};
+use gpui::{App, Global, SharedString, Window};
 
 use crate::settings::{self, Appearance, Settings};
 use crate::theme::{self, Theme};
@@ -42,22 +42,6 @@ pub fn watch_appearance<T: 'static>(window: &mut Window, cx: &mut gpui::Context<
     cx.observe_window_appearance(window, |_, _, cx| refresh_theme(cx)).detach();
 }
 
-pub fn label(text: impl Into<SharedString>) -> SharedString {
-    text.into()
-}
-
 pub fn caps(text: &str) -> SharedString {
     text.to_uppercase().into()
-}
-
-pub fn mix(a: Hsla, b: Hsla, amount: f32) -> Hsla {
-    let a = a.to_rgb();
-    let b = b.to_rgb();
-    gpui::Rgba {
-        r: a.r + (b.r - a.r) * amount,
-        g: a.g + (b.g - a.g) * amount,
-        b: a.b + (b.b - a.b) * amount,
-        a: a.a + (b.a - a.a) * amount,
-    }
-    .into()
 }

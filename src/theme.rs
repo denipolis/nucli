@@ -2,7 +2,6 @@ use gpui::{Hsla, Rgba, rgb};
 
 pub struct Theme {
     pub id: &'static str,
-    pub name: &'static str,
     pub dark: bool,
     pub background: Hsla,
     pub surface: Hsla,
@@ -238,7 +237,6 @@ fn build(palette: &Palette) -> Theme {
     let tint = if palette.dark { 0.22 } else { 0.16 };
     Theme {
         id: palette.id,
-        name: palette.name,
         dark: palette.dark,
         background: color(bg),
         surface: mix(bg, fg, 0.025),

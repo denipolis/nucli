@@ -73,7 +73,6 @@ pub enum InputEvent {
     Cancel,
     Up,
     Down,
-    Blur,
 }
 
 pub struct TextInput {

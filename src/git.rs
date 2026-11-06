@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
 const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
@@ -476,10 +476,6 @@ pub fn ignored(dir: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-pub fn git_dir(dir: &Path) -> Option<PathBuf> {
-    run(dir, &["rev-parse", "--absolute-git-dir"]).map(|output| PathBuf::from(output.trim_end_matches(['\r', '\n'])))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -641,7 +637,7 @@ mod tests {
         assert_eq!(unchanged, vec![line(LineKind::Context, "top", Some(1), Some(1))]);
         assert_eq!(files(&sub), Some(vec!["[n].txt".to_string(), "a.txt".to_string()]));
         assert_eq!(branches(&root, 5), vec!["main"]);
-        assert!(is_repo(&sub) && git_dir(&sub).is_some_and(|dir| dir.ends_with(".git")));
+        assert!(is_repo(&sub));
         fs::remove_dir_all(&root).unwrap();
     }
 }

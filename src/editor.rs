@@ -6,8 +6,8 @@ use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, App, AppContext, Bounds, ClipboardItem, Context, ElementInputHandler, EntityInputHandler, FocusHandle,
     Hsla, InteractiveElement, IntoElement, KeyBinding, ListHorizontalSizingBehavior, MouseButton, ParentElement,
-    Pixels, Point, Render, ScrollStrategy, SharedString, StatefulInteractiveElement, Styled, StyledText, TextRun,
-    UTF16Selection, UniformListScrollHandle, Window, actions, canvas, div, point, px, size, uniform_list,
+    Pixels, Point, Render, ScrollStrategy, SharedString, Styled, StyledText, TextRun, UTF16Selection,
+    UniformListScrollHandle, Window, actions, canvas, div, point, px, size, uniform_list,
 };
 
 use crate::commands::{self, NextChange, PreviousChange, Save};
@@ -1143,7 +1143,6 @@ impl Editor {
                     window.focus(&editor.focus);
                     cx.notify();
                 }
-                InputEvent::Blur => {}
             }
         })
         .detach();

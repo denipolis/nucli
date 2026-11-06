@@ -316,7 +316,7 @@ pub fn branches(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<
 
 fn run_git(window: &mut Window, cx: &mut App, result: Result<(), String>) {
     if let Err(error) = result {
-        let _ = window.prompt(PromptLevel::Warning, "git failed", Some(&error), &["OK"], cx);
+        drop(window.prompt(PromptLevel::Warning, "git failed", Some(&error), &["OK"], cx));
     }
     store::store(cx).update(cx, |_, cx| cx.notify());
 }

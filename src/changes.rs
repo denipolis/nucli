@@ -119,8 +119,7 @@ impl ChangesPanel {
                         cx.defer(move |cx| {
                             if let Some(handle) = handle {
                                 let _ = handle.update(cx, |_, window, cx| {
-                                    let _ =
-                                        window.prompt(PromptLevel::Warning, "git failed", Some(&error), &["OK"], cx);
+                                    drop(window.prompt(PromptLevel::Warning, "git failed", Some(&error), &["OK"], cx));
                                 });
                             }
                         });

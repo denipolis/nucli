@@ -416,7 +416,7 @@ pub fn begin_rename(view: &mut WorkspaceView, target: Rename, window: &mut Windo
     });
     cx.subscribe_in(&input, window, |view, _, event, window, cx| match event {
         InputEvent::Submit => finish_rename(view, true, window, cx),
-        InputEvent::Cancel | InputEvent::Blur => finish_rename(view, matches!(event, InputEvent::Blur), window, cx),
+        InputEvent::Cancel => finish_rename(view, false, window, cx),
         _ => {}
     })
     .detach();
@@ -1106,6 +1106,6 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|_, _: &About, window, cx| {
             let detail =
                 format!("Version {}\nMIT License. Maple Mono NF font under SIL OFL 1.1.", env!("CARGO_PKG_VERSION"));
-            let _ = window.prompt(PromptLevel::Info, crate::paths::app_name(), Some(&detail), &["OK"], cx);
+            drop(window.prompt(PromptLevel::Info, crate::paths::app_name(), Some(&detail), &["OK"], cx));
         }))
 }

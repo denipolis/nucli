@@ -231,10 +231,6 @@ impl Session {
         }
     }
 
-    pub fn grid_size(&self) -> GridSize {
-        self.terminal.size
-    }
-
     pub fn cell_at(&self, position: Point<Pixels>) -> Option<(usize, usize)> {
         let (origin, cell) = self.view.layout?;
         let x = f32::from(position.x - origin.x) / f32::from(cell.width);

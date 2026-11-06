@@ -420,12 +420,14 @@ fn projects(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
     rows
 }
 
+type BoardGroup = Vec<(String, gpui::Entity<Session>, PathBuf)>;
+
 fn board(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> Vec<AnyElement> {
     let Some(state) = view.state(cx).cloned() else { return Vec::new() };
     let theme = ui::theme(cx);
     let store = view.store(cx);
     let tick = store.tick_fast;
-    let mut groups: Vec<(&str, Vec<(String, gpui::Entity<Session>, PathBuf)>)> =
+    let mut groups: Vec<(&str, BoardGroup)> =
         vec![("WAITING", Vec::new()), ("DONE", Vec::new()), ("WORKING", Vec::new()), ("IDLE", Vec::new())];
     for project in state.all_projects() {
         for id in &project.tabs {

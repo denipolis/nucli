@@ -54,6 +54,7 @@ pub fn post(title: &str, text: &str, _id: &str) {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(unexpected_cfgs)]
 pub fn badge(count: usize) {
     use objc::runtime::Object;
     use objc::{class, msg_send, sel, sel_impl};

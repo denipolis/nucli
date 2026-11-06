@@ -16,7 +16,6 @@ pub const REMOVE: &str = "\u{eb3b}";
 pub const CHEVRON_DOWN: &str = "\u{eab4}";
 pub const CHEVRON_RIGHT: &str = "\u{eab6}";
 pub const CHEVRON_UP: &str = "\u{eab7}";
-pub const SEARCH: &str = "\u{ea6d}";
 pub const HOME: &str = "\u{eb06}";
 pub const SIDEBAR: &str = "\u{ebf3}";
 pub const PANEL: &str = "\u{ebf2}";
@@ -27,13 +26,9 @@ pub const ARROW_UP: &str = "\u{eaa1}";
 pub const ARROW_DOWN: &str = "\u{ea9a}";
 pub const LINK: &str = "\u{eb14}";
 pub const DISCARD: &str = "\u{eae2}";
-pub const GO_TO_FILE: &str = "\u{ea94}";
 pub const MAXIMIZE: &str = "\u{eb4c}";
 pub const WINDOW: &str = "\u{eb7f}";
-pub const ZOOM_IN: &str = "\u{eb81}";
-pub const ZOOM_OUT: &str = "\u{eb82}";
 pub const REVEAL: &str = "\u{eaf7}";
-pub const GEAR: &str = "\u{eaf8}";
 pub const BELL: &str = "\u{eaa2}";
 pub const COMMAND: &str = "\u{eb63}";
 pub const TAG: &str = "\u{ea66}";
@@ -115,13 +110,5 @@ pub fn file(name: &str) -> (&'static str, ItemColor) {
         "zip" | "gz" | "tgz" | "xz" | "bz2" | "7z" | "rar" | "tar" | "dmg" => ("\u{e6aa}", ItemColor::Brown),
         "txt" | "log" => ("\u{e64e}", ItemColor::Gray),
         _ => ("\u{e64e}", ItemColor::Gray),
-    }
-}
-
-pub fn agent(command: &str) -> &'static str {
-    match command {
-        "claude" | "codex" | "gemini" | "opencode" | "pi" | "amp" | "aider" | "cursor-agent" | "goose" | "crush"
-        | "qwen" | "copilot" | "droid" => AGENT,
-        _ => TERMINAL,
     }
 }

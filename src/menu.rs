@@ -11,17 +11,12 @@ use crate::window::WorkspaceView;
 
 pub type Run = Rc<dyn Fn(&mut WorkspaceView, &mut Window, &mut Context<WorkspaceView>)>;
 
+pub type ColorRun = Rc<dyn Fn(Option<ItemColor>, &mut WorkspaceView, &mut Window, &mut Context<WorkspaceView>)>;
+
 #[derive(Clone)]
 pub enum Item {
-    Action {
-        label: SharedString,
-        key: String,
-        run: Run,
-    },
-    Colors {
-        current: Option<ItemColor>,
-        run: Rc<dyn Fn(Option<ItemColor>, &mut WorkspaceView, &mut Window, &mut Context<WorkspaceView>)>,
-    },
+    Action { label: SharedString, key: String, run: Run },
+    Colors { current: Option<ItemColor>, run: ColorRun },
     Header(SharedString),
     Separator,
 }

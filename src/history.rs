@@ -150,7 +150,7 @@ fn conversation(source: &Source, path: &Path, modified: SystemTime) -> Option<Co
 }
 
 fn finish(mut found: Vec<Conversation>, limit: usize) -> Vec<Conversation> {
-    found.sort_by(|a, b| b.modified.cmp(&a.modified));
+    found.sort_by_key(|conversation| std::cmp::Reverse(conversation.modified));
     found.truncate(limit);
     save_cache();
     found
@@ -163,7 +163,7 @@ fn codex_files(dir: &Path) -> Vec<(PathBuf, SystemTime)> {
 fn newest(dir: &Path, depth: usize, limit: usize) -> Vec<(PathBuf, SystemTime)> {
     let mut files = Vec::new();
     jsonl_files(dir, depth, &mut files);
-    files.sort_by(|a, b| b.1.cmp(&a.1));
+    files.sort_by_key(|file| std::cmp::Reverse(file.1));
     files.truncate(limit);
     files
 }

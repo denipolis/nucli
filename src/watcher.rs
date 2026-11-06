@@ -74,7 +74,7 @@ impl Store {
             while let Some(first) = receiver.next().await {
                 let mut changed = HashSet::from([first]);
                 cx.background_executor().timer(Duration::from_millis(250)).await;
-                while let Ok(Some(path)) = receiver.try_next() {
+                while let Ok(path) = receiver.try_recv() {
                     changed.insert(path);
                 }
                 let result = this.update(cx, |store, cx| {

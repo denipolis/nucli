@@ -483,12 +483,13 @@ impl Render for WorkspaceView {
             .on_mouse_up(MouseButton::Left, cx.listener(|view, _, _, cx| crate::resize::mouse_up(view, cx)))
             .on_modifiers_changed(cx.listener(crate::switcher::modifiers_changed))
             .capture_key_down(cx.listener(|view, event: &gpui::KeyDownEvent, window, cx| {
-                if event.keystroke.key == "escape" && event.keystroke.modifiers == gpui::Modifiers::default() {
-                    if view.switcher.take().is_some() || view.menu.take().is_some() {
-                        cx.stop_propagation();
-                        view.focus_current(window, cx);
-                        cx.notify();
-                    }
+                if event.keystroke.key == "escape"
+                    && event.keystroke.modifiers == gpui::Modifiers::default()
+                    && (view.switcher.take().is_some() || view.menu.take().is_some())
+                {
+                    cx.stop_propagation();
+                    view.focus_current(window, cx);
+                    cx.notify();
                 }
             }))
             .child(self.titlebar(window, cx))

@@ -160,14 +160,14 @@ fn remove_tab(
     let (path, name) = (project.to_path_buf(), file.to_string());
     view.files.open.remove(&key(project, file));
     store::store(cx).update(cx, |store, cx| {
-        if let Some(target) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path)) {
-            if let Some(index) = target.open_files.iter().position(|open| *open == name) {
-                target.open_files.remove(index);
-                if target.active_file.as_deref() == Some(name.as_str()) {
-                    target.active_file =
-                        target.open_files.get(index).or_else(|| target.open_files.get(index.wrapping_sub(1))).cloned();
-                    target.file_shown = target.file_shown && target.active_file.is_some();
-                }
+        if let Some(target) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path))
+            && let Some(index) = target.open_files.iter().position(|open| *open == name)
+        {
+            target.open_files.remove(index);
+            if target.active_file.as_deref() == Some(name.as_str()) {
+                target.active_file =
+                    target.open_files.get(index).or_else(|| target.open_files.get(index.wrapping_sub(1))).cloned();
+                target.file_shown = target.file_shown && target.active_file.is_some();
             }
         }
         store.changed(cx);
