@@ -172,9 +172,9 @@ fn header(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoEle
         .overflow_hidden()
         .border_b_1()
         .border_color(theme.border)
-        .child(tab("sidebar-projects", icons::FOLDER, "PROJECTS", SidebarTab::Projects))
-        .child(tab("sidebar-agents", icons::AGENT, "AGENTS", SidebarTab::Agents))
-        .child(tab("sidebar-history", icons::HISTORY, "HISTORY", SidebarTab::History))
+        .child(tab("sidebar-projects", icons::FOLDER, "Projects", SidebarTab::Projects))
+        .child(tab("sidebar-agents", icons::AGENT, "Agents", SidebarTab::Agents))
+        .child(tab("sidebar-history", icons::HISTORY, "History", SidebarTab::History))
 }
 
 fn rename_field(view: &WorkspaceView, matches_target: impl Fn(&Rename) -> bool) -> Option<AnyElement> {

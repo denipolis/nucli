@@ -76,9 +76,9 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
                 .overflow_hidden()
                 .border_b_1()
                 .border_color(theme.border)
-                .child(header_tab("panel-files", icons::FILES, "FILES", PanelTab::Files))
-                .child(header_tab("panel-changes", icons::CHANGES, "CHANGES", PanelTab::Changes))
-                .child(header_tab("panel-commits", icons::COMMIT, "HISTORY", PanelTab::Commits))
+                .child(header_tab("panel-files", icons::FILES, "Files", PanelTab::Files))
+                .child(header_tab("panel-changes", icons::CHANGES, "Changes", PanelTab::Changes))
+                .child(header_tab("panel-commits", icons::COMMIT, "History", PanelTab::Commits))
                 .on_mouse_down(
                     MouseButton::Right,
                     cx.listener(|view, event: &gpui::MouseDownEvent, _, cx| {
