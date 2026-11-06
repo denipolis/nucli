@@ -168,8 +168,12 @@ pub fn everything(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Vec<
     }
     for workspace in store.workspaces.iter() {
         let id = workspace.id.clone();
-        let subtitle =
-            format!("{} projects{}", workspace.projects.len(), if workspace.closed { ", closed" } else { "" });
+        let subtitle = format!(
+            "{} {}{}",
+            workspace.projects.len(),
+            if workspace.projects.len() == 1 { "project" } else { "projects" },
+            if workspace.closed { ", closed" } else { "" }
+        );
         items.push(
             Item::new(workspace.name.clone(), move |_, _, cx| {
                 let id = id.clone();
