@@ -33,6 +33,13 @@ fn run(line: &str, cx: &mut App) {
         }
         return;
     }
+    #[cfg(target_os = "macos")]
+    if command == "menu" {
+        let path = rest.trim().to_string();
+        inspect_app(&path, false);
+        cx.spawn(async move |_| inspect_app(&path, true)).detach();
+        return;
+    }
     let Some(window) = cx.active_window().or_else(|| cx.windows().first().copied()) else { return };
     let _ = window.update(cx, |_, window, cx| match command {
         "keys" => {
@@ -92,6 +99,52 @@ fn run(line: &str, cx: &mut App) {
         }
         _ => {}
     });
+}
+
+#[cfg(target_os = "macos")]
+#[allow(unexpected_cfgs)]
+fn inspect_app(path: &str, perform: bool) {
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+    unsafe fn text(value: *mut Object) -> String {
+        if value.is_null() {
+            return String::new();
+        }
+        let bytes: *const std::ffi::c_char = unsafe { msg_send![value, UTF8String] };
+        unsafe { std::ffi::CStr::from_ptr(bytes) }.to_string_lossy().into_owned()
+    }
+    unsafe {
+        let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+        let main: *mut Object = msg_send![app, mainMenu];
+        let tops: isize = msg_send![main, numberOfItems];
+        for top in 0..tops {
+            let item: *mut Object = msg_send![main, itemAtIndex: top];
+            let menu: *mut Object = msg_send![item, submenu];
+            let name = text(msg_send![item, title]);
+            if menu.is_null() {
+                continue;
+            }
+            let rows: isize = msg_send![menu, numberOfItems];
+            for row in 0..rows {
+                let item: *mut Object = msg_send![menu, itemAtIndex: row];
+                let title = text(msg_send![item, title]);
+                let full = format!("{name}/{title}");
+                if perform {
+                    if full == path {
+                        let _: () = msg_send![menu, performActionForItemAtIndex: row];
+                    }
+                } else if !title.is_empty() {
+                    let key = text(msg_send![item, keyEquivalent]);
+                    let mask: usize = msg_send![item, keyEquivalentModifierMask];
+                    eprintln!("MENU {full} key={key:?} mask={mask:#x}");
+                }
+            }
+        }
+        if !perform {
+            let tile: *mut Object = msg_send![app, dockTile];
+            eprintln!("BADGE {:?}", text(msg_send![tile, badgeLabel]));
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
