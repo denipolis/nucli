@@ -10,9 +10,8 @@ macOS 12+, Linux (X11 and Wayland) and Windows 10+. Everything below applies to 
 
 One window per open workspace. From top to bottom:
 
-1. **Title bar**: the workspace name as an inverted block, then the current location (`project · path · branch`, or `no project`). Clicking the location opens the command palette. On the right: toggles for the sidebar, the panel and the terminal panel. On macOS the traffic lights sit at the left edge of this bar.
-2. **Body**: sidebar, panel, viewport. The panel sits between the sidebar and the viewport (left, default) or right of the viewport. Sidebar and panel widths are draggable and remembered.
-3. **Status bar**: one row for the whole window (see Status bar).
+1. **Title bar**: the workspace name as an inverted block (click: workspace menu). On macOS the traffic lights sit at the left edge of this bar; on Linux and Windows window controls can sit at the right.
+2. **Body**: sidebar, panel, viewport. The panel sits between the sidebar and the viewport (left, default) or right of the viewport. Sidebar and panel widths are draggable and remembered. The viewport holds the selected tab or file, the status chips and the terminal panel.
 
 Every pane except the viewport can be hidden. With all panes hidden the viewport fills the window.
 
@@ -40,7 +39,7 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 ## Projects
 
 - A project is a folder. Open one with `⌘O`, by dropping a folder on the window, from a History entry, by opening a tab in a new folder (`⌥⇧⌘T`), by dropping it on the Dock icon on macOS, or from the command line with `nucli <folder>`.
-- Projects list in the sidebar in a user-defined order (drag to reorder). Each row shows the folder glyph, the name and the uncommitted diff against `HEAD` as green `+N` and red `-M` (hidden when clean or not a git repository). The numbers update live.
+- Projects list in the sidebar in a user-defined order (drag to reorder). Each row shows the project glyph (folder glyphs belong to the Files panel), the name and the uncommitted diff against `HEAD` as green `+N` and red `-M` (hidden when clean or not a git repository). The numbers update live.
 - Rename (double-click or context menu; empty restores the folder name), Color (12 theme colors or none; tints the folder glyph and the rows of its tabs), Move to Workspace (another workspace or a new one), Reveal in File Manager, Close Project (`⇧⌘W`, ends its tabs after confirming running agents).
 - Collapsing a project hides its tabs; the state is remembered.
 - Clicking a project shows its overview in the viewport.
@@ -151,7 +150,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 
 ## Sidebar
 
-- Text tabs at the top: `PROJECTS` (the tree), `AGENTS` (the board), `HISTORY`. `⌥⌘1`/`⌥⌘2`/`⌥⌘3` switch (and show the sidebar). The choice is remembered.
+- Glyph tabs at the top: Projects (the tree), Agents (the board), History. `⌥⌘1`/`⌥⌘2`/`⌥⌘3` switch (and show the sidebar). The choice is remembered.
 - `⌘B` hides and shows the sidebar.
 - **Projects**: projects and their tabs. Tab rows: number, the agent's glyph and color, title (the terminal's title, or the profile name until there is one), folder subtitle (`exited` when the process ended), status on the right.
 - **Agents**: this workspace's running agent tabs grouped by status: WAITING, DONE, WORKING, IDLE. Clicking selects the tab.
@@ -164,7 +163,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 
 ## Panel
 
-Text tabs `FILES  CHANGES  HISTORY` (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing a hidden panel). `⌥⌘B` hides and shows it in every window. Drag its header across the window middle, use its context menu or "Move Panel to Other Side" to switch sides; the side is shared by all windows. Everything follows the current project; with no project it says so.
+Glyph tabs for Files, Changes and History (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing a hidden panel). `⌥⌘B` hides and shows it in every window. Drag its header across the window middle, use its context menu or "Move Panel to Other Side" to switch sides; the side is shared by all windows. Everything follows the current project; with no project it says so.
 
 ### Files
 
@@ -209,12 +208,16 @@ Text tabs `FILES  CHANGES  HISTORY` (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing
 - `enter` runs, `⌘enter` runs the alternate action (files: open in the default app), arrows and page keys move, `esc` or clicking outside closes.
 - **Select Theme** lists every theme and previews the highlighted one live; `enter` keeps it, `esc` restores.
 
-## Status bar
+## Status chips
 
-One row at the bottom of the window, for the focused tab or file:
+One row under the selected tab, not under the whole window, with framed chips:
 
-- Left: mode block (`AGENT`, `SHELL`, `FILE`, `PROJECT`), the shell's current folder (click: Reveal / Copy Path), git branch (click: switch to one of the 30 newest local branches or create a new one), foreground program.
-- Right: the project's `files +added -removed` (click: Changes), line and column in the file view, number of tabs that need attention.
+- The shell's current folder (click: Reveal / Copy Path).
+- Git branch (click: switch to one of the 30 newest local branches or create a new one).
+- The project's `±files +added -removed` (click: Changes), when there are changes.
+- The foreground program, unless it is the tab's shell.
+
+The row is hidden for projects, files and settings. An invalid settings or keybindings file shows its error in red on this row, also in those views. Line, column and language of a file are in its path bar.
 
 ## Settings
 

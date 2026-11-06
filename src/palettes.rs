@@ -158,7 +158,7 @@ pub fn everything(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Vec<
                     select_anywhere(view, workspace_id.clone(), Selected::Project(path.clone()), window, cx)
                 })
                 .subtitle(paths::display(&project.path))
-                .glyph(icons::FOLDER, Some(project.color.map(|color| color.color(theme.dark)).unwrap_or(theme.accent)))
+                .glyph(icons::PROJECT, Some(project.color.map(|color| color.color(theme.dark)).unwrap_or(theme.accent)))
                 .detail("project")
                 .rank(10),
             );
@@ -190,7 +190,7 @@ pub fn everything(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Vec<
                 crate::actions::launch(view, &target, launcher.clone(), window, cx)
             })
             .subtitle(profile.summary())
-            .glyph(icons::AGENT, Some(theme.accent))
+            .glyph(glyph, Some(color.color(theme.dark)))
             .detail("agent")
             .rank(4),
         );
@@ -219,7 +219,7 @@ pub fn everything(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Vec<
                     crate::actions::launch(view, &target, launcher.clone(), window, cx)
                 })
                 .subtitle(subtitle)
-                .glyph(icons::HISTORY, None)
+                .glyph(glyph, Some(color.color(theme.dark)))
                 .detail("conversation")
                 .rank(2),
             );

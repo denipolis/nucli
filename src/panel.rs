@@ -26,14 +26,15 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
     let tab = view.store(cx).ui.panel_tab;
     let width = view.state(cx).map(|state| state.window.panel_width).unwrap_or(280.0);
     let side = view.store(cx).ui.panel_side;
-    let header_tab = |id: &'static str, label: &'static str, target: PanelTab| {
+    let header_tab = |id: &'static str, glyph: &'static str, label: &'static str, target: PanelTab| {
         let active = tab == target;
         div()
             .id(id)
-            .px(px(4.0))
+            .px(px(8.0))
             .when(active, |this| this.bg(theme.accent).text_color(theme.on_accent))
             .when(!active, |this| this.text_color(theme.muted).hover(|style| style.text_color(theme.text)))
-            .child(label)
+            .tooltip(ui::tooltip(label))
+            .child(glyph)
             .on_click(move |_, _, cx| {
                 store::store(cx).update(cx, |store, cx| {
                     store.ui.panel_tab = target;
@@ -67,14 +68,14 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
                 .flex()
                 .flex_none()
                 .items_center()
-                .gap(px(10.0))
-                .px(px(8.0))
+                .gap(px(4.0))
+                .px(px(6.0))
                 .py(px(4.0))
                 .border_b_1()
                 .border_color(theme.border)
-                .child(header_tab("panel-files", "FILES", PanelTab::Files))
-                .child(header_tab("panel-changes", "CHANGES", PanelTab::Changes))
-                .child(header_tab("panel-commits", "HISTORY", PanelTab::Commits))
+                .child(header_tab("panel-files", icons::FILES, "Files", PanelTab::Files))
+                .child(header_tab("panel-changes", icons::CHANGES, "Changes", PanelTab::Changes))
+                .child(header_tab("panel-commits", icons::COMMIT, "History", PanelTab::Commits))
                 .on_mouse_down(
                     MouseButton::Right,
                     cx.listener(|view, event: &gpui::MouseDownEvent, _, cx| {

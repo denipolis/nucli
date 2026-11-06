@@ -140,14 +140,15 @@ pub fn tab_glyph(session: &Session) -> (&'static str, Option<crate::theme::ItemC
 fn header(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoElement {
     let theme = ui::theme(cx);
     let current = view.store(cx).ui.sidebar_tab;
-    let tab = |id: &'static str, label: &'static str, tab: SidebarTab| {
+    let tab = |id: &'static str, glyph: &'static str, label: &'static str, tab: SidebarTab| {
         let active = current == tab;
         div()
             .id(id)
-            .px(px(4.0))
+            .px(px(8.0))
             .when(active, |this| this.bg(theme.accent).text_color(theme.on_accent))
             .when(!active, |this| this.text_color(theme.muted).hover(|style| style.text_color(theme.text)))
-            .child(label)
+            .tooltip(ui::tooltip(label))
+            .child(glyph)
             .on_click(move |_, window, cx| {
                 store::store(cx).update(cx, |store, cx| {
                     store.ui.sidebar_tab = tab;
@@ -163,14 +164,14 @@ fn header(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoEle
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(10.0))
-        .px(px(8.0))
+        .gap(px(4.0))
+        .px(px(6.0))
         .py(px(4.0))
         .border_b_1()
         .border_color(theme.border)
-        .child(tab("sidebar-projects", "PROJECTS", SidebarTab::Projects))
-        .child(tab("sidebar-agents", "AGENTS", SidebarTab::Agents))
-        .child(tab("sidebar-history", "HISTORY", SidebarTab::History))
+        .child(tab("sidebar-projects", icons::PROJECT, "Projects", SidebarTab::Projects))
+        .child(tab("sidebar-agents", icons::AGENT, "Agents", SidebarTab::Agents))
+        .child(tab("sidebar-history", icons::HISTORY, "History", SidebarTab::History))
 }
 
 fn rename_field(view: &WorkspaceView, matches_target: impl Fn(&Rename) -> bool) -> Option<AnyElement> {
@@ -222,7 +223,7 @@ fn project_row(view: &WorkspaceView, project: &Project, selected: bool, cx: &mut
                     cx.stop_propagation();
                 })),
         )
-        .child(div().text_color(if selected { theme.on_accent } else { tint }).child(icons::FOLDER))
+        .child(div().text_color(if selected { theme.on_accent } else { tint }).child(icons::PROJECT))
         .child(renaming.unwrap_or_else(|| div().flex_1().min_w_0().truncate().child(name.clone()).into_any_element()))
         .children(stat.filter(|stat| stat.added + stat.removed > 0).map(|stat| {
             div()
@@ -498,8 +499,8 @@ fn history(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -
         }
         let age = relative_age(conversation.modified);
         let item = conversation.clone();
-        rows.push(
         let (glyph, color) = icons::agent(conversation.kind.command());
+        rows.push(
             div()
                 .id(("history", index))
                 .flex()
@@ -511,7 +512,7 @@ fn history(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -
                     div()
                         .flex()
                         .gap(px(6.0))
-                        .child(div().text_color(theme.accent).child(icons::AGENT))
+                        .child(div().text_color(color.color(theme.dark)).child(glyph))
                         .child(div().flex_1().truncate().child(conversation.title.clone())),
                 )
                 .child(

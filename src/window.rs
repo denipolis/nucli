@@ -3,14 +3,12 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, App, AppContext, Bounds, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, Pixels, Point, Render, StatefulInteractiveElement, Styled, Subscription,
-    TitlebarOptions, Window, WindowBounds, WindowHandle, WindowOptions, deferred, div, point, px, size,
+    MouseButton, ParentElement, Pixels, Point, Render, Styled, Subscription, TitlebarOptions, Window, WindowBounds,
+    WindowHandle, WindowOptions, deferred, div, point, px, size,
 };
 
-use crate::icons;
 use crate::menu::{self, Menu};
 use crate::palette::{Palette, PaletteEvent};
 use crate::persist::{Selected, Side};
@@ -38,9 +36,9 @@ pub struct WorkspaceView {
     pub files: crate::file_view::Files,
     pub resizing: Option<crate::resize::Drag>,
     pub pane_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
-    pub settings: Option<crate::settings_view::SettingsPage>,
     pub dragging_titlebar: bool,
     pub shown_tab: Option<String>,
+    pub settings: Option<crate::settings_view::SettingsPage>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -112,12 +110,12 @@ impl WorkspaceView {
         let filter = cx.new(|cx| TextInput::new("filter", cx));
         let subscriptions = vec![
             cx.observe_in(&store, window, |view, store, window, cx| {
+                let gone = view.shown_tab.as_ref().is_some_and(|tab| !store.read(cx).sessions.contains_key(tab));
+                view.shown_tab = view.state(cx).and_then(|state| state.selected_tab()).map(String::from);
                 let selected = view.state(cx).and_then(|state| state.selected.clone());
                 if view.settings.as_ref().is_some_and(|page| page.selected != selected) {
                     crate::settings_view::close(view, window, cx);
                 }
-                let gone = view.shown_tab.as_ref().is_some_and(|tab| !store.read(cx).sessions.contains_key(tab));
-                view.shown_tab = view.state(cx).and_then(|state| state.selected_tab()).map(String::from);
                 if view.palette.is_none() && view.rename.is_none() && (gone || window.focused(cx).is_none()) {
                     view.focus_current(window, cx);
                 }
@@ -187,9 +185,9 @@ impl WorkspaceView {
             files: Default::default(),
             resizing: None,
             pane_bounds: Default::default(),
-            settings: None,
             dragging_titlebar: false,
             shown_tab: None,
+            settings: None,
             _subscriptions: subscriptions,
         }
     }
@@ -232,9 +230,9 @@ impl WorkspaceView {
         }
     }
 
-        self.settings = None;
     pub fn select(&mut self, selected: Option<Selected>, window: &mut Window, cx: &mut Context<Self>) {
         let id = self.workspace.clone();
+        self.settings = None;
         store::store(cx).update(cx, |store, cx| store.select(&id, selected, cx));
         if let Some(path) = self.current_project_path(cx) {
             let path = path.clone();
@@ -324,115 +322,11 @@ impl WorkspaceView {
         crate::file_view::open_path(self, path, line, window, cx);
     }
 
+    fn viewport(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(state) = self.state(cx).cloned() else { return div().into_any_element() };
         if self.settings.is_some() {
             return crate::settings_view::render(self, window, cx);
         }
-    fn titlebar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = ui::theme(cx);
-        let state = self.state(cx);
-        let name = state.map(|state| state.name.clone()).unwrap_or_default();
-        let location = match state.and_then(|state| state.current_project()) {
-            Some(project) if !project.is_scratch() => {
-                let branch = crate::git::current_branch(&project.path)
-                    .map(|branch| format!("  {} {branch}", icons::BRANCH))
-                    .unwrap_or_default();
-                format!("{}  {}{branch}", project.display_name(), crate::paths::display(&project.path))
-            }
-            _ => "no project".to_string(),
-        };
-        let height = px((settings::get(cx).ui_font_size() * 2.4).round());
-        let toggle = |id: &'static str, glyph: &'static str, active: bool, command: &'static str| {
-            div()
-                .id(id)
-                .px(px(6.0))
-                .text_color(if active { theme.text } else { theme.faint })
-                .hover(|style| style.text_color(theme.accent))
-                .child(glyph)
-                .on_click(move |_, window, cx| {
-                    if let Some(command) = crate::commands::find(command) {
-                        window.dispatch_action((command.action)(), cx);
-                    }
-                })
-        };
-        let client_decorated = matches!(window.window_decorations(), gpui::Decorations::Client { .. });
-        let sidebar_shown = state.is_some_and(|state| !state.window.sidebar_hidden);
-        let panel_shown = !self.store(cx).ui.panel_hidden;
-        let terminal_shown =
-            state.and_then(|state| state.current_project()).is_some_and(|project| project.terminal_shown);
-        div()
-            .id("titlebar")
-            .flex()
-            .flex_none()
-            .items_center()
-            .h(height)
-            .pl(px(if cfg!(target_os = "macos") { 78.0 } else { 8.0 }))
-            .pr(px(6.0))
-            .gap(px(10.0))
-            .bg(theme.surface)
-            .border_b_1()
-            .border_color(theme.border)
-            .window_control_area(gpui::WindowControlArea::Drag)
-            .on_mouse_down(MouseButton::Left, cx.listener(|view, _, _, _| view.dragging_titlebar = true))
-            .on_mouse_up(MouseButton::Left, cx.listener(|view, _, _, _| view.dragging_titlebar = false))
-            .on_mouse_move(cx.listener(|view, event: &gpui::MouseMoveEvent, window, _| {
-                if view.dragging_titlebar && event.pressed_button == Some(MouseButton::Left) {
-                    view.dragging_titlebar = false;
-                    window.start_window_move();
-                }
-            }))
-            .on_click(|event, window, _| {
-                if event.click_count() == 2 {
-                    if cfg!(target_os = "macos") { window.titlebar_double_click() } else { window.zoom_window() }
-                }
-            })
-            .child(
-                div()
-                    .id("workspace-name")
-                    .px(px(6.0))
-                    .bg(theme.accent)
-                    .text_color(theme.on_accent)
-                    .child(ui::caps(&name))
-                    .on_click(cx.listener(|view, event: &gpui::ClickEvent, window, cx| {
-                        let position = event.position();
-                        let items = crate::actions::workspace_menu(view, cx);
-                        view.open_menu(position, items, cx);
-                        let _ = window;
-                    })),
-            )
-            .child(
-                div()
-                    .id("location")
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .text_color(theme.muted)
-                    .hover(|style| style.text_color(theme.text))
-                    .child(location)
-                    .on_click(cx.listener(|view, _, window, cx| crate::actions::command_palette(view, window, cx))),
-            )
-            .child(toggle("toggle-sidebar", icons::SIDEBAR, sidebar_shown, "toggle_sidebar"))
-            .child(toggle("toggle-panel", icons::LAYOUT, panel_shown, "toggle_panel"))
-            .child(toggle("toggle-terminal", icons::PANEL, terminal_shown, "toggle_terminal"))
-            .when(client_decorated, |this| {
-                let control = |id: &'static str, glyph: &'static str| {
-                    div()
-                        .id(id)
-                        .px(px(6.0))
-                        .text_color(theme.muted)
-                        .hover(|style| style.text_color(theme.accent))
-                        .child(glyph)
-                };
-                let id = self.workspace.clone();
-                this.child(control("window-minimize", icons::REMOVE).on_click(|_, window, _| window.minimize_window()))
-                    .child(control("window-zoom", icons::MAXIMIZE).on_click(|_, window, _| window.zoom_window()))
-                    .child(control("window-close", icons::CLOSE).on_click(move |_, window, cx| {
-                        crate::actions::close_workspace_window(&id, window, cx);
-                    }))
-            })
-    }
-
-    fn viewport(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let Some(state) = self.state(cx).cloned() else { return div().into_any_element() };
         if self.file_shown(cx) {
             return crate::file_view::render(self, window, cx);
         }
@@ -462,6 +356,7 @@ impl Render for WorkspaceView {
         let ui_state = self.store(cx).ui.clone();
         let terminal = crate::panel::terminal_panel(self, window, cx);
         let content = (terminal.is_none() || !state.window.terminal_maximized).then(|| self.viewport(window, cx));
+        let status = crate::statusbar::render(self, cx);
         let viewport = div()
             .flex()
             .flex_col()
@@ -469,6 +364,7 @@ impl Render for WorkspaceView {
             .min_w_0()
             .h_full()
             .children(content.map(|content| div().flex_1().min_h_0().child(content)))
+            .children(status)
             .children(terminal);
         let panel = (!ui_state.panel_hidden).then(|| crate::panel::render(self, window, cx));
         let mut body = div().flex().flex_row().flex_1().min_h_0().overflow_hidden();
@@ -510,9 +406,8 @@ impl Render for WorkspaceView {
                     cx.notify();
                 }
             }))
-            .child(self.titlebar(window, cx))
-            .child(body)
-            .child(crate::statusbar::render(self, cx));
+            .child(crate::titlebar::render(self, window, cx))
+            .child(body);
         root = crate::actions::register(root, cx);
         if matches!(window.window_decorations(), gpui::Decorations::Client { .. }) {
             root = root.children(resize_edges());

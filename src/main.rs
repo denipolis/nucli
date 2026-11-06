@@ -42,6 +42,7 @@ mod switcher;
 mod terminal;
 mod text_input;
 mod theme;
+mod titlebar;
 mod ui;
 mod watcher;
 mod window;

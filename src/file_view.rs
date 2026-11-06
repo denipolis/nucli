@@ -429,7 +429,7 @@ fn path_bar(view: &WorkspaceView, editor: &Entity<Editor>, cx: &mut Context<Work
     };
     let (previous, next) = (editor.clone(), editor.clone());
     let (default_app, reveal) = (full.clone(), full.clone());
-    let _ = view;
+    let position = cursor_label(view, cx);
     div()
         .flex()
         .flex_none()
@@ -440,6 +440,7 @@ fn path_bar(view: &WorkspaceView, editor: &Entity<Editor>, cx: &mut Context<Work
         .border_b_1()
         .border_color(theme.border)
         .child(div().flex_1().min_w_0().truncate().text_color(theme.muted).child(crumbs))
+        .when_some(position, |this, position| this.child(div().flex_none().text_color(theme.muted).child(position)))
         .when_some(commit, |this, commit| {
             this.child(div().text_color(theme.yellow).child(format!(
                 "{} {}",

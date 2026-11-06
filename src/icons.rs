@@ -1,5 +1,7 @@
 use crate::theme::ItemColor;
 
+pub const PLAY: &str = "\u{f04b}";
+pub const PROJECT: &str = "\u{eb30}";
 pub const FOLDER: &str = "\u{e5ff}";
 pub const FOLDER_OPEN: &str = "\u{e5fe}";
 pub const FILE: &str = "\u{ea7b}";
@@ -17,9 +19,9 @@ pub const CHEVRON_DOWN: &str = "\u{eab4}";
 pub const CHEVRON_RIGHT: &str = "\u{eab6}";
 pub const CHEVRON_UP: &str = "\u{eab7}";
 pub const HOME: &str = "\u{eb06}";
-pub const SIDEBAR: &str = "\u{ebf3}";
 pub const PANEL: &str = "\u{ebf2}";
-pub const LAYOUT: &str = "\u{eaf0}";
+pub const FILES: &str = "\u{eaf0}";
+pub const CHANGES: &str = "\u{eafd}";
 pub const HISTORY: &str = "\u{ea82}";
 pub const DOT: &str = "\u{f444}";
 pub const ARROW_UP: &str = "\u{eaa1}";
@@ -29,7 +31,6 @@ pub const DISCARD: &str = "\u{eae2}";
 pub const MAXIMIZE: &str = "\u{eb4c}";
 pub const WINDOW: &str = "\u{eb7f}";
 pub const REVEAL: &str = "\u{eaf7}";
-pub const BELL: &str = "\u{eaa2}";
 pub const COMMAND: &str = "\u{eb63}";
 pub const TAG: &str = "\u{ea66}";
 pub const CLOUD: &str = "\u{ebaa}";
@@ -37,7 +38,6 @@ pub const THEME: &str = "\u{eb5c}";
 
 pub const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-pub fn file(name: &str) -> (&'static str, ItemColor) {
 pub fn agent(command: &str) -> (&'static str, ItemColor) {
     match command {
         "claude" => ("\u{f06c4}", ItemColor::Orange),
@@ -57,6 +57,7 @@ pub fn agent(command: &str) -> (&'static str, ItemColor) {
     }
 }
 
+pub fn file(name: &str) -> (&'static str, ItemColor) {
     let lower = name.to_lowercase();
     let by_name = match lower.as_str() {
         "dockerfile" | "containerfile" => Some(("\u{e650}", ItemColor::Blue)),

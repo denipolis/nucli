@@ -104,7 +104,7 @@ pub fn picker(view: &mut WorkspaceView, project: &Path, window: &mut Window, cx:
             launch(view, &target, launcher.clone(), window, cx)
         })
         .subtitle(profile.summary())
-        .glyph(icons::AGENT, Some(theme.accent))
+        .glyph(glyph, Some(color.color(theme.dark)))
         .detail(if digit <= 9 { digit.to_string() } else { String::new() })
         .section("agents");
         item.digit = Some(digit);
@@ -156,7 +156,7 @@ pub fn picker(view: &mut WorkspaceView, project: &Path, window: &mut Window, cx:
                 palette::Item::new(conversation.title.clone(), move |view, window, cx| {
                     launch(view, &target, launcher.clone(), window, cx)
                 })
-                .glyph(icons::HISTORY, None)
+                .glyph(glyph, Some(color.color(theme.dark)))
                 .detail(detail)
                 .section("conversations"),
             );

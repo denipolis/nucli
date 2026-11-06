@@ -100,7 +100,7 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
                 .flex()
                 .gap(px(12.0))
                 .items_center()
-                .child(div().text_size(px(26.0)).text_color(tint).child(icons::FOLDER))
+                .child(div().text_size(px(26.0)).text_color(tint).child(icons::PROJECT))
                 .child(
                     div().flex().flex_col().child(div().text_size(px(20.0)).child(project.display_name())).child(
                         div().text_color(theme.muted).child(format!("{}{branch}", paths::display(&project.path))),
@@ -122,8 +122,8 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
         });
         content = content.child(row(
             format!("new-agent-{index}").into(),
-            icons::AGENT,
-            theme.accent,
+            glyph,
+            color.color(theme.dark),
             title,
             summary,
             detail,
@@ -194,8 +194,8 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
                 let (glyph, color) = icons::agent(conversation.kind.command());
                 content = content.child(row(
                     format!("conversation-{index}").into(),
-                    icons::HISTORY,
-                    theme.muted,
+                    glyph,
+                    color.color(theme.dark),
                     title,
                     subtitle,
                     detail,
