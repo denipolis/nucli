@@ -183,7 +183,7 @@ Tabs `FILES  CHANGES  HISTORY` (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing a hi
 
 ### History (commits)
 
-- `git log` of branches, remotes, tags and `HEAD` in topological order (first 500), with a lane graph, ref labels, subject, short hash, author and relative date.
+- `git log` of branches, remotes, tags and `HEAD` in topological order (first 500), with a lane graph, ref labels, subject, short hash, author and relative date. Hash, author and date sit in fixed columns, so they line up on every row. A row shows at most two ref labels and `+N` for the rest; they shrink before the subject disappears.
 - Clicking a commit expands its changed files (against the first parent). Clicking a file opens the commit's diff of it, read-only.
 - Context menu: Copy Hash, Copy Message.
 

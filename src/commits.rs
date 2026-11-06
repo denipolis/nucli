@@ -5,7 +5,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, AppContext, ClipboardItem, Context, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement,
     PathBuilder, Pixels, Render, SharedString, StatefulInteractiveElement, Styled, Window, canvas, div, fill, point,
-    px, size, uniform_list,
+    px, relative, size, uniform_list,
 };
 
 use crate::git::{self, Change, Commit, GraphRow};
@@ -217,7 +217,15 @@ fn ref_label(reference: &str, theme: &crate::theme::Theme) -> impl IntoElement {
     } else {
         (reference.to_string(), theme.blue)
     };
-    div().flex_none().max_w(px(120.0)).truncate().px(px(4.0)).bg(background).text_color(theme.on_accent).child(text)
+    div()
+        .flex_shrink()
+        .min_w_0()
+        .max_w(px(140.0))
+        .truncate()
+        .px(px(4.0))
+        .bg(background)
+        .text_color(theme.on_accent)
+        .child(text)
 }
 
 impl Render for CommitsPanel {
@@ -240,6 +248,8 @@ impl Render for CommitsPanel {
             count,
             cx.processor(move |panel: &mut CommitsPanel, range: std::ops::Range<usize>, _, cx| {
                 let theme = ui::theme(cx);
+                let cell = crate::settings::get(cx).ui_font_size() * 0.6;
+                let column = |chars: f32| px((chars * cell).ceil());
                 let wide = store::store(cx)
                     .read(cx)
                     .workspace(&panel.workspace)
@@ -301,6 +311,7 @@ impl Render for CommitsPanel {
                             let expanded = panel.expanded == Some(commit_index);
                             let time = UNIX_EPOCH + Duration::from_secs(commit.time.max(0) as u64);
                             let (copy_hash, copy_subject) = (commit.hash.clone(), commit.subject.clone());
+                            let hidden_refs = commit.refs.len().saturating_sub(2);
                             div()
                                 .id(("commit-row", index))
                                 .h(line)
@@ -313,7 +324,31 @@ impl Render for CommitsPanel {
                                 .when(expanded, |this| this.bg(theme.hover))
                                 .hover(|style| style.bg(theme.hover))
                                 .children(graph.map(|graph| graph_canvas(graph, line, theme.dark)))
-                                .children(commit.refs.iter().take(3).map(|reference| ref_label(reference, &theme)))
+                                .when(!commit.refs.is_empty(), |this| {
+                                    this.child(
+                                        div()
+                                            .flex()
+                                            .flex_shrink()
+                                            .min_w_0()
+                                            .max_w(relative(0.5))
+                                            .gap(px(4.0))
+                                            .children(
+                                                commit
+                                                    .refs
+                                                    .iter()
+                                                    .take(2)
+                                                    .map(|reference| ref_label(reference, &theme)),
+                                            )
+                                            .when(hidden_refs > 0, |this| {
+                                                this.child(
+                                                    div()
+                                                        .flex_none()
+                                                        .text_color(theme.faint)
+                                                        .child(format!("+{hidden_refs}")),
+                                                )
+                                            }),
+                                    )
+                                })
                                 .child(
                                     div()
                                         .flex_1()
@@ -321,16 +356,23 @@ impl Render for CommitsPanel {
                                         .truncate()
                                         .child(SharedString::from(commit.subject.clone())),
                                 )
-                                .when(wide, |this| {
-                                    this.child(
-                                        div()
-                                            .flex_none()
-                                            .text_color(theme.faint)
-                                            .child(commit.hash[..commit.hash.len().min(7)].to_string()),
-                                    )
-                                    .child(div().flex_none().text_color(theme.faint).child(commit.author.clone()))
-                                })
-                                .child(div().flex_none().text_color(theme.faint).child(relative_age(time)))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_none()
+                                        .gap(px(8.0))
+                                        .ml(px(6.0))
+                                        .text_color(theme.faint)
+                                        .when(wide, |this| {
+                                            this.child(
+                                                div()
+                                                    .w(column(7.0))
+                                                    .child(commit.hash[..commit.hash.len().min(7)].to_string()),
+                                            )
+                                            .child(div().w(column(16.0)).truncate().child(commit.author.clone()))
+                                        })
+                                        .child(div().w(column(4.0)).flex().justify_end().child(relative_age(time))),
+                                )
                                 .on_click(cx.listener(move |panel, _, _, cx| panel.toggle(commit_index, cx)))
                                 .on_mouse_down(
                                     MouseButton::Right,
