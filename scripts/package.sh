@@ -17,6 +17,7 @@ case "$TARGET" in
     cp "$BUILD/nucli" "$APP/Contents/MacOS/nucli"
     cp dist/stage/* "$APP/Contents/Resources/"
     cp assets/icon/nucli.icns "$APP/Contents/Resources/AppIcon.icns"
+    cp assets/icon/Assets.car "$APP/Contents/Resources/Assets.car"
     cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -27,6 +28,7 @@ case "$TARGET" in
     <key>CFBundleIdentifier</key><string>uk.polishch.nucli</string>
     <key>CFBundleExecutable</key><string>nucli</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundleIconName</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleVersion</key><string>$VERSION</string>

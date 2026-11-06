@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import math
 import pathlib
 import struct
+import sys
 import zlib
 
 PATTERN = [
@@ -12,21 +14,42 @@ PATTERN = [
     ".R...R.",
     "..RRR..",
 ]
-COLORS = {".": (42, 42, 46, 255), "R": (255, 90, 122, 255), "Y": (255, 207, 64, 255)}
-BACKGROUND = (17, 17, 17, 255)
+RELEASE = {".": (42, 42, 46), "R": (255, 90, 122), "Y": (255, 207, 64)}
+DEVELOPMENT = {".": (42, 42, 46), "R": (105, 219, 124), "Y": (56, 217, 169)}
+TOP = (22, 22, 22)
+BOTTOM = (5, 5, 5)
+FIRST = 161.55
+STEP = 116.82
+RADIUS = 42.25
 CLEAR = (0, 0, 0, 0)
+COLORS = DEVELOPMENT if len(sys.argv) > 1 else RELEASE
+
+
+def clamp(value):
+    return max(0.0, min(1.0, value))
+
+
+def mix(a, b, amount):
+    return tuple(round(x + (y - x) * amount) for x, y in zip(a, b))
 
 
 def pixel(x, y, size, margin):
     body = size - 2 * margin
-    if not (margin <= x < size - margin and margin <= y < size - margin):
+    scale = body / 1024
+    u = (x + 0.5 - margin) / scale
+    v = (y + 0.5 - margin) / scale
+    across, down = abs(u - 512) / 512, abs(v - 512) / 512
+    if across >= 1 or down >= 1:
         return CLEAR
-    cell = body / 9
-    column = (x - margin) / cell - 1
-    row = (y - margin) / cell - 1
-    if 0 <= column < 7 and 0 <= row < 7 and column % 1 < 0.86 and row % 1 < 0.86:
-        return COLORS[PATTERN[int(row)][int(column)]]
-    return BACKGROUND
+    shape = clamp((1 - (across**5 + down**5) ** 0.2) * 512 * scale + 0.5)
+    if shape == 0:
+        return CLEAR
+    color = mix(TOP, BOTTOM, v / 1024)
+    column, row = round((u - FIRST) / STEP), round((v - FIRST) / STEP)
+    if 0 <= column < 7 and 0 <= row < 7:
+        distance = math.hypot(u - FIRST - column * STEP, v - FIRST - row * STEP)
+        color = mix(color, COLORS[PATTERN[row][column]], clamp((RADIUS - distance) * scale + 0.5))
+    return (*color, round(shape * 255))
 
 
 def png(size, margin):
@@ -64,7 +87,7 @@ def ico():
     return header + entries + data
 
 
-folder = pathlib.Path(__file__).resolve().parent.parent / "assets" / "icon"
+folder = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else pathlib.Path(__file__).resolve().parent.parent / "assets" / "icon"
 (folder / "nucli.png").write_bytes(png(512, 0))
 (folder / "nucli.icns").write_bytes(icns())
 (folder / "nucli.ico").write_bytes(ico())

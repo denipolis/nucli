@@ -31,7 +31,7 @@ The full behavior is specified in `docs/SPEC.md`. Keep it in sync with the code.
 - Terminal: `alacritty_terminal` for emulation, `portable-pty` for the pseudo terminal.
 - Git: shell out to `git`. File watching: `notify`. Syntax highlighting: tree-sitter.
 - Persistence: JSON files in the platform's config and data folders (see `docs/SPEC.md`).
-- Packaging: `scripts/package.sh [target]` builds the release archive for a platform into `dist/` (`.dmg`, `.tar.gz`, `.zip`). `scripts/icon.py` regenerates the app icons. CI builds macOS, Linux and Windows (`.github/workflows/build.yml`).
+- Packaging: `scripts/package.sh [target]` builds the release archive for a platform into `dist/` (`.dmg`, `.tar.gz`, `.zip`). `scripts/icon.py` regenerates the app icons except `Assets.car`, which Xcode's `actool` compiles from `assets/icon/AppIcon.icon`. CI builds macOS, Linux and Windows (`.github/workflows/build.yml`).
 - Architecture and file map: `docs/ARCHITECTURE.md`.
 
 ## Code rules
