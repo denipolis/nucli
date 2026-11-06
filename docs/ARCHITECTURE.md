@@ -26,7 +26,8 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `panel.rs` | Panel frame and the terminal panel. |
 | `files.rs`, `changes.rs`, `commits.rs` | Files, Changes and History panel views. |
 | `file_view.rs` | File tabs, path bar, images, Open With, close and save prompts. |
-| `editor.rs` | Text view: diff rows, highlighting, editing, undo, find, IME. |
+| `editor.rs` | Text view: diff rows, highlighting, editing, undo, find bar, IME. |
+| `find.rs` | Find and replace: query building, matching across rows, replacement templates, case preservation. |
 | `highlight.rs` | Tree-sitter grammars and capture to token mapping. |
 | `git.rs` | `git` CLI wrapper, parsers, commit graph lanes. |
 | `history.rs` | Agent conversation files and their cache. |

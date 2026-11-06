@@ -11,6 +11,7 @@ mod devtools;
 mod editor;
 mod file_view;
 mod files;
+mod find;
 mod fuzzy;
 mod git;
 mod highlight;

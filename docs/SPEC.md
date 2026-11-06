@@ -200,7 +200,10 @@ Tabs for Files, Changes and History (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing
 - External changes (an agent writing the file) reload the view unless it has unsaved edits; saving then overwrites.
 - `esc` hides the file view (tabs stay); `⌘W` closes the shown file tab.
 - Open With… asks for an application once and remembers it per file extension; later the menu lists remembered applications first.
-- `⌘F` finds in the file: matches are highlighted, `enter` / `⌘G` next, `⇧⌘G` previous, `esc` closes.
+- `⌘F` finds in the file and `⌘R` also replaces, in a bar at the top right. Selected text seeds the query. Every match is highlighted, the current one is selected, and the bar counts them (`3 of 12`, `no results`, `invalid`).
+  - Toggles, remembered between sessions: match case, whole word, regular expression (with lookaround and backreferences), find in selection. A pattern containing `\n` matches across lines; removed diff lines are never touched by a replace.
+  - Replacing: `enter` replaces and moves to the next match, Replace All is one undo step and reports how many it changed. Regular expressions expand `$1`, `$&`, `${name}`, `$$`, `\n`, `\t`, and change case with `\u`, `\l`, `\U`, `\L`, `\E`. Preserve Case keeps the match's casing, also per `-` or `_` part.
+  - `enter` / `⌘G` next, `⇧enter` / `⇧⌘G` previous, `esc` closes.
 
 ## Command palette
 

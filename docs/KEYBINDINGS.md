@@ -35,6 +35,7 @@ On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ct
 | Font bigger / smaller / reset | `font_bigger` … | `cmd-=` / `cmd--` / `cmd-0` | `ctrl-=` / `ctrl--` / `ctrl-0` |
 | Clear terminal and scrollback | `clear` | `cmd-k` | `ctrl-shift-k` |
 | Find / next / previous | `find` / `find_next` / `find_previous` | `cmd-f` / `cmd-g` / `cmd-shift-g` | `ctrl-shift-f` / `f3` / `shift-f3` |
+| Replace in the file view | `replace` | `cmd-r` | `ctrl-h` |
 | Copy / paste / select all in a terminal | `copy` / `paste` / `select_all` | `cmd-c` / `cmd-v` / `cmd-a` | `ctrl-shift-c` / `ctrl-shift-v` / `ctrl-shift-a` |
 | Undo / redo / cut in the file view | `undo` / `redo` / `cut` | `cmd-z` / `cmd-shift-z` / `cmd-x` | `ctrl-z` / `ctrl-shift-z` / `ctrl-x` |
 | Save file | `save` | `cmd-s` | `ctrl-s` |
@@ -48,6 +49,8 @@ On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ct
 | Quit | `quit` | `cmd-q` | `ctrl-shift-q` |
 
 Terminal keys on macOS (fixed): `cmd-left` / `cmd-right` line start / end, `cmd-backspace` delete to line start, `alt-left` / `alt-right` word back / forward, `alt-backspace` delete word back, `alt` + key sends Meta (`ESC` prefix).
+
+Find and replace in the file view: `enter` / `shift-enter` next and previous match, `tab` moves between the fields, `enter` in the replace field replaces and moves on, `cmd-enter` (`ctrl-enter`) replaces all, `esc` closes. Toggles: `cmd-alt-c` match case, `cmd-alt-w` whole word, `cmd-alt-r` regular expression, `cmd-alt-p` preserve case, `cmd-alt-l` in selection (`alt-c`, `alt-w`, `alt-r`, `alt-p`, `alt-l` on Linux and Windows).
 
 New tab picker: arrows, `enter`, `1`–`9` launch the numbered agent or shell, `esc` closes. Rows under CONVERSATIONS resume that conversation.
 

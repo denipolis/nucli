@@ -53,6 +53,7 @@ pub struct Ui {
     pub panel_side: Side,
     pub panel_hidden: bool,
     pub settings_section: SettingsSection,
+    pub find: crate::find::Options,
 }
 
 impl Default for Ui {
@@ -63,6 +64,7 @@ impl Default for Ui {
             panel_side: Side::Left,
             panel_hidden: false,
             settings_section: SettingsSection::General,
+            find: crate::find::Options::default(),
         }
     }
 }

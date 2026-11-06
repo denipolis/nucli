@@ -1,8 +1,11 @@
 use std::rc::Rc;
 
-use gpui::{App, Global, SharedString, Window};
+use gpui::{
+    AnyView, App, AppContext, Context, Global, IntoElement, ParentElement, Render, SharedString, Styled, Window, div,
+    px,
+};
 
-use crate::settings::{self, Appearance, Settings};
+use crate::settings::{self, Appearance, FONT, Settings};
 use crate::theme::{self, Theme};
 
 pub struct ActiveTheme(pub Rc<Theme>);
@@ -44,4 +47,27 @@ pub fn watch_appearance<T: 'static>(window: &mut Window, cx: &mut gpui::Context<
 
 pub fn caps(text: &str) -> SharedString {
     text.to_uppercase().into()
+}
+
+struct Tooltip(SharedString);
+
+impl Render for Tooltip {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = theme(cx);
+        let size = settings::get(cx).ui_font_size();
+        div()
+            .font_family(FONT)
+            .text_size(px(size))
+            .line_height(px((size * 1.5).round()))
+            .px(px(6.0))
+            .bg(theme.elevated)
+            .border_1()
+            .border_color(theme.border)
+            .text_color(theme.text)
+            .child(self.0.clone())
+    }
+}
+
+pub fn tooltip(text: &'static str) -> impl Fn(&mut Window, &mut App) -> AnyView {
+    move |_, cx| cx.new(|_| Tooltip(text.into())).into()
 }

@@ -133,6 +133,7 @@ impl Palette {
             InputEvent::Cancel => cx.emit(PaletteEvent::Dismiss),
             InputEvent::Up => palette.move_by(-1, cx),
             InputEvent::Down => palette.move_by(1, cx),
+            InputEvent::NextField => {}
         });
         let mut palette = Palette {
             input,

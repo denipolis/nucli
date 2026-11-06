@@ -52,6 +52,7 @@ impl Session {
             InputEvent::Submit | InputEvent::Down => session.find_step(1, cx),
             InputEvent::Up => session.find_step(-1, cx),
             InputEvent::Cancel => session.close_find(window, cx),
+            InputEvent::NextField => {}
         })
         .detach();
         input.read(cx).focus(window);

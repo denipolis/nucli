@@ -32,7 +32,8 @@ actions!(
         Down,
         DeleteWord,
         WordLeft,
-        WordRight
+        WordRight,
+        NextField
     ]
 );
 
@@ -60,6 +61,9 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new(&format!("{primary}-right"), End, context),
         KeyBinding::new("enter", Submit, context),
         KeyBinding::new("escape", Cancel, context),
+        KeyBinding::new("shift-enter", Up, context),
+        KeyBinding::new("tab", NextField, context),
+        KeyBinding::new("shift-tab", NextField, context),
         KeyBinding::new("up", Up, context),
         KeyBinding::new("down", Down, context),
         KeyBinding::new("ctrl-p", Up, context),
@@ -73,6 +77,7 @@ pub enum InputEvent {
     Cancel,
     Up,
     Down,
+    NextField,
 }
 
 pub struct TextInput {
@@ -565,6 +570,7 @@ impl Render for TextInput {
             .on_action(cx.listener(|_, _: &Cancel, _, cx| cx.emit(InputEvent::Cancel)))
             .on_action(cx.listener(|_, _: &Up, _, cx| cx.emit(InputEvent::Up)))
             .on_action(cx.listener(|_, _: &Down, _, cx| cx.emit(InputEvent::Down)))
+            .on_action(cx.listener(|_, _: &NextField, _, cx| cx.emit(InputEvent::NextField)))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
             .child(InputElement { input: cx.entity() })
     }
