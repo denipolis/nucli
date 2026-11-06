@@ -22,7 +22,7 @@ The full behavior is specified in `docs/SPEC.md`. Keep it in sync with the code.
 - Square corners everywhere. No rounded rectangles, shadows, blur, glass or gradients.
 - One monospace font for the whole UI and the terminal: the bundled Maple Mono NF. Icons are its Nerd Font glyphs, never images.
 - Flat panes separated by 1px rules. Dense rows on a character grid.
-- Tabs are glyphs with a tooltip; the active tab, the selected row and mode labels are inverted blocks.
+- Text tabs with a glyph (`FILES  CHANGES  HISTORY`); the active tab, the selected row and mode labels are inverted blocks.
 - All colors come from the active theme. Retro, terminal-native feel: block cursor, character spinners, bracketed key hints like `[enter]`.
 
 ## Tech

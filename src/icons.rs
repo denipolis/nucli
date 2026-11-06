@@ -1,7 +1,6 @@
 use crate::theme::ItemColor;
 
 pub const PLAY: &str = "\u{f04b}";
-pub const PROJECT: &str = "\u{eb30}";
 pub const FOLDER: &str = "\u{e5ff}";
 pub const FOLDER_OPEN: &str = "\u{e5fe}";
 pub const FILE: &str = "\u{ea7b}";

@@ -144,11 +144,13 @@ fn header(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoEle
         let active = current == tab;
         div()
             .id(id)
-            .px(px(8.0))
+            .flex()
+            .gap(px(8.0))
+            .px(px(4.0))
             .when(active, |this| this.bg(theme.accent).text_color(theme.on_accent))
             .when(!active, |this| this.text_color(theme.muted).hover(|style| style.text_color(theme.text)))
-            .tooltip(ui::tooltip(label))
             .child(glyph)
+            .child(label)
             .on_click(move |_, window, cx| {
                 store::store(cx).update(cx, |store, cx| {
                     store.ui.sidebar_tab = tab;
@@ -164,14 +166,15 @@ fn header(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoEle
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(4.0))
-        .px(px(6.0))
+        .gap(px(6.0))
+        .px(px(8.0))
         .py(px(4.0))
+        .overflow_hidden()
         .border_b_1()
         .border_color(theme.border)
-        .child(tab("sidebar-projects", icons::PROJECT, "Projects", SidebarTab::Projects))
-        .child(tab("sidebar-agents", icons::AGENT, "Agents", SidebarTab::Agents))
-        .child(tab("sidebar-history", icons::HISTORY, "History", SidebarTab::History))
+        .child(tab("sidebar-projects", icons::FOLDER, "PROJECTS", SidebarTab::Projects))
+        .child(tab("sidebar-agents", icons::AGENT, "AGENTS", SidebarTab::Agents))
+        .child(tab("sidebar-history", icons::HISTORY, "HISTORY", SidebarTab::History))
 }
 
 fn rename_field(view: &WorkspaceView, matches_target: impl Fn(&Rename) -> bool) -> Option<AnyElement> {
@@ -223,7 +226,7 @@ fn project_row(view: &WorkspaceView, project: &Project, selected: bool, cx: &mut
                     cx.stop_propagation();
                 })),
         )
-        .child(div().text_color(if selected { theme.on_accent } else { tint }).child(icons::PROJECT))
+        .child(div().text_color(if selected { theme.on_accent } else { tint }).child(icons::FOLDER))
         .child(renaming.unwrap_or_else(|| div().flex_1().min_w_0().truncate().child(name.clone()).into_any_element()))
         .children(stat.filter(|stat| stat.added + stat.removed > 0).map(|stat| {
             div()

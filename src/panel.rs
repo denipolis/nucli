@@ -30,11 +30,13 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
         let active = tab == target;
         div()
             .id(id)
-            .px(px(8.0))
+            .flex()
+            .gap(px(8.0))
+            .px(px(4.0))
             .when(active, |this| this.bg(theme.accent).text_color(theme.on_accent))
             .when(!active, |this| this.text_color(theme.muted).hover(|style| style.text_color(theme.text)))
-            .tooltip(ui::tooltip(label))
             .child(glyph)
+            .child(label)
             .on_click(move |_, _, cx| {
                 store::store(cx).update(cx, |store, cx| {
                     store.ui.panel_tab = target;
@@ -68,14 +70,15 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
                 .flex()
                 .flex_none()
                 .items_center()
-                .gap(px(4.0))
-                .px(px(6.0))
+                .gap(px(6.0))
+                .px(px(8.0))
                 .py(px(4.0))
+                .overflow_hidden()
                 .border_b_1()
                 .border_color(theme.border)
-                .child(header_tab("panel-files", icons::FILES, "Files", PanelTab::Files))
-                .child(header_tab("panel-changes", icons::CHANGES, "Changes", PanelTab::Changes))
-                .child(header_tab("panel-commits", icons::COMMIT, "History", PanelTab::Commits))
+                .child(header_tab("panel-files", icons::FILES, "FILES", PanelTab::Files))
+                .child(header_tab("panel-changes", icons::CHANGES, "CHANGES", PanelTab::Changes))
+                .child(header_tab("panel-commits", icons::COMMIT, "HISTORY", PanelTab::Commits))
                 .on_mouse_down(
                     MouseButton::Right,
                     cx.listener(|view, event: &gpui::MouseDownEvent, _, cx| {

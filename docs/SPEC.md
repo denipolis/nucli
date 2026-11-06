@@ -20,7 +20,7 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 - Square corners, 1px rules between panes, no shadows or blur.
 - Maple Mono NF everywhere, at two sizes: `ui_font_size` for chrome, `font_size` for terminals and the file view.
 - Icons are Nerd Font glyphs, colored by the theme. File types and known agents get their own glyph and color.
-- Sidebar and panel tabs are glyphs with a tooltip. The active tab, the selected row, focused list items and mode labels are inverted: accent background, background-colored text.
+- Sidebar and panel tabs are a glyph and a name in caps. The active tab, the selected row, focused list items and mode labels are inverted: accent background, background-colored text.
 - Key hints in brackets: `[enter] open  [esc] close`.
 - Spinners are character animations (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`).
 - If the graphics system cannot start or no window can be opened, for example without a working driver, Nucli reports why (a message box on Windows, stderr elsewhere) and quits instead of running invisibly.
@@ -39,7 +39,7 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 ## Projects
 
 - A project is a folder. Open one with `⌘O`, by dropping a folder on the window, from a History entry, by opening a tab in a new folder (`⌥⇧⌘T`), by dropping it on the Dock icon on macOS, or from the command line with `nucli <folder>`.
-- Projects list in the sidebar in a user-defined order (drag to reorder). Each row shows the project glyph (folder glyphs belong to the Files panel), the name and the uncommitted diff against `HEAD` as green `+N` and red `-M` (hidden when clean or not a git repository). The numbers update live.
+- Projects list in the sidebar in a user-defined order (drag to reorder). Each row shows the folder glyph, the name and the uncommitted diff against `HEAD` as green `+N` and red `-M` (hidden when clean or not a git repository). The numbers update live.
 - Rename (double-click or context menu; empty restores the folder name), Color (12 theme colors or none; tints the folder glyph and the rows of its tabs), Move to Workspace (another workspace or a new one), Reveal in File Manager, Close Project (`⇧⌘W`, ends its tabs after confirming running agents).
 - Collapsing a project hides its tabs; the state is remembered.
 - Clicking a project shows its overview in the viewport.
@@ -150,7 +150,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 
 ## Sidebar
 
-- Glyph tabs at the top: Projects (the tree), Agents (the board), History. `⌥⌘1`/`⌥⌘2`/`⌥⌘3` switch (and show the sidebar). The choice is remembered.
+- Tabs at the top: `PROJECTS` (the tree), `AGENTS` (the board), `HISTORY`. `⌥⌘1`/`⌥⌘2`/`⌥⌘3` switch (and show the sidebar). The choice is remembered.
 - `⌘B` hides and shows the sidebar.
 - **Projects**: projects and their tabs. Tab rows: number, the agent's glyph and color, title (the terminal's title, or the profile name until there is one), folder subtitle (`exited` when the process ended), status on the right.
 - **Agents**: this workspace's running agent tabs grouped by status: WAITING, DONE, WORKING, IDLE. Clicking selects the tab.
@@ -163,7 +163,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 
 ## Panel
 
-Glyph tabs for Files, Changes and History (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing a hidden panel). `⌥⌘B` hides and shows it in every window. Drag its header across the window middle, use its context menu or "Move Panel to Other Side" to switch sides; the side is shared by all windows. Everything follows the current project; with no project it says so.
+Tabs `FILES  CHANGES  HISTORY` (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing a hidden panel). `⌥⌘B` hides and shows it in every window. Drag its header across the window middle, use its context menu or "Move Panel to Other Side" to switch sides; the side is shared by all windows. Everything follows the current project; with no project it says so.
 
 ### Files
 

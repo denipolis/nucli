@@ -158,7 +158,7 @@ pub fn everything(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Vec<
                     select_anywhere(view, workspace_id.clone(), Selected::Project(path.clone()), window, cx)
                 })
                 .subtitle(paths::display(&project.path))
-                .glyph(icons::PROJECT, Some(project.color.map(|color| color.color(theme.dark)).unwrap_or(theme.accent)))
+                .glyph(icons::FOLDER, Some(project.color.map(|color| color.color(theme.dark)).unwrap_or(theme.accent)))
                 .detail("project")
                 .rank(10),
             );
