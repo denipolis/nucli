@@ -3546,6 +3546,7 @@ dependencies = [
  "anyhow",
  "core-graphics 0.24.0",
  "dirs 7.0.0",
+ "embed-resource",
  "futures",
  "gpui",
  "image",

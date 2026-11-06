@@ -82,6 +82,15 @@ fn first_launch(cx: &mut App) -> Settings {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn decodes_folder_urls() {
+        assert_eq!(super::folder_from_url("file:///a%20b/c").unwrap(), std::path::PathBuf::from("/a b/c"));
+        assert!(super::folder_from_url("https://x").is_none());
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn imported() -> Option<Settings> {
     let (mut settings, state) = import::read()?;
@@ -130,8 +139,54 @@ fn apply_keys(cx: &mut App) {
     commands::apply(cx, bindings);
 }
 
+fn folder_from_url(url: &str) -> Option<std::path::PathBuf> {
+    let path = url.strip_prefix("file://")?;
+    let mut decoded = Vec::with_capacity(path.len());
+    let bytes = path.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        let escape = (bytes[index] == b'%')
+            .then(|| bytes.get(index + 1..index + 3))
+            .flatten()
+            .and_then(|hex| u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok());
+        match escape {
+            Some(byte) => {
+                decoded.push(byte);
+                index += 3;
+            }
+            None => {
+                decoded.push(bytes[index]);
+                index += 1;
+            }
+        }
+    }
+    Some(std::path::PathBuf::from(String::from_utf8_lossy(&decoded).into_owned()))
+}
+
+fn open_folders(folders: Vec<std::path::PathBuf>, cx: &mut App) {
+    let store = store::store(cx);
+    let target = store
+        .read(cx)
+        .last_workspace
+        .clone()
+        .filter(|id| store.read(cx).windows.contains_key(id))
+        .or_else(|| store.read(cx).windows.keys().next().cloned());
+    let Some(handle) = target.and_then(|id| window::open(&id, cx)) else { return };
+    let _ = handle.update(cx, |view, window, cx| {
+        window.activate_window();
+        for folder in folders.into_iter().filter(|folder| folder.is_dir()) {
+            actions::open_folder(view, folder, window, cx);
+        }
+    });
+}
+
 fn main() {
-    Application::new().run(|cx: &mut App| {
+    let application = Application::new();
+    let (opened, mut opened_events) = futures::channel::mpsc::unbounded::<Vec<std::path::PathBuf>>();
+    application.on_open_urls(move |urls| {
+        let _ = opened.unbounded_send(urls.iter().filter_map(|url| folder_from_url(url)).collect());
+    });
+    application.run(|cx: &mut App| {
         load_fonts(cx);
         let settings = first_launch(cx);
         cx.set_global(settings);
@@ -174,6 +229,21 @@ fn main() {
             window::open(&id, cx);
         }
         watch_config(cx);
+        let arguments: Vec<std::path::PathBuf> = std::env::args_os()
+            .skip(1)
+            .map(std::path::PathBuf::from)
+            .filter_map(|path| std::fs::canonicalize(path).ok())
+            .collect();
+        if !arguments.is_empty() {
+            open_folders(arguments, cx);
+        }
+        cx.spawn(async move |cx| {
+            use futures::StreamExt;
+            while let Some(folders) = opened_events.next().await {
+                let _ = cx.update(|cx| open_folders(folders, cx));
+            }
+        })
+        .detach();
         #[cfg(debug_assertions)]
         devtools::start(cx);
         cx.activate(true);

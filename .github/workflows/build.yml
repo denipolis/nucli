@@ -39,7 +39,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev libxcb1-dev \
-            libfontconfig-dev libfreetype-dev libvulkan-dev libasound2-dev libssl-dev pkg-config
+            libfontconfig-dev libfreetype-dev libvulkan-dev libasound2-dev libssl-dev pkg-config clang cmake
+      - name: Install DMG tool
+        if: runner.os == 'macOS'
+        run: brew install create-dmg
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}

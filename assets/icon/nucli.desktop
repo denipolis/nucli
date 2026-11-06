@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Nucli
+Comment=A terminal built for AI coding agents
+Exec=nucli %F
+Icon=nucli
+Terminal=false
+Categories=Development;TerminalEmulator;
+StartupWMClass=uk.polishch.nucli
+MimeType=inode/directory;

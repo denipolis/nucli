@@ -57,3 +57,6 @@ core-graphics = "0.24"
 mac-notification-sys = "0.6"
 objc = "0.2"
 plist = "1"
+
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"
