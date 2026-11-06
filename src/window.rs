@@ -75,7 +75,19 @@ pub fn open(workspace: &str, cx: &mut App) -> Option<WindowHandle<WorkspaceView>
         ..Default::default()
     };
     let id = workspace.to_string();
-    let handle = cx.open_window(options, |window, cx| cx.new(|cx| WorkspaceView::new(id, window, cx))).ok()?;
+    let opened = cx.open_window(options, |window, cx| cx.new(|cx| WorkspaceView::new(id, window, cx)));
+    let handle = match opened {
+        Ok(handle) => handle,
+        Err(error) => {
+            let text = format!("Nucli could not open a window: {error:#}");
+            eprintln!("{text}");
+            crate::notify::alert(&text);
+            if cx.windows().is_empty() {
+                cx.quit();
+            }
+            return None;
+        }
+    };
     store.update(cx, |store, cx| {
         store.windows.insert(workspace.to_string(), handle);
         store.last_workspace = Some(workspace.to_string());

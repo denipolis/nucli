@@ -45,6 +45,19 @@ pub fn post(title: &str, text: &str, id: &str) {
     });
 }
 
+#[cfg(windows)]
+pub fn alert(text: &str) {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn MessageBoxW(window: *mut std::ffi::c_void, text: *const u16, caption: *const u16, kind: u32) -> i32;
+    }
+    let wide = |value: &str| value.encode_utf16().chain([0]).collect::<Vec<u16>>();
+    unsafe { MessageBoxW(std::ptr::null_mut(), wide(text).as_ptr(), wide("Nucli").as_ptr(), 0x10) };
+}
+
+#[cfg(not(windows))]
+pub fn alert(_text: &str) {}
+
 #[cfg(target_os = "macos")]
 #[allow(unexpected_cfgs)]
 pub fn badge(count: usize) {

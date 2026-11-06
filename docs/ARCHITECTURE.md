@@ -107,3 +107,5 @@ Tabs for a commit's version of a file are stored as `path@@hash`.
 Debug builds read commands from the file named by `NUCLI_CONTROL`: `keys <keystrokes>`, `type <text>`, `action <command>`, `open <folder>`, `draw` (a full layout and paint without presenting, which also works while the screen is locked), `dump`, `text <tab id>`, `activate`, and on macOS `capture <window id> <png>` and `menu <Menu/Item>`, which prints the native menus and the Dock badge, then performs that item. Lines appended to the file run in order.
 
 Running in a Linux container under Xvfb with a window manager, a software Vulkan driver (`mesa-vulkan-drivers`) and `xdotool` allows real clicks, keys and screenshots with nothing reaching the host's desktop. Starting `dunst` in the app's D-Bus session shows its notifications, and `dunstctl action 0` clicks one.
+
+The `x86_64-pc-windows-gnu` target builds with `mingw-w64` and its tests run under Wine with `CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER=wine`, given a stub `icuuc.dll` exporting `u_strlen`. The app itself does not draw under Wine: older versions cannot compile GPUI's shaders and have no `ThreadPoolTimer`.
