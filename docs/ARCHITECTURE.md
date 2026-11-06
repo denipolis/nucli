@@ -93,6 +93,7 @@ Tabs for a commit's version of a file are stored as `path@@hash`.
 
 - `libc` is pinned to 0.2.186 in `Cargo.lock`. `gpui`'s `xattr` 0.2 dependency needs `libc::ENOATTR`, which newer `libc` versions do not define on Linux. Do not run a plain `cargo update` without checking the Linux build.
 - Platforms consume shift for symbols, so `ctrl-shift-2` arrives as `ctrl-@`. `commands::shifted_alias` also binds the US layout's shifted form of every such key.
+- On Windows a native modal dialog pumps messages, so GPUI tasks run inside whatever update opened it and panic with `RefCell already borrowed`. Show one from its own thread, as `notify::alert` does.
 - `Window::handle_input` panics outside paint: call it from a `canvas` paint closure, not prepaint.
 - Inside `Store::update`, never call anything that reads the store through its global, such as `WorkspaceView` methods: GPUI panics. Put such logic on `Workspace`.
 - Never call `WindowHandle::update` or `WindowHandle::read` from inside a window update, for example from a key action or a panel's click handler: they fail because the window is taken out while it updates, and `read` looks like the window is gone. Use `cx.defer`.

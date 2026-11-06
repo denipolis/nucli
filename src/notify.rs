@@ -52,7 +52,10 @@ pub fn alert(text: &str) {
         fn MessageBoxW(window: *mut std::ffi::c_void, text: *const u16, caption: *const u16, kind: u32) -> i32;
     }
     let wide = |value: &str| value.encode_utf16().chain([0]).collect::<Vec<u16>>();
-    unsafe { MessageBoxW(std::ptr::null_mut(), wide(text).as_ptr(), wide("Nucli").as_ptr(), 0x10) };
+    let (text, caption) = (wide(text), wide("Nucli"));
+    let shown =
+        std::thread::spawn(move || unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), 0x10) });
+    let _ = shown.join();
 }
 
 #[cfg(not(windows))]
