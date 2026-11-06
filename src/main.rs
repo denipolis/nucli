@@ -82,15 +82,6 @@ fn first_launch(cx: &mut App) -> Settings {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn decodes_folder_urls() {
-        assert_eq!(super::folder_from_url("file:///a%20b/c").unwrap(), std::path::PathBuf::from("/a b/c"));
-        assert!(super::folder_from_url("https://x").is_none());
-    }
-}
-
 #[cfg(target_os = "macos")]
 fn imported() -> Option<Settings> {
     let (mut settings, state) = import::read()?;
@@ -248,4 +239,13 @@ fn main() {
         devtools::start(cx);
         cx.activate(true);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn decodes_folder_urls() {
+        assert_eq!(super::folder_from_url("file:///a%20b/c").unwrap(), std::path::PathBuf::from("/a b/c"));
+        assert!(super::folder_from_url("https://x").is_none());
+    }
 }
