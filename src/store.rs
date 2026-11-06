@@ -40,6 +40,7 @@ pub struct Project {
     pub saved: Vec<SavedTab>,
     pub saved_terminals: Vec<SavedTab>,
     pub expanded: BTreeSet<String>,
+    pub languages: BTreeMap<String, String>,
 }
 
 impl Project {
@@ -78,6 +79,7 @@ impl Project {
             open_files: file.open_files,
             active_file: file.active_file,
             file_shown: file.file_shown,
+            languages: file.languages,
             recent_files: file.recent_files,
             last_launcher: file.last_launcher,
             saved: file.tabs,
@@ -143,6 +145,14 @@ impl Workspace {
 
     pub fn ordered_tabs(&self) -> Vec<String> {
         self.all_projects().flat_map(|project| project.tabs.iter().cloned()).collect()
+    }
+
+    pub fn current_project_mut(&mut self) -> Option<&mut Project> {
+        match self.selected.clone() {
+            Some(Selected::Project(path)) => self.project_mut(&path),
+            Some(Selected::Tab(id)) => self.project_of_mut(&id),
+            None => None,
+        }
     }
 
     pub fn current_project(&self) -> Option<&Project> {
@@ -543,6 +553,7 @@ impl Store {
             open_files: project.open_files.clone(),
             active_file: project.active_file.clone(),
             file_shown: project.file_shown,
+            languages: project.languages.clone(),
             recent_files: project.recent_files.clone(),
             last_launcher: project.last_launcher.clone(),
         };

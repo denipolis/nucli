@@ -1026,6 +1026,7 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|view, _: &CommandPalette, window, cx| command_palette(view, window, cx)))
         .on_action(cx.listener(|view, _: &QuickOpen, window, cx| crate::palettes::quick_open(view, window, cx)))
         .on_action(cx.listener(|view, _: &SelectTheme, window, cx| crate::palettes::themes(view, window, cx)))
+        .on_action(cx.listener(|view, _: &SelectLanguage, window, cx| crate::palettes::languages(view, window, cx)))
         .on_action(cx.listener(|view, _: &Close, window, cx| close(view, window, cx)))
         .on_action(cx.listener(|view, _: &CloseProject, window, cx| {
             if let Some(path) = view.current_project_path(cx) {

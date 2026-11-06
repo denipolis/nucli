@@ -284,6 +284,40 @@ pub fn themes(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
     view.show_palette(palette, window, cx);
 }
 
+pub fn languages(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    let Some(editor) = crate::file_view::active_editor(view, cx) else { return };
+    let editor = editor.read(cx);
+    let chosen = editor.language;
+    let detected = crate::highlight::language_name(&editor.full).unwrap_or(crate::highlight::PLAIN_TEXT);
+    let theme = crate::ui::theme(cx);
+    let (plain, plain_color) = icons::file("a.txt");
+    let mut items = vec![
+        Item::new("Auto Detect", |view, _, cx| crate::file_view::set_active_language(view, None, cx))
+            .glyph(icons::AGENT, Some(theme.accent))
+            .detail(detected),
+        Item::new(crate::highlight::PLAIN_TEXT, |view, _, cx| {
+            crate::file_view::set_active_language(view, Some(crate::highlight::PLAIN_TEXT), cx)
+        })
+        .glyph(plain, Some(plain_color.color(theme.dark))),
+    ];
+    for (name, sample) in crate::highlight::LANGUAGES {
+        let (glyph, color) = icons::file(sample);
+        items.push(
+            Item::new(name, move |view, _, cx| crate::file_view::set_active_language(view, Some(name), cx))
+                .glyph(glyph, Some(color.color(theme.dark))),
+        );
+    }
+    let initial = match chosen {
+        None => 0,
+        Some(crate::highlight::PLAIN_TEXT) => 1,
+        Some(name) => {
+            crate::highlight::LANGUAGES.iter().position(|(known, _)| *known == name).map_or(0, |index| index + 2)
+        }
+    };
+    let palette = cx.new(|cx| Palette::new("language", "select language", items, initial, cx));
+    view.show_palette(palette, window, cx);
+}
+
 pub fn branches(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     let Some(dir) = view
         .selected_session(cx)

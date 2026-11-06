@@ -224,7 +224,7 @@ One row of small framed chips directly under the selected tab, in the terminal's
 - The project's `±files +added -removed` (click: Changes), when there are changes.
 - The foreground program, unless it is the tab's shell.
 
-In the file view the same row shows data only: line and column, language with its file glyph, `+added -removed` of the file, and the commit for a commit's version.
+In the file view the same row shows data only: line and column, language with its file glyph (click: choose another language, Auto Detect goes back, and the choice is remembered per file), `+added -removed` of the file, and the commit for a commit's version.
 
 The row is hidden for projects and settings. An invalid settings or keybindings file shows its error in red on this row, also in those views.
 

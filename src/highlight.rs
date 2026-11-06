@@ -79,39 +79,52 @@ const MARKDOWN_INJECTIONS: &str = r#"
   (#set! injection.include-children))
 "#;
 
-const HIGHLIGHTED: [&str; 20] = [
-    "Rust",
-    "JavaScript",
-    "TypeScript",
-    "TSX",
-    "Python",
-    "Go",
-    "JSON",
-    "TOML",
-    "YAML",
-    "Shell",
-    "C",
-    "C++",
-    "CSS",
-    "HTML",
-    "Markdown",
-    "Java",
-    "Ruby",
-    "Swift",
-    "Lua",
-    "Makefile",
+pub const PLAIN_TEXT: &str = "Plain Text";
+
+pub const LANGUAGES: [(&str, &str); 20] = [
+    ("C", "a.c"),
+    ("C++", "a.cpp"),
+    ("CSS", "a.css"),
+    ("Go", "a.go"),
+    ("HTML", "a.html"),
+    ("Java", "a.java"),
+    ("JavaScript", "a.js"),
+    ("JSON", "a.json"),
+    ("Lua", "a.lua"),
+    ("Makefile", "Makefile"),
+    ("Markdown", "a.md"),
+    ("Python", "a.py"),
+    ("Ruby", "a.rb"),
+    ("Rust", "a.rs"),
+    ("Shell", "a.sh"),
+    ("Swift", "a.swift"),
+    ("TOML", "a.toml"),
+    ("TSX", "a.tsx"),
+    ("TypeScript", "a.ts"),
+    ("YAML", "a.yml"),
 ];
+
+pub fn known_language(name: &str) -> Option<&'static str> {
+    if name == PLAIN_TEXT {
+        return Some(PLAIN_TEXT);
+    }
+    LANGUAGES.iter().map(|(known, _)| *known).find(|known| *known == name)
+}
+
+pub fn sample_file(name: &str) -> Option<&'static str> {
+    LANGUAGES.iter().find(|(known, _)| *known == name).map(|(_, sample)| *sample)
+}
 
 pub fn language_name(path: &Path) -> Option<&'static str> {
     let name = path.file_name()?.to_str()?.to_lowercase();
     language(&name).or_else(|| language(&path.extension()?.to_str()?.to_lowercase()))
 }
 
-pub fn highlight(path: &Path, text: &str) -> Option<Vec<(Range<usize>, Token)>> {
+pub fn highlight(name: &str, text: &str) -> Option<Vec<(Range<usize>, Token)>> {
     if text.len() > MAX_SIZE {
         return None;
     }
-    let root = config(language_name(path)?)?;
+    let root = config(name)?;
     let mut highlighter = Highlighter::new();
     let events = highlighter
         .highlight(root, text.as_bytes(), None, None, |name: &str| config(language(&name.to_lowercase())?))
@@ -202,9 +215,9 @@ fn language(key: &str) -> Option<&'static str> {
 }
 
 fn config(name: &str) -> Option<&'static HighlightConfiguration> {
-    static CONFIGS: [OnceLock<Option<HighlightConfiguration>>; HIGHLIGHTED.len()] =
-        [const { OnceLock::new() }; HIGHLIGHTED.len()];
-    let index = HIGHLIGHTED.iter().position(|known| *known == name)?;
+    static CONFIGS: [OnceLock<Option<HighlightConfiguration>>; LANGUAGES.len()] =
+        [const { OnceLock::new() }; LANGUAGES.len()];
+    let index = LANGUAGES.iter().position(|(known, _)| *known == name)?;
     CONFIGS[index].get_or_init(|| build(name)).as_ref()
 }
 
@@ -309,7 +322,7 @@ mod tests {
     use super::*;
 
     fn tokens(path: &str, text: &str) -> Vec<(String, Token)> {
-        highlight(Path::new(path), text)
+        highlight(language_name(Path::new(path)).unwrap(), text)
             .unwrap()
             .into_iter()
             .map(|(range, token)| (text[range].to_string(), token))
@@ -328,12 +341,12 @@ mod tests {
         assert_eq!(language_name(Path::new("build.gradle.kts")), Some("Kotlin"));
         assert_eq!(language_name(Path::new("LICENSE")), None);
         assert_eq!(language_name(Path::new("archive.xyz")), None);
-        assert!(highlight(Path::new("Dockerfile"), "FROM alpine").is_none());
+        assert!(highlight("Dockerfile", "FROM alpine").is_none());
     }
 
     #[test]
     fn every_grammar_builds() {
-        for name in HIGHLIGHTED {
+        for (name, _) in LANGUAGES {
             assert!(config(name).is_some(), "{name}");
         }
     }
@@ -347,7 +360,7 @@ mod tests {
         assert!(found.contains(&("main".into(), Token::Function)));
         assert!(found.contains(&("\"a\\n\"".into(), Token::String)));
         assert!(!found.iter().any(|(text, _)| text == "x"));
-        let ranges = highlight(Path::new("main.rs"), text).unwrap();
+        let ranges = highlight("Rust", text).unwrap();
         assert!(ranges.windows(2).all(|pair| pair[0].0.end <= pair[1].0.start));
         let found = tokens("main.go", "func main() { fmt.Println(1.5) }");
         assert!(found.contains(&("main".into(), Token::Function)));
@@ -368,6 +381,6 @@ mod tests {
 
     #[test]
     fn rejects_large_text() {
-        assert!(highlight(Path::new("a.json"), &" ".repeat(MAX_SIZE + 1)).is_none());
+        assert!(highlight("JSON", &" ".repeat(MAX_SIZE + 1)).is_none());
     }
 }

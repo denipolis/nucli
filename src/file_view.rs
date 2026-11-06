@@ -53,10 +53,32 @@ pub fn editor_for(
     }
     let (path, commit) = spec_parts(file);
     let (root, path, commit) = (project.to_path_buf(), path.to_string(), commit.map(String::from));
-    let editor = cx.new(|cx| Editor::new(root, path, commit, cx));
+    let language = view
+        .state(cx)
+        .and_then(|state| state.project(project))
+        .and_then(|project| project.languages.get(file))
+        .and_then(|name| crate::highlight::known_language(name));
+    let editor = cx.new(|cx| Editor::new(root, path, commit, language, cx));
     cx.observe(&editor, |_, _, cx| cx.notify()).detach();
     view.files.open.insert(id, editor.clone());
     editor
+}
+
+pub fn set_active_language(view: &WorkspaceView, language: Option<&'static str>, cx: &mut Context<WorkspaceView>) {
+    let Some(editor) = active_editor(view, cx) else { return };
+    editor.update(cx, |editor, cx| editor.set_language(language, cx));
+    let workspace = view.workspace.clone();
+    store::store(cx).update(cx, |store, cx| {
+        if let Some(project) = store.workspace_mut(&workspace).and_then(|state| state.current_project_mut())
+            && let Some(file) = project.active_file.clone()
+        {
+            match language {
+                Some(language) => project.languages.insert(file, language.to_string()),
+                None => project.languages.remove(&file),
+            };
+        }
+        store.changed(cx);
+    });
 }
 
 pub fn active_editor(view: &WorkspaceView, cx: &App) -> Option<Entity<Editor>> {
@@ -247,7 +269,7 @@ pub fn hide(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Work
 pub struct FileStatus {
     pub position: Option<String>,
     pub language: Option<&'static str>,
-    pub name: String,
+    pub icon_file: String,
     pub added: usize,
     pub removed: usize,
     pub commit: Option<String>,
@@ -259,8 +281,13 @@ pub fn file_status(view: &WorkspaceView, cx: &App) -> Option<FileStatus> {
     let text = editor.content == Content::Text;
     Some(FileStatus {
         position: text.then(|| editor.position_label()),
-        language: text.then(|| crate::highlight::language_name(&editor.full).unwrap_or("Plain Text")),
-        name: Path::new(&editor.full).file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default(),
+        language: text.then(|| editor.language_label()),
+        icon_file: match editor.language {
+            Some(language) => crate::highlight::sample_file(language).unwrap_or("a.txt").to_string(),
+            None => {
+                Path::new(&editor.full).file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default()
+            }
+        },
         added: editor.added,
         removed: editor.removed,
         commit: editor.commit.clone(),

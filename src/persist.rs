@@ -124,6 +124,8 @@ pub struct ProjectFile {
     pub open_files: Vec<String>,
     pub active_file: Option<String>,
     pub file_shown: bool,
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub languages: std::collections::BTreeMap<String, String>,
     pub recent_files: Vec<String>,
     pub last_launcher: Option<String>,
 }

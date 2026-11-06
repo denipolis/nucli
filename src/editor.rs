@@ -203,7 +203,7 @@ pub fn file_text(rows: &[Row], trailing_newline: bool) -> String {
     text
 }
 
-fn highlights(path: &Path, rows: &[Row]) -> Vec<Vec<(Range<usize>, Token)>> {
+fn highlights(language: Option<&str>, rows: &[Row]) -> Vec<Vec<(Range<usize>, Token)>> {
     let mut result: Vec<Vec<(Range<usize>, Token)>> = vec![Vec::new(); rows.len()];
     for removed_side in [false, true] {
         let skip = if removed_side { LineKind::Added } else { LineKind::Removed };
@@ -216,7 +216,7 @@ fn highlights(path: &Path, rows: &[Row]) -> Vec<Vec<(Range<usize>, Token)>> {
                 text.push('\n');
             }
         }
-        let Some(tokens) = highlight::highlight(path, &text) else { continue };
+        let Some(tokens) = language.and_then(|language| highlight::highlight(language, &text)) else { continue };
         for (range, token) in tokens {
             let mut slot = offsets.partition_point(|(start, _)| *start <= range.start).saturating_sub(1);
             let mut start = range.start;
@@ -285,10 +285,17 @@ pub struct Editor {
     first_load: bool,
     pub added: usize,
     pub removed: usize,
+    pub language: Option<&'static str>,
 }
 
 impl Editor {
-    pub fn new(project: PathBuf, path: String, commit: Option<String>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        project: PathBuf,
+        path: String,
+        commit: Option<String>,
+        language: Option<&'static str>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let full = if Path::new(&path).is_absolute() { PathBuf::from(&path) } else { project.join(&path) };
         let mut editor = Editor {
             find: None,
@@ -317,6 +324,7 @@ impl Editor {
             first_load: true,
             added: 0,
             removed: 0,
+            language,
         };
         editor.reload(cx);
         cx.spawn(async move |this, cx| {
@@ -342,6 +350,35 @@ impl Editor {
         }
     }
 
+    fn current_language(&self) -> Option<&'static str> {
+        self.language.or_else(|| highlight::language_name(&self.full))
+    }
+
+    pub fn language_label(&self) -> &'static str {
+        self.current_language().unwrap_or(highlight::PLAIN_TEXT)
+    }
+
+    pub fn set_language(&mut self, language: Option<&'static str>, cx: &mut Context<Self>) {
+        self.language = language;
+        self.refresh_tokens(cx);
+        cx.notify();
+    }
+
+    fn refresh_tokens(&mut self, cx: &mut Context<Self>) {
+        let rows = self.rows.clone();
+        let language = self.current_language();
+        cx.spawn(async move |this, cx| {
+            let tokens = cx.background_executor().spawn(async move { highlights(language, &rows) }).await;
+            let _ = this.update(cx, |editor, cx| {
+                if tokens.len() == editor.rows.len() {
+                    editor.tokens = tokens;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
     pub fn is_editable(&self) -> bool {
         self.commit.is_none() && self.content == Content::Text
     }
@@ -351,13 +388,13 @@ impl Editor {
             return;
         }
         let (project, path, commit) = (self.project.clone(), self.path.clone(), self.commit.clone());
-        let full = self.full.clone();
+        let language = self.current_language();
         cx.spawn(async move |this, cx| {
             let (loaded, tokens) = cx
                 .background_executor()
                 .spawn(async move {
                     let loaded = load(&project, &path, commit.as_deref());
-                    let tokens = highlights(&full, &loaded.rows);
+                    let tokens = highlights(language, &loaded.rows);
                     (loaded, tokens)
                 })
                 .await;
@@ -473,18 +510,7 @@ impl Editor {
         self.tokens.resize(self.rows.len(), Vec::new());
         self.scroll.scroll_to_item(self.cursor.row, ScrollStrategy::Top);
         cx.notify();
-        let rows = self.rows.clone();
-        let full = self.full.clone();
-        cx.spawn(async move |this, cx| {
-            let tokens = cx.background_executor().spawn(async move { highlights(&full, &rows) }).await;
-            let _ = this.update(cx, |editor, cx| {
-                if tokens.len() == editor.rows.len() {
-                    editor.tokens = tokens;
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
+        self.refresh_tokens(cx);
     }
 
     fn delete_selection(&mut self) -> bool {
@@ -1310,7 +1336,7 @@ mod tests {
             (LineKind::Removed, "let old = 1;"),
             (LineKind::Added, "let x = 2;"),
         ]);
-        let tokens = highlights(Path::new("a.rs"), &rows);
+        let tokens = highlights(Some("Rust"), &rows);
         assert_eq!(tokens.len(), 3);
         assert!(tokens[0].iter().any(|(range, token)| *range == (0..2) && *token == Token::Keyword));
         assert!(tokens[1].iter().any(|(range, token)| *range == (0..3) && *token == Token::Keyword));

@@ -35,11 +35,13 @@ fn file_chips(view: &WorkspaceView, theme: &Theme, cx: &App) -> Vec<AnyElement> 
         chips.push(frame("status-position", theme).child(position).into_any_element());
     }
     if let Some(language) = file.language {
-        let (glyph, color) = icons::file(&file.name);
+        let (glyph, color) = icons::file(&file.icon_file);
         chips.push(
             frame("status-language", theme)
+                .hover(|style| style.bg(theme.hover))
                 .child(div().flex_none().text_color(color.color(theme.dark)).child(glyph))
                 .child(language)
+                .on_click(|_, window, cx| window.dispatch_action(Box::new(crate::commands::SelectLanguage), cx))
                 .into_any_element(),
         );
     }
