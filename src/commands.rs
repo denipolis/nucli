@@ -185,7 +185,7 @@ pub const COMMANDS: &[Command] = &[
     command!("next_change", "Next Change", NextChange, "f7", "f7", "FileView"),
     command!("previous_change", "Previous Change", PreviousChange, "shift-f7", "shift-f7", "FileView"),
     command!("hide_file_view", "Hide File View", HideFileView, "escape", "escape", "FileView"),
-    command!("open_settings", "Open Settings", OpenSettings, "cmd-,", "ctrl-,"),
+    command!("open_settings", "Settings…", OpenSettings, "cmd-,", "ctrl-,"),
     command!("open_settings_file", "Open Settings File", OpenSettingsFile, "", ""),
     command!("open_keybindings", "Open Keybindings", OpenKeybindings, "", ""),
     command!("open_keybindings_file", "Open Keybindings File", OpenKeybindingsFile, "", ""),

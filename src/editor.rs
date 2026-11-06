@@ -444,6 +444,9 @@ impl Editor {
             self.anchor = None;
         }
         self.first_load = false;
+        if self.find.is_some() {
+            self.search(false, cx);
+        }
         cx.notify();
     }
 

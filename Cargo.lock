@@ -3562,6 +3562,7 @@ dependencies = [
  "futures",
  "gpui",
  "image",
+ "libc",
  "mac-notification-sys",
  "notify",
  "notify-rust",

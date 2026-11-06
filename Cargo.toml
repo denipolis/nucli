@@ -61,3 +61,6 @@ plist = "1"
 
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "3"
+
+[target."cfg(unix)".dependencies]
+libc = "0.2"

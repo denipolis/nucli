@@ -56,11 +56,15 @@ pub fn open(workspace: &str, cx: &mut App) -> Option<WindowHandle<WorkspaceView>
         }
         store.restore(workspace, cx);
     });
-    let bounds = state
-        .window
-        .bounds
-        .map(|[x, y, w, h]| Bounds::new(point(px(x), px(y)), size(px(w), px(h))))
-        .unwrap_or_else(|| Bounds::centered(None, size(px(1280.0), px(800.0)), cx));
+    let bounds =
+        state.window.bounds.map(|[x, y, w, h]| Bounds::new(point(px(x), px(y)), size(px(w), px(h)))).unwrap_or_else(
+            || {
+                let cascade = px(28.0) * cx.windows().len() as f32;
+                let mut bounds = Bounds::centered(None, size(px(1280.0), px(800.0)), cx);
+                bounds.origin += point(cascade, cascade);
+                bounds
+            },
+        );
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(TitlebarOptions {

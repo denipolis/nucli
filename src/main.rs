@@ -147,6 +147,31 @@ fn watch_config(cx: &mut App) {
     .detach();
 }
 
+#[cfg(unix)]
+fn quit_on_terminate(cx: &mut App) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static TERMINATING: AtomicBool = AtomicBool::new(false);
+    extern "C" fn terminating(_: libc::c_int) {
+        TERMINATING.store(true, Ordering::Relaxed);
+    }
+    unsafe {
+        libc::signal(libc::SIGTERM, terminating as *const () as libc::sighandler_t);
+    }
+    cx.spawn(async move |cx| {
+        loop {
+            cx.background_executor().timer(std::time::Duration::from_millis(200)).await;
+            if TERMINATING.load(Ordering::Relaxed) {
+                let _ = cx.update(|cx| cx.quit());
+                break;
+            }
+        }
+    })
+    .detach();
+}
+
+#[cfg(not(unix))]
+fn quit_on_terminate(_: &mut App) {}
+
 fn apply_keys(cx: &mut App) {
     let mut bindings = text_input::bindings();
     bindings.extend(editor::bindings());
@@ -211,6 +236,7 @@ fn main() {
             cx.set_menus(commands::menus());
         }
         cx.on_action(|_: &Quit, cx| cx.defer(actions::request_quit));
+        quit_on_terminate(cx);
         let store = store::init(cx);
         store.update(cx, |store, cx| {
             store.start_polling(cx);

@@ -248,7 +248,7 @@ The row is hidden for projects and settings. An invalid settings or keybindings 
 
 ## Restore
 
-- When `restore_tabs` is on, quitting saves every tab: kind, profile or shell, name, color, conversation id, folder, and the last 5000 lines of terminal output.
+- When `restore_tabs` is on, quitting, also when the app is asked to terminate on Linux and macOS, saves every tab: kind, profile or shell, name, color, conversation id, folder, and the last 5000 lines of terminal output.
 - On launch tabs reopen without stealing focus, then each window selects its saved tab. Agents resume their conversation (a Claude conversation whose file is gone starts fresh). Shells start in their last folder and show the previous output dimmed above a `── restored ──` line.
 - Per project: open files, active file, active tab, recent files, last used launcher. Per window: selection, splits, sidebar and panel state, size and position.
 

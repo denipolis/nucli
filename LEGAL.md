@@ -34,6 +34,7 @@ Direct dependencies, declared in `Cargo.toml`. Exact versions of everything, tra
 | [embed-resource](https://github.com/nabijaczleweli/rust-embed-resource) | MIT | Windows only, build time: the executable icon |
 | [objc](https://github.com/SSheldon/rust-objc) | MIT | macOS only: the Dock badge |
 | [plist](https://github.com/ebarnard/rust-plist) | MIT | macOS only: reading Nucli 1 preferences once on first launch |
+| [libc](https://github.com/rust-lang/libc) | MIT OR Apache-2.0 | Linux and macOS only: saving terminal output when the app is asked to terminate |
 | [serde](https://github.com/serde-rs/serde), [serde_json](https://github.com/serde-rs/json) | MIT OR Apache-2.0 | Settings and state files |
 
 Build-time only, not bundled: [create-dmg](https://github.com/create-dmg/create-dmg) (MIT) makes the macOS disk image in CI.
