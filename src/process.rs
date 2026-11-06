@@ -80,6 +80,6 @@ mod tests {
         assert_eq!(command_name(&parts(&["/usr/bin/node", "/opt/bin/claude", "--resume"]), "node"), "claude");
         assert_eq!(command_name(&parts(&["-zsh"]), "zsh"), "zsh");
         assert_eq!(command_name(&parts(&["C:\\bin\\codex.exe"]), ""), "codex");
-        assert_eq!(command_name(&[], "vim"), "vim");
+        assert_eq!(command_name(&[], "less"), "less");
     }
 }

@@ -74,6 +74,7 @@ fn run(line: &str, cx: &mut App) {
                 eprintln!("TEXT {}", session.read(cx).terminal.text(40));
             }
         }
+        "draw" => window.draw(cx).clear(),
         "activate" => {
             cx.activate(true);
             window.activate_window();
