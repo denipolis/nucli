@@ -103,9 +103,6 @@ fn status(view: &WorkspaceView, cx: &App) -> Div {
             });
     }
     let (working, waiting, done) = counts(view, cx);
-    if working + waiting + done == 0 {
-        return line.child(div().text_color(theme.faint).child("ready"));
-    }
     let count = |glyph: &'static str, color, text: String| {
         div()
             .flex()
