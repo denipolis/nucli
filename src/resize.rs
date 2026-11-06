@@ -81,8 +81,7 @@ pub fn mouse_move(
                 }
             }
             Drag::Terminal => {
-                let status = (crate::settings::get(cx).ui_font_size() * 1.9).round();
-                state.window.terminal_height = (height - status - y).clamp(80.0, (height - 160.0).max(80.0));
+                state.window.terminal_height = (height - y).clamp(80.0, (height - 160.0).max(80.0));
             }
             _ => {}
         }

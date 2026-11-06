@@ -15,6 +15,8 @@ pub struct PanelState {
     pub files: Option<gpui::Entity<crate::files::FilesPanel>>,
     pub changes: Option<gpui::Entity<crate::changes::ChangesPanel>>,
     pub commits: Option<gpui::Entity<crate::commits::CommitsPanel>>,
+    terminal_tabs: gpui::ScrollHandle,
+    revealed_terminal: Option<String>,
 }
 
 fn panel_project(view: &WorkspaceView, cx: &App) -> Option<std::path::PathBuf> {
@@ -26,6 +28,7 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
     let tab = view.store(cx).ui.panel_tab;
     let width = view.state(cx).map(|state| state.window.panel_width).unwrap_or(280.0);
     let side = view.store(cx).ui.panel_side;
+    let compact = width < 250.0;
     let header_tab = |id: &'static str, glyph: &'static str, label: &'static str, target: PanelTab| {
         let active = tab == target;
         div()
@@ -36,7 +39,7 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
             .when(active, |this| this.bg(theme.accent).text_color(theme.on_accent))
             .when(!active, |this| this.text_color(theme.muted).hover(|style| style.text_color(theme.text)))
             .child(glyph)
-            .child(label)
+            .when(active || !compact, |this| this.child(label))
             .on_click(move |_, _, cx| {
                 store::store(cx).update(cx, |store, cx| {
                     store.ui.panel_tab = target;
@@ -112,7 +115,21 @@ pub fn terminal_panel(
     let active = project.active_terminal.clone().or_else(|| project.terminals.first().cloned())?;
     let session = view.store(cx).session(&active)?.clone();
     let height = state.window.terminal_height;
-    let mut strip = div().flex().flex_none().items_center().gap(px(2.0)).pl(px(6.0)).pr(px(6.0)).py(px(3.0));
+    if view.panel.revealed_terminal.as_ref() != Some(&active) {
+        if let Some(index) = project.terminals.iter().position(|id| *id == active) {
+            view.panel.terminal_tabs.scroll_to_item(index);
+        }
+        view.panel.revealed_terminal = Some(active.clone());
+    }
+    let mut tabs = div()
+        .id("terminal-tabs")
+        .flex()
+        .flex_shrink()
+        .min_w_0()
+        .items_center()
+        .gap(px(2.0))
+        .track_scroll(&view.panel.terminal_tabs)
+        .overflow_x_scroll();
     for id in &project.terminals {
         let Some(entity) = view.store(cx).session(id) else { continue };
         let data = entity.read(cx);
@@ -137,11 +154,12 @@ pub fn terminal_panel(
         let (select_id, menu_id, close_id) = (id.clone(), id.clone(), id.clone());
         let path = project.path.clone();
         let group = SharedString::from(format!("terminal-tab-{id}"));
-        strip = strip.child(
+        tabs = tabs.child(
             div()
                 .id(SharedString::from(format!("terminal-tab-{id}")))
                 .group(group.clone())
                 .flex()
+                .flex_none()
                 .items_center()
                 .gap(px(8.0))
                 .px(px(6.0))
@@ -194,13 +212,22 @@ pub fn terminal_panel(
         div().id(id).px(px(6.0)).text_color(theme.muted).hover(|style| style.text_color(theme.accent)).child(glyph)
     };
     let new_path = project.path.clone();
-    strip = strip
-        .child(button("terminal-new", icons::ADD).on_click(
+    let strip = div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(2.0))
+        .pl(px(6.0))
+        .pr(px(6.0))
+        .py(px(3.0))
+        .child(tabs)
+        .child(button("terminal-new", icons::ADD).flex_none().on_click(
             cx.listener(move |view, _, window, cx| crate::actions::new_terminal_in(view, &new_path, window, cx)),
         ))
         .child(div().flex_1())
         .child(
             button("terminal-toggle", if shown { icons::CHEVRON_DOWN } else { icons::CHEVRON_UP })
+                .flex_none()
                 .on_click(cx.listener(move |view, _, window, cx| toggle_terminal_panel(view, !shown, window, cx))),
         );
     let panel = div().flex().flex_col().flex_none().bg(theme.background).border_t_1().border_color(theme.border);

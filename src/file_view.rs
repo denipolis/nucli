@@ -19,6 +19,8 @@ use crate::window::WorkspaceView;
 #[derive(Default)]
 pub struct Files {
     pub open: HashMap<String, Entity<Editor>>,
+    pub tabs: gpui::ScrollHandle,
+    pub revealed_tab: Option<String>,
 }
 
 const COMMIT_MARK: &str = "@@";
@@ -361,18 +363,25 @@ pub fn open_with_menu(view: &WorkspaceView, file: PathBuf, cx: &App) -> Vec<Item
 }
 
 fn tab_strip(
-    view: &WorkspaceView,
+    view: &mut WorkspaceView,
     project: &Path,
     files: &[String],
     active: Option<&str>,
     cx: &mut Context<WorkspaceView>,
 ) -> impl IntoElement {
     let theme = ui::theme(cx);
+    if view.files.revealed_tab.as_deref() != active {
+        if let Some(index) = active.and_then(|active| files.iter().position(|file| file == active)) {
+            view.files.tabs.scroll_to_item(index + 1);
+        }
+        view.files.revealed_tab = active.map(String::from);
+    }
     let mut strip = div()
         .id("file-tabs")
         .flex()
         .flex_none()
         .items_center()
+        .track_scroll(&view.files.tabs)
         .overflow_x_scroll()
         .border_b_1()
         .border_color(theme.border)

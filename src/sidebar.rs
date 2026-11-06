@@ -140,6 +140,7 @@ pub fn tab_glyph(session: &Session) -> (&'static str, Option<crate::theme::ItemC
 fn header(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoElement {
     let theme = ui::theme(cx);
     let current = view.store(cx).ui.sidebar_tab;
+    let compact = view.state(cx).is_some_and(|state| state.window.sidebar_width < 260.0);
     let tab = |id: &'static str, glyph: &'static str, label: &'static str, tab: SidebarTab| {
         let active = current == tab;
         div()
@@ -150,7 +151,7 @@ fn header(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoEle
             .when(active, |this| this.bg(theme.accent).text_color(theme.on_accent))
             .when(!active, |this| this.text_color(theme.muted).hover(|style| style.text_color(theme.text)))
             .child(glyph)
-            .child(label)
+            .when(active || !compact, |this| this.child(label))
             .on_click(move |_, window, cx| {
                 store::store(cx).update(cx, |store, cx| {
                     store.ui.sidebar_tab = tab;

@@ -411,7 +411,7 @@ fn appearance(current: &Settings, system_dark: bool, theme: &Theme) -> Vec<AnyEl
         group(theme)
             .child(row(
                 "Mode",
-                "Which side of a light and dark theme to use",
+                "Light or dark side of a theme",
                 segments(
                     "appearance",
                     &modes,
