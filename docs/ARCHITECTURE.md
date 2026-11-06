@@ -103,6 +103,7 @@ Tabs for a commit's version of a file are stored as `path@@hash`.
 - `Window::handle_input` panics outside paint: call it from a `canvas` paint closure, not prepaint.
 - Inside `Store::update`, never call anything that reads the store through its global, such as `WorkspaceView` methods: GPUI panics. Put such logic on `Workspace`.
 - Never call `WindowHandle::update` or `WindowHandle::read` from inside a window update, for example from a key action or a panel's click handler: they fail because the window is taken out while it updates, and `read` looks like the window is gone. Use `cx.defer`.
+- On Windows `window_control_area(Drag)` turns the whole element into a window caption, so clicks on its children never arrive. The title bar does not use it: Windows draws its own title bar for moving the window.
 - GPUI runs key bindings before key listeners. Recording a shortcut uses `App::intercept_keystrokes`, which runs first, so the key does not also trigger its command. A plain `on_key_down` would.
 - `Window::dispatch_event` returns a private type, so input cannot be simulated with it from outside `gpui`.
 - GPUI does not paint while the macOS screen is locked, and window captures come back black. It also stops presenting while a window is fully covered, so captures of a window behind others show an old frame.

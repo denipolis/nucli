@@ -139,7 +139,6 @@ pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceV
         .bg(theme.surface)
         .border_b_1()
         .border_color(theme.border)
-        .window_control_area(gpui::WindowControlArea::Drag)
         .on_mouse_down(MouseButton::Left, cx.listener(|view, _, _, _| view.dragging_titlebar = true))
         .on_mouse_up(MouseButton::Left, cx.listener(|view, _, _, _| view.dragging_titlebar = false))
         .on_mouse_move(cx.listener(|view, event: &gpui::MouseMoveEvent, window, _| {
