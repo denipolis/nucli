@@ -244,17 +244,27 @@ pub fn hide(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Work
     cx.notify();
 }
 
-pub fn cursor_label(view: &WorkspaceView, cx: &App) -> Option<String> {
-    if !view.file_shown(cx) {
-        return None;
-    }
+pub struct FileStatus {
+    pub position: Option<String>,
+    pub language: Option<&'static str>,
+    pub name: String,
+    pub added: usize,
+    pub removed: usize,
+    pub commit: Option<String>,
+}
+
+pub fn file_status(view: &WorkspaceView, cx: &App) -> Option<FileStatus> {
     let editor = active_editor(view, cx)?;
     let editor = editor.read(cx);
-    if editor.content != Content::Text {
-        return None;
-    }
-    let language = crate::highlight::language_name(&editor.full).unwrap_or("Plain Text");
-    Some(format!("{}  {language}", editor.position_label()))
+    let text = editor.content == Content::Text;
+    Some(FileStatus {
+        position: text.then(|| editor.position_label()),
+        language: text.then(|| crate::highlight::language_name(&editor.full).unwrap_or("Plain Text")),
+        name: Path::new(&editor.full).file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default(),
+        added: editor.added,
+        removed: editor.removed,
+        commit: editor.commit.clone(),
+    })
 }
 
 pub fn any_dirty(view: &WorkspaceView, cx: &App) -> bool {
@@ -412,7 +422,7 @@ fn tab_strip(
     strip
 }
 
-fn path_bar(view: &WorkspaceView, editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> impl IntoElement {
+fn path_bar(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> impl IntoElement {
     let theme = ui::theme(cx);
     let data = editor.read(cx);
     let display = if Path::new(&data.path).is_absolute() {
@@ -420,16 +430,14 @@ fn path_bar(view: &WorkspaceView, editor: &Entity<Editor>, cx: &mut Context<Work
     } else {
         data.path.clone()
     };
-    let crumbs = display.replace(['/', '\\'], "  ›  ");
-    let (added, removed, content) = (data.added, data.removed, data.content.clone());
+    let crumbs = display.replace(['/', '\\'], " › ");
+    let (changes, content) = (data.added + data.removed, data.content.clone());
     let full = data.full.clone();
-    let commit = data.commit.clone();
     let button = |id: &'static str, glyph: &'static str| {
         div().id(id).px(px(5.0)).text_color(theme.muted).hover(|style| style.text_color(theme.accent)).child(glyph)
     };
     let (previous, next) = (editor.clone(), editor.clone());
     let (default_app, reveal) = (full.clone(), full.clone());
-    let position = cursor_label(view, cx);
     div()
         .flex()
         .flex_none()
@@ -440,25 +448,15 @@ fn path_bar(view: &WorkspaceView, editor: &Entity<Editor>, cx: &mut Context<Work
         .border_b_1()
         .border_color(theme.border)
         .child(div().flex_1().min_w_0().truncate().text_color(theme.muted).child(crumbs))
-        .when_some(position, |this, position| this.child(div().flex_none().text_color(theme.muted).child(position)))
-        .when_some(commit, |this, commit| {
-            this.child(div().text_color(theme.yellow).child(format!(
-                "{} {}",
-                icons::COMMIT,
-                &commit[..commit.len().min(7)]
-            )))
-        })
-        .when(added + removed > 0, |this| {
-            this.child(div().text_color(theme.green).child(format!("+{added}")))
-                .child(div().text_color(theme.red).child(format!("-{removed}")))
-                .child(
-                    button("change-previous", icons::ARROW_UP)
-                        .on_click(move |_, _, cx| previous.update(cx, |editor, cx| editor.jump_change(false, cx))),
-                )
-                .child(
-                    button("change-next", icons::ARROW_DOWN)
-                        .on_click(move |_, _, cx| next.update(cx, |editor, cx| editor.jump_change(true, cx))),
-                )
+        .when(changes > 0, |this| {
+            this.child(
+                button("change-previous", icons::ARROW_UP)
+                    .on_click(move |_, _, cx| previous.update(cx, |editor, cx| editor.jump_change(false, cx))),
+            )
+            .child(
+                button("change-next", icons::ARROW_DOWN)
+                    .on_click(move |_, _, cx| next.update(cx, |editor, cx| editor.jump_change(true, cx))),
+            )
         })
         .when(content != Content::Missing, |this| {
             this.child(button("file-open", icons::LINK).on_click(cx.listener(
@@ -601,7 +599,7 @@ pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<W
         .bg(theme.background)
         .on_action(cx.listener(|view, _: &crate::commands::HideFileView, window, cx| hide(view, window, cx)))
         .child(tab_strip(view, &project.path, &project.open_files, Some(&active), cx))
-        .child(path_bar(view, &editor, cx))
+        .child(path_bar(&editor, cx))
         .child(div().flex_1().min_h_0().child(body))
         .into_any_element()
 }

@@ -19,7 +19,10 @@ fn location(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement
     let detail = if view.settings.is_some() {
         Some("settings".to_string())
     } else if view.file_shown(cx) {
-        project.and_then(|project| project.active_file.clone())
+        project.and_then(|project| project.active_file.as_deref()).map(|file| {
+            let path = file.split("@@").next().unwrap_or(file);
+            path.rsplit(['/', '\\']).next().unwrap_or(path).to_string()
+        })
     } else {
         view.selected_session(cx).map(|session| session.read(cx).display_title())
     };

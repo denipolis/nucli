@@ -190,7 +190,7 @@ Tabs `FILES  CHANGES  HISTORY` (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing a hi
 ## File view
 
 - Opens in the viewport over the project's tabs. A tab strip lists the project's open files (`⌂` goes back to the overview, `×` or middle-click closes). Open files and the active file are remembered per project. Opening a file inserts its tab after the active one.
-- A path bar under the tab strip: relative path, `+added -removed`, and buttons for previous/next change, Open in Default App, Open With…, Reveal.
+- A path bar under the tab strip: breadcrumbs of the relative path, and buttons for previous/next change, Open in Default App, Open With…, Reveal. The file's data is on the status chips.
 - Changed files show the whole file with added lines on a green background and removed lines on a red background, old and new line numbers in the gutter. `F7` / `⇧F7` jump between changes; the first open of a changed file jumps to its first change.
 - Syntax highlighting with tree-sitter grammars for common languages; other files are plain text.
 - Images (PNG, JPEG, GIF, WebP, BMP, SVG, ICO) are shown fit to the viewport, never upscaled, on a checkerboard, with pixel and file size. Binary files show their size and an Open in Default App button.
@@ -222,7 +222,9 @@ One row of small framed chips directly under the selected tab, in the terminal's
 - The project's `±files +added -removed` (click: Changes), when there are changes.
 - The foreground program, unless it is the tab's shell.
 
-The row is hidden for projects, files and settings. An invalid settings or keybindings file shows its error in red on this row, also in those views. Line, column and language of a file are in its path bar.
+In the file view the same row shows data only: line and column, language with its file glyph, `+added -removed` of the file, and the commit for a commit's version.
+
+The row is hidden for projects and settings. An invalid settings or keybindings file shows its error in red on this row, also in those views.
 
 ## Settings
 

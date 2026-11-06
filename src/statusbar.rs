@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement, Stateful, StatefulInteractiveElement,
-    Styled, div, px,
+    AnyElement, App, Context, Div, InteractiveElement, IntoElement, ParentElement, Stateful,
+    StatefulInteractiveElement, Styled, div, px,
 };
 
 use crate::agents;
@@ -12,7 +12,7 @@ use crate::theme::Theme;
 use crate::ui;
 use crate::window::WorkspaceView;
 
-fn chip(id: &'static str, glyph: &'static str, theme: &Theme) -> Stateful<Div> {
+fn frame(id: &'static str, theme: &Theme) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
@@ -24,7 +24,43 @@ fn chip(id: &'static str, glyph: &'static str, theme: &Theme) -> Stateful<Div> {
         .border_1()
         .border_color(theme.border)
         .text_color(theme.text)
-        .child(div().flex_none().text_color(theme.muted).child(glyph))
+}
+
+fn chip(id: &'static str, glyph: &'static str, theme: &Theme) -> Stateful<Div> {
+    frame(id, theme).child(div().flex_none().text_color(theme.muted).child(glyph))
+}
+
+fn file_chips(view: &WorkspaceView, theme: &Theme, cx: &App) -> Vec<AnyElement> {
+    let Some(file) = crate::file_view::file_status(view, cx) else { return Vec::new() };
+    let mut chips = Vec::new();
+    if let Some(position) = file.position {
+        chips.push(frame("status-position", theme).child(position).into_any_element());
+    }
+    if let Some(language) = file.language {
+        let (glyph, color) = icons::file(&file.name);
+        chips.push(
+            frame("status-language", theme)
+                .child(div().flex_none().text_color(color.color(theme.dark)).child(glyph))
+                .child(language)
+                .into_any_element(),
+        );
+    }
+    if file.added + file.removed > 0 {
+        chips.push(
+            frame("status-file-changes", theme)
+                .child(div().text_color(theme.green).child(format!("+{}", file.added)))
+                .child(div().text_color(theme.red).child(format!("-{}", file.removed)))
+                .into_any_element(),
+        );
+    }
+    if let Some(commit) = file.commit {
+        chips.push(
+            chip("status-commit", icons::COMMIT, theme)
+                .child(commit[..commit.len().min(7)].to_string())
+                .into_any_element(),
+        );
+    }
+    chips
 }
 
 fn program(session: &Session) -> Option<String> {
@@ -37,12 +73,14 @@ pub fn render(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Option<A
         .try_global::<SettingsError>()
         .and_then(|error| error.0.clone())
         .or_else(|| cx.try_global::<crate::commands::Keys>().and_then(|keys| keys.error.clone()));
-    let session = if view.settings.is_none() && !view.file_shown(cx) { view.selected_session(cx) } else { None };
-    if session.is_none() && error.is_none() {
-        return None;
-    }
+    let file_shown = view.settings.is_none() && view.file_shown(cx);
+    let session = if view.settings.is_none() && !file_shown { view.selected_session(cx) } else { None };
     let theme =
         session.as_ref().and_then(|session| session.read(cx).view.theme.clone()).unwrap_or_else(|| ui::theme(cx));
+    let chips = if file_shown { file_chips(view, &theme, cx) } else { Vec::new() };
+    if session.is_none() && chips.is_empty() && error.is_none() {
+        return None;
+    }
     let size = (settings::get(cx).ui_font_size() - 2.0).max(8.0);
     let mut row = div()
         .flex()
@@ -55,7 +93,8 @@ pub fn render(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Option<A
         .text_size(px(size))
         .line_height(px((size * 1.5).round()))
         .bg(theme.background)
-        .overflow_hidden();
+        .overflow_hidden()
+        .children(chips);
     if let Some(session) = session {
         let session = session.read(cx);
         let folder = session.working_dir().to_path_buf();
