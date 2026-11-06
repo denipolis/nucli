@@ -40,6 +40,7 @@ tree-sitter-typescript = "0.23.2"
 tree-sitter-yaml = "0.7.2"
 image = { version = "0.25", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "webp"] }
 notify = "8"
+notify-rust = "4"
 portable-pty = "0.9.0"
 uuid = { version = "1", features = ["v4"] }
 
@@ -53,3 +54,6 @@ opt-level = 2
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.24"
+mac-notification-sys = "0.6"
+objc = "0.2"
+plist = "1"

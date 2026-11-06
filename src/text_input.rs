@@ -552,6 +552,14 @@ impl Render for TextInput {
             .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(Self::copy))
             .on_action(cx.listener(Self::cut))
+            .on_action(cx.listener(|input, _: &crate::commands::Copy, window, cx| input.copy(&Copy, window, cx)))
+            .on_action(cx.listener(|input, _: &crate::commands::Cut, window, cx| input.cut(&Cut, window, cx)))
+            .on_action(cx.listener(|input, _: &crate::commands::Paste, window, cx| input.paste(&Paste, window, cx)))
+            .on_action(
+                cx.listener(|input, _: &crate::commands::SelectAll, window, cx| {
+                    input.select_all(&SelectAll, window, cx)
+                }),
+            )
             .on_action(cx.listener(|_, _: &Submit, _, cx| cx.emit(InputEvent::Submit)))
             .on_action(cx.listener(|_, _: &Cancel, _, cx| cx.emit(InputEvent::Cancel)))
             .on_action(cx.listener(|_, _: &Up, _, cx| cx.emit(InputEvent::Up)))

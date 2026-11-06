@@ -16,6 +16,8 @@ mod git;
 mod highlight;
 mod history;
 mod icons;
+#[cfg(target_os = "macos")]
+mod import;
 mod menu;
 mod notify;
 mod overview;
@@ -65,9 +67,11 @@ fn first_launch(cx: &mut App) -> Settings {
     match Settings::read() {
         Ok(Some(settings)) => settings,
         Ok(None) => {
-            let mut settings = Settings::default();
-            settings.agents = agents::detect_agents();
-            settings.shells = agents::detect_shells();
+            let settings = imported().unwrap_or_else(|| Settings {
+                agents: agents::detect_agents(),
+                shells: agents::detect_shells(),
+                ..Settings::default()
+            });
             settings.write();
             settings
         }
@@ -76,6 +80,26 @@ fn first_launch(cx: &mut App) -> Settings {
             Settings::default()
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+fn imported() -> Option<Settings> {
+    let (mut settings, state) = import::read()?;
+    if settings.agents.is_empty() {
+        settings.agents = agents::detect_agents();
+    }
+    if settings.shells.is_empty() {
+        settings.shells = agents::detect_shells();
+    }
+    if !paths::state_file().exists() {
+        state.write();
+    }
+    Some(settings)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn imported() -> Option<Settings> {
+    None
 }
 
 fn watch_config(cx: &mut App) {
@@ -116,7 +140,7 @@ fn main() {
         if cfg!(target_os = "macos") {
             cx.set_menus(commands::menus());
         }
-        cx.on_action(|_: &Quit, cx| cx.quit());
+        cx.on_action(|_: &Quit, cx| actions::request_quit(cx));
         let store = store::init(cx);
         store.update(cx, |store, cx| {
             store.start_polling(cx);

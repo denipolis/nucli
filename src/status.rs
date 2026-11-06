@@ -59,6 +59,14 @@ impl Store {
     }
 
     pub fn start_polling(&mut self, cx: &mut Context<Self>) {
+        let mut clicks = crate::notify::clicks();
+        cx.spawn(async move |this, cx| {
+            use futures::StreamExt;
+            while let Some(id) = clicks.next().await {
+                let _ = this.update(cx, |store, cx| store.show_tab(&id, cx));
+            }
+        })
+        .detach();
         cx.observe_global::<crate::settings::Settings>(|store, cx| store.apply_settings(cx)).detach();
         cx.observe_global::<crate::ui::ActiveTheme>(|store, cx| store.apply_settings(cx)).detach();
         self.poll_task = Some(cx.spawn(async move |this, cx| {
@@ -203,6 +211,20 @@ impl Store {
             });
         })
         .detach();
+    }
+
+    pub fn show_tab(&mut self, id: &str, cx: &mut Context<Self>) {
+        let Some(workspace) = self.workspace_of(id).map(|workspace| workspace.id.clone()) else { return };
+        let id = id.to_string();
+        cx.defer(move |cx| {
+            cx.activate(true);
+            if let Some(handle) = crate::window::open(&workspace, cx) {
+                let _ = handle.update(cx, |view, window, cx| {
+                    window.activate_window();
+                    view.reveal_tab(&id, window, cx);
+                });
+            }
+        });
     }
 
     pub fn watched(&self, id: &str, cx: &mut Context<Self>) -> bool {

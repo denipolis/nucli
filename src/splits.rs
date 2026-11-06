@@ -45,47 +45,76 @@ pub fn remove(layouts: &mut Vec<Layout>, id: &str) {
         .collect();
 }
 
-fn insert(layout: Layout, target: &str, new: &str, row: bool) -> Layout {
+fn insert(layout: Layout, target: &str, new: &str, row: bool, before: bool) -> Layout {
     let pane = Layout::Pane { tab: new.to_string() };
     match layout {
         Layout::Pane { tab } if tab == target => {
-            let children = vec![Layout::Pane { tab }, pane];
+            let children = if before { vec![pane, Layout::Pane { tab }] } else { vec![Layout::Pane { tab }, pane] };
             if row { Layout::Row { children } } else { Layout::Column { children } }
         }
         Layout::Row { children }
             if row && children.iter().any(|child| matches!(child, Layout::Pane { tab } if tab == target)) =>
         {
-            Layout::Row { children: with_sibling(children, target, pane) }
+            Layout::Row { children: with_sibling(children, target, pane, before) }
         }
         Layout::Column { children }
             if !row && children.iter().any(|child| matches!(child, Layout::Pane { tab } if tab == target)) =>
         {
-            Layout::Column { children: with_sibling(children, target, pane) }
+            Layout::Column { children: with_sibling(children, target, pane, before) }
         }
-        Layout::Row { children } => {
-            Layout::Row { children: children.into_iter().map(|child| insert(child, target, new, row)).collect() }
-        }
-        Layout::Column { children } => {
-            Layout::Column { children: children.into_iter().map(|child| insert(child, target, new, row)).collect() }
-        }
+        Layout::Row { children } => Layout::Row {
+            children: children.into_iter().map(|child| insert(child, target, new, row, before)).collect(),
+        },
+        Layout::Column { children } => Layout::Column {
+            children: children.into_iter().map(|child| insert(child, target, new, row, before)).collect(),
+        },
         other => other,
     }
 }
 
-fn with_sibling(mut children: Vec<Layout>, target: &str, pane: Layout) -> Vec<Layout> {
+fn with_sibling(mut children: Vec<Layout>, target: &str, pane: Layout, before: bool) -> Vec<Layout> {
     let index = children.iter().position(|child| matches!(child, Layout::Pane { tab } if tab == target)).unwrap_or(0);
-    children.insert(index + 1, pane);
+    children.insert(if before { index } else { index + 1 }, pane);
     children
 }
 
-pub fn split(layouts: &mut Vec<Layout>, target: &str, new: &str, row: bool) {
+fn swap(layout: &mut Layout, target: &str, new: &str) {
+    match layout {
+        Layout::Pane { tab } => {
+            if tab == target {
+                *tab = new.to_string();
+            }
+        }
+        Layout::Row { children } | Layout::Column { children } => {
+            children.iter_mut().for_each(|child| swap(child, target, new));
+        }
+    }
+}
+
+pub fn replace(layouts: &mut Vec<Layout>, target: &str, new: &str) {
+    remove(layouts, new);
+    if let Some(index) = group(layouts, target) {
+        swap(&mut layouts[index], target, new);
+    }
+}
+
+pub fn edge(x: f32, y: f32) -> Option<Direction> {
+    let distances = [(x, Direction::Left), (1.0 - x, Direction::Right), (y, Direction::Up), (1.0 - y, Direction::Down)];
+    distances
+        .into_iter()
+        .filter(|(distance, _)| *distance < 0.25)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, direction)| direction)
+}
+
+pub fn split(layouts: &mut Vec<Layout>, target: &str, new: &str, row: bool, before: bool) {
     remove(layouts, new);
     match group(layouts, target) {
         Some(index) => {
             let layout = layouts.remove(index);
-            layouts.insert(index, insert(layout, target, new, row));
+            layouts.insert(index, insert(layout, target, new, row, before));
         }
-        None => layouts.push(insert(Layout::Pane { tab: target.to_string() }, target, new, row)),
+        None => layouts.push(insert(Layout::Pane { tab: target.to_string() }, target, new, row, before)),
     }
 }
 
@@ -153,9 +182,9 @@ mod tests {
     #[test]
     fn splits_and_removes() {
         let mut layouts = Vec::new();
-        split(&mut layouts, "a", "b", true);
-        split(&mut layouts, "b", "c", true);
-        split(&mut layouts, "c", "d", false);
+        split(&mut layouts, "a", "b", true, false);
+        split(&mut layouts, "b", "c", true, false);
+        split(&mut layouts, "c", "d", false, false);
         assert_eq!(layouts.len(), 1);
         assert_eq!(tabs(&layouts[0]), vec!["a", "b", "c", "d"]);
         assert_eq!(neighbor(&layouts[0], "a", Direction::Right).as_deref(), Some("b"));
@@ -169,5 +198,19 @@ mod tests {
         );
         remove(&mut layouts, "b");
         assert!(layouts.is_empty());
+    }
+
+    #[test]
+    fn places_on_edges() {
+        let mut layouts = Vec::new();
+        split(&mut layouts, "a", "b", true, true);
+        assert_eq!(tabs(&layouts[0]), vec!["b", "a"]);
+        replace(&mut layouts, "a", "c");
+        assert_eq!(tabs(&layouts[0]), vec!["b", "c"]);
+        assert_eq!(edge(0.1, 0.5), Some(Direction::Left));
+        assert_eq!(edge(0.9, 0.5), Some(Direction::Right));
+        assert_eq!(edge(0.5, 0.05), Some(Direction::Up));
+        assert_eq!(edge(0.5, 0.95), Some(Direction::Down));
+        assert_eq!(edge(0.5, 0.5), None);
     }
 }

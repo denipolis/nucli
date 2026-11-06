@@ -584,8 +584,12 @@ pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<W
             .into_any_element(),
         Content::Text => editor.clone().into_any_element(),
     };
+    let is_text = editor.read(cx).content == Content::Text;
+    let focus = editor.read(cx).focus.clone();
     div()
         .id("file-view")
+        .key_context("FileView")
+        .when(!is_text, |this| this.track_focus(&focus))
         .flex()
         .flex_col()
         .size_full()

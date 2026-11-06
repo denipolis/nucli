@@ -701,6 +701,43 @@ pub fn drop_folders(
     }
 }
 
+pub fn request_quit(cx: &mut App) {
+    let handles: Vec<_> = store::store(cx).read(cx).windows.values().copied().collect();
+    let dirty: Vec<_> = handles
+        .into_iter()
+        .filter(|handle| handle.read(cx).is_ok_and(|view| crate::file_view::any_dirty(view, cx)))
+        .collect();
+    let Some(first) = dirty.first().copied() else {
+        cx.quit();
+        return;
+    };
+    let answer = first.update(cx, |_, window, cx| {
+        window.prompt(
+            PromptLevel::Warning,
+            "Save changes before quitting?",
+            Some("Some files have unsaved changes."),
+            &["Save All", "Don't Save", "Cancel"],
+            cx,
+        )
+    });
+    let Ok(answer) = answer else { return };
+    cx.spawn(async move |cx| {
+        let Ok(choice) = answer.await else { return };
+        if choice == 2 {
+            return;
+        }
+        let _ = cx.update(|cx| {
+            if choice == 0 {
+                for handle in dirty {
+                    let _ = handle.update(cx, |view, _, cx| crate::file_view::save_all(view, cx));
+                }
+            }
+            cx.quit();
+        });
+    })
+    .detach();
+}
+
 pub fn close_workspace_window(id: &str, window: &mut Window, cx: &mut App) {
     let store = store::store(cx);
     let running = store.read(cx).workspace(id).is_some_and(|state| {
@@ -709,6 +746,8 @@ pub fn close_workspace_window(id: &str, window: &mut Window, cx: &mut App) {
             .flat_map(|project| project.tabs.iter().chain(&project.terminals))
             .any(|tab| store.read(cx).session(tab).is_some_and(|session| session.read(cx).is_running()))
     });
+    let view = store.read(cx).windows.get(id).copied();
+    let dirty = view.is_some_and(|handle| handle.read(cx).is_ok_and(|view| crate::file_view::any_dirty(view, cx)));
     let id = id.to_string();
     let finish = move |window: &mut Window, cx: &mut App| {
         store::store(cx).update(cx, |store, cx| store.close_workspace(&id, cx));
@@ -719,8 +758,34 @@ pub fn close_workspace_window(id: &str, window: &mut Window, cx: &mut App) {
             }
         });
     };
-    if !running {
+    if !running && !dirty {
         finish(window, cx);
+        return;
+    }
+    let handle = window.window_handle();
+    if dirty {
+        let answer = window.prompt(
+            PromptLevel::Warning,
+            "Save changes before closing this workspace?",
+            Some("Some files have unsaved changes."),
+            &["Save All", "Don't Save", "Cancel"],
+            cx,
+        );
+        cx.spawn(async move |cx| {
+            let Ok(choice) = answer.await else { return };
+            if choice == 2 {
+                return;
+            }
+            let _ = cx.update(|cx| {
+                if choice == 0
+                    && let Some(view) = view
+                {
+                    let _ = view.update(cx, |view, _, cx| crate::file_view::save_all(view, cx));
+                }
+                let _ = handle.update(cx, |_, window, cx| finish(window, cx));
+            });
+        })
+        .detach();
         return;
     }
     let answer = window.prompt(
@@ -730,7 +795,6 @@ pub fn close_workspace_window(id: &str, window: &mut Window, cx: &mut App) {
         &["Close Workspace", "Cancel"],
         cx,
     );
-    let handle = window.window_handle();
     cx.spawn(async move |cx| {
         if answer.await == Ok(0) {
             let _ = handle.update(cx, |_, window, cx| finish(window, cx));

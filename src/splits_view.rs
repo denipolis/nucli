@@ -1,5 +1,5 @@
 use gpui::{
-    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, SharedString, Styled, Window, div, px,
+    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, SharedString, Styled, Window, canvas, div, px,
 };
 
 use crate::persist::Layout;
@@ -14,6 +14,7 @@ fn pane(view: &WorkspaceView, id: &str, focused: &str, cx: &mut Context<Workspac
     let Some(session) = view.store(cx).session(id).cloned() else { return div().into_any_element() };
     let target = id.to_string();
     let drop_target = id.to_string();
+    let (bounds_map, bounds_id) = (view.pane_bounds.clone(), id.to_string());
     div()
         .id(SharedString::from(format!("pane-{id}")))
         .flex_1()
@@ -32,11 +33,57 @@ fn pane(view: &WorkspaceView, id: &str, focused: &str, cx: &mut Context<Workspac
         .drag_over::<DraggedTab>(move |style, _, _, _| style.border_2().border_color(theme.accent))
         .on_drop(cx.listener(move |view, drag: &DraggedTab, window, cx| {
             if drag.id != drop_target {
-                place(view, &drop_target, &drag.id, true, window, cx);
+                let position = window.mouse_position();
+                let zone = view.pane_bounds.borrow().get(&drop_target).and_then(|bounds| {
+                    splits::edge(
+                        f32::from(position.x - bounds.origin.x) / f32::from(bounds.size.width),
+                        f32::from(position.y - bounds.origin.y) / f32::from(bounds.size.height),
+                    )
+                });
+                drop_on(view, &drop_target, &drag.id, zone, window, cx);
             }
         }))
         .child(session)
+        .child(
+            canvas(
+                move |bounds, _, _| {
+                    bounds_map.borrow_mut().insert(bounds_id, bounds);
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full(),
+        )
         .into_any_element()
+}
+
+pub fn single(view: &WorkspaceView, id: &str, cx: &mut Context<WorkspaceView>) -> AnyElement {
+    div().size_full().flex().child(pane(view, id, id, cx)).into_any_element()
+}
+
+fn drop_on(
+    view: &mut WorkspaceView,
+    target: &str,
+    new: &str,
+    zone: Option<Direction>,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    let Some(zone) = zone else {
+        let workspace = view.workspace.clone();
+        let (target, new) = (target.to_string(), new.to_string());
+        store::store(cx).update(cx, |store, cx| {
+            if let Some(state) = store.workspace_mut(&workspace) {
+                splits::replace(&mut state.layouts, &target, &new);
+            }
+            store.changed(cx);
+        });
+        view.select_tab(&new, window, cx);
+        return;
+    };
+    let row = matches!(zone, Direction::Left | Direction::Right);
+    let before = matches!(zone, Direction::Left | Direction::Up);
+    place(view, target, new, row, before, window, cx);
 }
 
 fn tree(view: &WorkspaceView, layout: &Layout, focused: &str, cx: &mut Context<WorkspaceView>) -> AnyElement {
@@ -71,6 +118,7 @@ fn place(
     target: &str,
     new: &str,
     row: bool,
+    before: bool,
     window: &mut Window,
     cx: &mut Context<WorkspaceView>,
 ) {
@@ -78,7 +126,7 @@ fn place(
     let (target, new) = (target.to_string(), new.to_string());
     store::store(cx).update(cx, |store, cx| {
         if let Some(state) = store.workspace_mut(&workspace) {
-            splits::split(&mut state.layouts, &target, &new, row);
+            splits::split(&mut state.layouts, &target, &new, row, before);
         }
         store.changed(cx);
     });
@@ -104,7 +152,7 @@ pub fn split(view: &mut WorkspaceView, row: bool, window: &mut Window, cx: &mut 
     let after = Some(current.clone());
     let id = store::store(cx).update(cx, |store, cx| store.open_tab(&workspace, &project, launcher, after, cx));
     if let Some(id) = id {
-        place(view, &current, &id, row, window, cx);
+        place(view, &current, &id, row, false, window, cx);
     }
 }
 

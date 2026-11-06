@@ -1,8 +1,12 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
+use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, App, AppContext, Bounds, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, Pixels, Point, Render, SharedString, StatefulInteractiveElement, Styled, Subscription,
+    MouseButton, ParentElement, Pixels, Point, Render, StatefulInteractiveElement, Styled, Subscription,
     TitlebarOptions, Window, WindowBounds, WindowHandle, WindowOptions, deferred, div, point, px, size,
 };
 
@@ -33,6 +37,8 @@ pub struct WorkspaceView {
     pub panel: crate::panel::PanelState,
     pub files: crate::file_view::Files,
     pub resizing: Option<crate::resize::Drag>,
+    pub pane_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
+    pub dragging_titlebar: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -59,10 +65,11 @@ pub fn open(workspace: &str, cx: &mut App) -> Option<WindowHandle<WorkspaceView>
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(TitlebarOptions {
             title: Some(state.name.clone().into()),
-            appears_transparent: true,
+            appears_transparent: cfg!(target_os = "macos"),
             traffic_light_position: Some(point(px(10.0), px(9.0))),
         }),
         app_id: Some("uk.polishch.nucli".into()),
+        window_decorations: Some(gpui::WindowDecorations::Server),
         window_min_size: Some(size(px(480.0), px(320.0))),
         ..Default::default()
     };
@@ -149,6 +156,8 @@ impl WorkspaceView {
             panel: Default::default(),
             files: Default::default(),
             resizing: None,
+            pane_bounds: Default::default(),
+            dragging_titlebar: false,
             _subscriptions: subscriptions,
         }
     }
@@ -222,6 +231,32 @@ impl WorkspaceView {
         cx.notify();
     }
 
+    pub fn reveal_tab(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let panel = self
+            .state(cx)
+            .and_then(|state| state.project_of(id))
+            .filter(|project| project.terminals.iter().any(|tab| tab == id))
+            .map(|project| project.path.clone());
+        let Some(path) = panel else {
+            self.select_tab(id, window, cx);
+            return;
+        };
+        let workspace = self.workspace.clone();
+        let tab = id.to_string();
+        self.select(Some(Selected::Project(path.clone())), window, cx);
+        store::store(cx).update(cx, |store, cx| {
+            if let Some(project) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path)) {
+                project.active_terminal = Some(tab.clone());
+                project.terminal_shown = true;
+            }
+            store.changed(cx);
+        });
+        if let Some(session) = self.store(cx).session(id) {
+            let focus = session.read(cx).focus.clone();
+            window.focus(&focus);
+        }
+    }
+
     pub fn select_tab(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.select(Some(Selected::Tab(id.to_string())), window, cx);
     }
@@ -276,7 +311,7 @@ impl WorkspaceView {
         crate::file_view::open_path(self, path, line, window, cx);
     }
 
-    fn titlebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn titlebar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = ui::theme(cx);
         let state = self.state(cx);
         let name = state.map(|state| state.name.clone()).unwrap_or_default();
@@ -303,6 +338,7 @@ impl WorkspaceView {
                     }
                 })
         };
+        let client_decorated = matches!(window.window_decorations(), gpui::Decorations::Client { .. });
         let sidebar_shown = state.is_some_and(|state| !state.window.sidebar_hidden);
         let panel_shown = !self.store(cx).ui.panel_hidden;
         let terminal_shown =
@@ -319,9 +355,18 @@ impl WorkspaceView {
             .bg(theme.surface)
             .border_b_1()
             .border_color(theme.border)
+            .window_control_area(gpui::WindowControlArea::Drag)
+            .on_mouse_down(MouseButton::Left, cx.listener(|view, _, _, _| view.dragging_titlebar = true))
+            .on_mouse_up(MouseButton::Left, cx.listener(|view, _, _, _| view.dragging_titlebar = false))
+            .on_mouse_move(cx.listener(|view, event: &gpui::MouseMoveEvent, window, _| {
+                if view.dragging_titlebar && event.pressed_button == Some(MouseButton::Left) {
+                    view.dragging_titlebar = false;
+                    window.start_window_move();
+                }
+            }))
             .on_click(|event, window, _| {
                 if event.click_count() == 2 {
-                    window.zoom_window();
+                    if cfg!(target_os = "macos") { window.titlebar_double_click() } else { window.zoom_window() }
                 }
             })
             .child(
@@ -352,6 +397,22 @@ impl WorkspaceView {
             .child(toggle("toggle-sidebar", icons::SIDEBAR, sidebar_shown, "toggle_sidebar"))
             .child(toggle("toggle-panel", icons::LAYOUT, panel_shown, "toggle_panel"))
             .child(toggle("toggle-terminal", icons::PANEL, terminal_shown, "toggle_terminal"))
+            .when(client_decorated, |this| {
+                let control = |id: &'static str, glyph: &'static str| {
+                    div()
+                        .id(id)
+                        .px(px(6.0))
+                        .text_color(theme.muted)
+                        .hover(|style| style.text_color(theme.accent))
+                        .child(glyph)
+                };
+                this.child(control("window-minimize", icons::REMOVE).on_click(|_, window, _| window.minimize_window()))
+                    .child(control("window-zoom", icons::MAXIMIZE).on_click(|_, window, _| window.zoom_window()))
+                    .child(control("window-close", icons::CLOSE).on_click(cx.listener(|view, _, window, cx| {
+                        let id = view.workspace.clone();
+                        crate::actions::close_workspace_window(&id, window, cx);
+                    })))
+            })
     }
 
     fn viewport(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -362,10 +423,8 @@ impl WorkspaceView {
         match &state.selected {
             Some(Selected::Tab(id)) => match crate::splits::group(&state.layouts, id) {
                 Some(index) => crate::splits_view::render(self, &state.layouts[index], id, cx),
-                None => match self.store(cx).session(id) {
-                    Some(session) => div().size_full().child(session.clone()).into_any_element(),
-                    None => crate::overview::empty(self, cx),
-                },
+                None if self.store(cx).session(id).is_some() => crate::splits_view::single(self, id, cx),
+                None => crate::overview::empty(self, cx),
             },
             Some(Selected::Project(path)) => crate::overview::project(self, path, cx),
             None => crate::overview::empty(self, cx),
@@ -432,10 +491,13 @@ impl Render for WorkspaceView {
                     }
                 }
             }))
-            .child(self.titlebar(cx))
+            .child(self.titlebar(window, cx))
             .child(body)
             .child(crate::statusbar::render(self, cx));
         root = crate::actions::register(root, cx);
+        if matches!(window.window_decorations(), gpui::Decorations::Client { .. }) {
+            root = root.children(resize_edges());
+        }
         if let Some(menu) = &self.menu {
             root = root.child(menu::render(menu, cx));
         }
@@ -472,6 +534,18 @@ impl Render for WorkspaceView {
     }
 }
 
-pub fn label(text: &str) -> SharedString {
-    SharedString::from(text.to_string())
+fn resize_edges() -> Vec<gpui::Stateful<gpui::Div>> {
+    use gpui::{CursorStyle, ResizeEdge};
+    let edge = |id: &'static str, edge: ResizeEdge, cursor: CursorStyle| {
+        div().id(id).absolute().occlude().cursor(cursor).on_mouse_down(MouseButton::Left, move |_, window, cx| {
+            window.start_window_resize(edge);
+            cx.stop_propagation();
+        })
+    };
+    vec![
+        edge("resize-top", ResizeEdge::Top, CursorStyle::ResizeUpDown).top_0().left_0().w_full().h(px(3.0)),
+        edge("resize-bottom", ResizeEdge::Bottom, CursorStyle::ResizeUpDown).bottom_0().left_0().w_full().h(px(3.0)),
+        edge("resize-left", ResizeEdge::Left, CursorStyle::ResizeLeftRight).top_0().left_0().h_full().w(px(3.0)),
+        edge("resize-right", ResizeEdge::Right, CursorStyle::ResizeLeftRight).top_0().right_0().h_full().w(px(3.0)),
+    ]
 }

@@ -4,13 +4,13 @@ use std::time::{Duration, Instant, SystemTime};
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, Bounds, ClipboardItem, Context, ElementInputHandler, EntityInputHandler, FocusHandle, Hsla,
-    InteractiveElement, IntoElement, KeyBinding, ListHorizontalSizingBehavior, MouseButton, ParentElement, Pixels,
-    Point, Render, ScrollStrategy, SharedString, StatefulInteractiveElement, Styled, StyledText, TextRun,
+    AnyElement, App, AppContext, Bounds, ClipboardItem, Context, ElementInputHandler, EntityInputHandler, FocusHandle,
+    Hsla, InteractiveElement, IntoElement, KeyBinding, ListHorizontalSizingBehavior, MouseButton, ParentElement,
+    Pixels, Point, Render, ScrollStrategy, SharedString, StatefulInteractiveElement, Styled, StyledText, TextRun,
     UTF16Selection, UniformListScrollHandle, Window, actions, canvas, div, point, px, size, uniform_list,
 };
 
-use crate::commands::{NextChange, PreviousChange, Save};
+use crate::commands::{self, NextChange, PreviousChange, Save};
 use crate::git::{self, LineKind};
 use crate::highlight::{self, Token};
 use crate::settings;
@@ -49,12 +49,6 @@ actions!(
         DeleteLineLeft,
         Newline,
         Indent,
-        Copy,
-        Cut,
-        Paste,
-        SelectAll,
-        Undo,
-        Redo,
     ]
 );
 
@@ -62,6 +56,11 @@ pub fn bindings() -> Vec<KeyBinding> {
     let c = Some("FileView");
     let mac = cfg!(target_os = "macos");
     let primary = if mac { "cmd" } else { "ctrl" };
+    let clipboard = [
+        KeyBinding::new(&format!("{primary}-c"), commands::Copy, c),
+        KeyBinding::new(&format!("{primary}-v"), commands::Paste, c),
+        KeyBinding::new(&format!("{primary}-a"), commands::SelectAll, c),
+    ];
     let word = if mac { "alt" } else { "ctrl" };
     let mut keys = vec![
         KeyBinding::new("left", MoveLeft, c),
@@ -87,13 +86,8 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new(&format!("{word}-backspace"), DeleteWordLeft, c),
         KeyBinding::new("enter", Newline, c),
         KeyBinding::new("tab", Indent, c),
-        KeyBinding::new(&format!("{primary}-c"), Copy, c),
-        KeyBinding::new(&format!("{primary}-x"), Cut, c),
-        KeyBinding::new(&format!("{primary}-v"), Paste, c),
-        KeyBinding::new(&format!("{primary}-a"), SelectAll, c),
-        KeyBinding::new(&format!("{primary}-z"), Undo, c),
-        KeyBinding::new(&format!("{primary}-shift-z"), Redo, c),
     ];
+    keys.extend(clipboard);
     if mac {
         keys.extend([
             KeyBinding::new("cmd-left", LineStart, c),
@@ -112,7 +106,7 @@ pub fn bindings() -> Vec<KeyBinding> {
             KeyBinding::new("ctrl-end", DocumentEnd, c),
             KeyBinding::new("ctrl-shift-home", SelectDocumentStart, c),
             KeyBinding::new("ctrl-shift-end", SelectDocumentEnd, c),
-            KeyBinding::new("ctrl-y", Redo, c),
+            KeyBinding::new("ctrl-y", commands::Redo, c),
         ]);
     }
     keys
@@ -258,7 +252,14 @@ fn token_color(token: Token, theme: &Theme) -> Hsla {
     }
 }
 
+pub struct FindState {
+    pub input: gpui::Entity<crate::text_input::TextInput>,
+    pub matches: Vec<(usize, Range<usize>)>,
+    pub current: usize,
+}
+
 pub struct Editor {
+    pub find: Option<FindState>,
     pub project: PathBuf,
     pub path: String,
     pub commit: Option<String>,
@@ -290,6 +291,7 @@ impl Editor {
     pub fn new(project: PathBuf, path: String, commit: Option<String>, cx: &mut Context<Self>) -> Self {
         let full = if Path::new(&path).is_absolute() { PathBuf::from(&path) } else { project.join(&path) };
         let mut editor = Editor {
+            find: None,
             project,
             path,
             commit,
@@ -697,6 +699,26 @@ impl Editor {
     }
 }
 
+pub fn find_matches(rows: &[Row], query: &str) -> Vec<(usize, Range<usize>)> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let mut found = Vec::new();
+    for (index, row) in rows.iter().enumerate() {
+        let lower = row.text.to_lowercase();
+        if lower.len() != row.text.len() {
+            continue;
+        }
+        let mut start = 0;
+        while let Some(offset) = lower[start..].find(query) {
+            let begin = start + offset;
+            found.push((index, begin..begin + query.len()));
+            start = begin + query.len();
+        }
+    }
+    found
+}
+
 fn char_width(character: char) -> f32 {
     let wide = matches!(character as u32,
         0x1100..=0x115F | 0x2E80..=0x303E | 0x3041..=0x33FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF
@@ -752,6 +774,24 @@ impl Render for Editor {
                             };
                             Some((from, to))
                         });
+                        let hits: Vec<(f32, f32, bool)> = editor
+                            .find
+                            .as_ref()
+                            .map(|find| {
+                                find.matches
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(_, (hit, _))| *hit == index)
+                                    .map(|(position, (_, range))| {
+                                        (
+                                            text_width(&row.text[..range.start]),
+                                            text_width(&row.text[..range.end]),
+                                            position == find.current,
+                                        )
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
                         let caret = (index == cursor.row && focused)
                             .then(|| text_width(&row.text[..cursor.col.min(row.text.len())]));
                         let text = SharedString::from(row.text.clone());
@@ -834,6 +874,19 @@ impl Render for Editor {
                                         .absolute()
                                         .size_full(),
                                     )
+                                    .children(hits.into_iter().map(|(from, to, current)| {
+                                        div()
+                                            .absolute()
+                                            .top_0()
+                                            .bottom_0()
+                                            .left(cell.width * from)
+                                            .w(cell.width * (to - from))
+                                            .bg(if current {
+                                                theme.orange.opacity(0.7)
+                                            } else {
+                                                theme.yellow.opacity(0.35)
+                                            })
+                                    }))
                                     .when_some(selected, |this, (from, to)| {
                                         this.child(
                                             div()
@@ -891,6 +944,10 @@ impl Render for Editor {
             .line_height(cell.height)
             .on_mouse_up(MouseButton::Left, cx.listener(|editor, _, _, _| editor.selecting = false))
             .on_mouse_up_out(MouseButton::Left, cx.listener(|editor, _, _, _| editor.selecting = false))
+            .relative()
+            .on_action(cx.listener(|editor, _: &commands::Find, window, cx| editor.open_find(window, cx)))
+            .on_action(cx.listener(|editor, _: &commands::FindNext, _, cx| editor.find_step(1, cx)))
+            .on_action(cx.listener(|editor, _: &commands::FindPrevious, _, cx| editor.find_step(-1, cx)))
             .on_action(cx.listener(Self::save))
             .on_action(cx.listener(|editor, _: &NextChange, _, cx| editor.jump_change(true, cx)))
             .on_action(cx.listener(|editor, _: &PreviousChange, _, cx| editor.jump_change(false, cx)))
@@ -997,12 +1054,12 @@ impl Render for Editor {
                 editor.insert(&format!("\n{indent}"), cx);
             }))
             .on_action(cx.listener(|editor, _: &Indent, _, cx| editor.insert("    ", cx)))
-            .on_action(cx.listener(|editor, _: &Copy, _, cx| {
+            .on_action(cx.listener(|editor, _: &commands::Copy, _, cx| {
                 if let Some(text) = editor.selected_text() {
                     cx.write_to_clipboard(ClipboardItem::new_string(text));
                 }
             }))
-            .on_action(cx.listener(|editor, _: &Cut, _, cx| {
+            .on_action(cx.listener(|editor, _: &commands::Cut, _, cx| {
                 if let Some(text) = editor.selected_text() {
                     cx.write_to_clipboard(ClipboardItem::new_string(text));
                     if editor.is_editable() {
@@ -1012,20 +1069,41 @@ impl Render for Editor {
                     }
                 }
             }))
-            .on_action(cx.listener(|editor, _: &Paste, _, cx| {
+            .on_action(cx.listener(|editor, _: &commands::Paste, _, cx| {
                 if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
                     editor.insert(&text, cx);
                 }
             }))
-            .on_action(cx.listener(|editor, _: &SelectAll, _, cx| {
+            .on_action(cx.listener(|editor, _: &commands::SelectAll, _, cx| {
                 let row = editor.rows.len().saturating_sub(1);
                 editor.anchor = Some(Pos::default());
                 editor.cursor = Pos { row, col: editor.rows.get(row).map_or(0, |row| row.text.len()) };
                 cx.notify();
             }))
-            .on_action(cx.listener(|editor, _: &Undo, _, cx| editor.history(true, cx)))
-            .on_action(cx.listener(|editor, _: &Redo, _, cx| editor.history(false, cx)))
+            .on_action(cx.listener(|editor, _: &commands::Undo, _, cx| editor.history(true, cx)))
+            .on_action(cx.listener(|editor, _: &commands::Redo, _, cx| editor.history(false, cx)))
             .child(list)
+            .children(self.find.as_ref().map(|find| {
+                let label = if find.matches.is_empty() {
+                    "0/0".to_string()
+                } else {
+                    format!("{}/{}", find.current + 1, find.matches.len())
+                };
+                div()
+                    .absolute()
+                    .top(px(4.0))
+                    .right(px(12.0))
+                    .w(px(280.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .px(px(6.0))
+                    .bg(theme.elevated)
+                    .border_1()
+                    .border_color(theme.accent)
+                    .child(div().flex_1().min_w_0().child(find.input.clone()))
+                    .child(div().flex_none().text_color(theme.muted).child(label))
+            }))
             .child(
                 canvas(|_, _, _| {}, {
                     let focus = self.focus.clone();
@@ -1041,6 +1119,69 @@ impl Render for Editor {
 }
 
 impl Editor {
+    fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(find) = &self.find {
+            find.input.read(cx).focus(window);
+            return;
+        }
+        let selected = self.selected_text().filter(|text| !text.contains('\n'));
+        let input = cx.new(|cx| {
+            let mut input = crate::text_input::TextInput::new("find", cx);
+            if let Some(text) = &selected {
+                input.set_text(text, cx);
+            }
+            input
+        });
+        cx.subscribe_in(&input, window, |editor, _, event, window, cx| {
+            use crate::text_input::InputEvent;
+            match event {
+                InputEvent::Changed => editor.search(cx),
+                InputEvent::Submit | InputEvent::Down => editor.find_step(1, cx),
+                InputEvent::Up => editor.find_step(-1, cx),
+                InputEvent::Cancel => {
+                    editor.find = None;
+                    window.focus(&editor.focus);
+                    cx.notify();
+                }
+                InputEvent::Blur => {}
+            }
+        })
+        .detach();
+        input.read(cx).focus(window);
+        self.find = Some(FindState { input, matches: Vec::new(), current: 0 });
+        self.search(cx);
+    }
+
+    fn search(&mut self, cx: &mut Context<Self>) {
+        let Some(find) = self.find.as_mut() else { return };
+        let query = find.input.read(cx).text.to_lowercase();
+        find.matches = find_matches(&self.rows, &query);
+        find.current = find
+            .matches
+            .iter()
+            .position(|(row, range)| Pos { row: *row, col: range.start } >= self.cursor)
+            .unwrap_or(0);
+        self.reveal_found(cx);
+    }
+
+    fn find_step(&mut self, delta: i32, cx: &mut Context<Self>) {
+        let Some(find) = self.find.as_mut() else { return };
+        let count = find.matches.len() as i32;
+        if count > 0 {
+            find.current = (find.current as i32 + delta).rem_euclid(count) as usize;
+            self.reveal_found(cx);
+        }
+    }
+
+    fn reveal_found(&mut self, cx: &mut Context<Self>) {
+        if let Some((row, range)) = self.find.as_ref().and_then(|find| find.matches.get(find.current)) {
+            self.cursor = Pos { row: *row, col: range.start };
+            self.anchor = None;
+            self.scroll.scroll_to_item(*row, ScrollStrategy::Center);
+        }
+        cx.notify();
+    }
+
     fn delete_with(&mut self, target: impl Fn(&Editor, Pos) -> Pos, cx: &mut Context<Self>) {
         if !self.is_editable() || self.rows.is_empty() {
             return;
@@ -1175,6 +1316,14 @@ mod tests {
         assert!(tokens[0].iter().any(|(range, token)| *range == (0..2) && *token == Token::Keyword));
         assert!(tokens[1].iter().any(|(range, token)| *range == (0..3) && *token == Token::Keyword));
         assert!(tokens[2].iter().any(|(range, token)| *range == (0..3) && *token == Token::Keyword));
+    }
+
+    #[test]
+    fn finds_text() {
+        let rows = rows(&[(LineKind::Context, "Foo foo"), (LineKind::Added, "bar"), (LineKind::Removed, "FOO")]);
+        let found = find_matches(&rows, "foo");
+        assert_eq!(found, vec![(0, 0..3), (0, 4..7), (2, 0..3)]);
+        assert!(find_matches(&rows, "").is_empty());
     }
 
     #[test]

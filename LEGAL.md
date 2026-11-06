@@ -23,11 +23,15 @@ Direct dependencies, declared in `Cargo.toml`. Exact versions of everything, tra
 | [uuid](https://github.com/uuid-rs/uuid) | MIT OR Apache-2.0 | Tab and conversation ids |
 | [notify](https://github.com/notify-rs/notify) | CC0-1.0 | Watching project folders for changes |
 | [trash](https://github.com/Byron/trash-rs) | MIT | Moving discarded new files to the system trash |
+| [notify-rust](https://github.com/hoodie/notify-rust) | MIT OR Apache-2.0 | Desktop notifications on Linux and Windows |
 | [sysinfo](https://github.com/GuillaumeGomez/sysinfo) | MIT | Foreground process name and folder of each tab |
 | [tree-sitter](https://github.com/tree-sitter/tree-sitter), tree-sitter-highlight | MIT | Syntax highlighting in the file view |
 | tree-sitter grammars: bash, c, cpp, css, go, html, java, javascript, json, lua, make, md, python, ruby, rust, swift, toml-ng, typescript, yaml | MIT | Language grammars and their highlight queries |
 | [image](https://github.com/image-rs/image) | MIT OR Apache-2.0 | Pixel size of images in the file view, PNG writing in the development build |
 | [core-graphics](https://github.com/servo/core-foundation-rs) | MIT OR Apache-2.0 | macOS only: window capture in the development build's control file |
+| [mac-notification-sys](https://github.com/h4llow3En/mac-notification-sys) | MIT OR Apache-2.0 | macOS only: desktop notifications and their clicks |
+| [objc](https://github.com/SSheldon/rust-objc) | MIT | macOS only: the Dock badge |
+| [plist](https://github.com/ebarnard/rust-plist) | MIT | macOS only: reading Nucli 1 preferences once on first launch |
 | [serde](https://github.com/serde-rs/serde), [serde_json](https://github.com/serde-rs/json) | MIT OR Apache-2.0 | Settings and state files |
 
 Only `gpui` is used from its repository. The rest of that repository (its editor, terminal and UI crates) is GPL or AGPL licensed and must not be copied or depended on.
