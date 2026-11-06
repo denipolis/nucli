@@ -72,6 +72,14 @@ pub struct Session {
 
 impl EventEmitter<SessionEvent> for Session {}
 
+fn agent_title(title: &str) -> &str {
+    title
+        .trim_start_matches(|c: char| {
+            c.is_whitespace() || matches!(c, '✳' | '✶' | '✻' | '✽' | '✢' | '*' | '·' | '\u{2800}'..='\u{28FF}')
+        })
+        .trim_end()
+}
+
 pub fn default_size(cx: &App) -> GridSize {
     let size = settings::get(cx).font_size();
     GridSize { cols: 100, rows: 30, cell_width: size * 0.6, cell_height: size * settings::get(cx).line_height() }
@@ -179,7 +187,9 @@ impl Session {
         if let Some(name) = self.name.as_ref().filter(|name| !name.is_empty()) {
             return name.clone();
         }
-        if let Some(title) = self.title.as_deref().map(str::trim).filter(|title| !title.is_empty()) {
+        let agent = self.kind == Kind::Agent || self.running_agent.is_some();
+        let title = self.title.as_deref().map(|title| if agent { agent_title(title) } else { title.trim() });
+        if let Some(title) = title.filter(|title| !title.is_empty()) {
             return title.to_string();
         }
         match self.kind {
@@ -337,4 +347,17 @@ fn environment(program: String, args: Vec<String>, extra: Vec<(String, String)>,
     env.push(("FORCE_HYPERLINK".into(), "1".into()));
     env.extend(extra);
     Launch { program, args, env, clear_env, remove_env, cwd }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strips_status_from_agent_titles() {
+        assert_eq!(agent_title("✳ hey there"), "hey there");
+        assert_eq!(agent_title("⠂ working * hard "), "working * hard");
+        assert_eq!(agent_title("✳"), "");
+        assert_eq!(agent_title("plain"), "plain");
+    }
 }
