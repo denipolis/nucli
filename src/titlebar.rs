@@ -159,10 +159,9 @@ pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceV
                 div()
                     .id("workspace-name")
                     .flex_none()
-                    .px(px(6.0))
-                    .bg(theme.accent)
-                    .text_color(theme.on_accent)
-                    .child(ui::caps(&name))
+                    .font_weight(gpui::FontWeight::BOLD)
+                    .text_color(theme.text)
+                    .child(name)
                     .on_click(cx.listener(|view, event: &gpui::ClickEvent, _, cx| {
                         let position = event.position();
                         let items = crate::actions::workspace_menu(view, cx);
