@@ -57,12 +57,17 @@ fn read_dir(root: &Path, relative: &str) -> Vec<Entry> {
     entries
 }
 
-fn scan(root: &Path, expanded: &BTreeSet<String>) -> Scan {
-    let mut result = Scan::default();
-    result.entries.insert(String::new(), read_dir(root, ""));
+fn list(root: &Path, expanded: &BTreeSet<String>) -> HashMap<String, Vec<Entry>> {
+    let mut entries = HashMap::new();
+    entries.insert(String::new(), read_dir(root, ""));
     for folder in expanded {
-        result.entries.insert(folder.clone(), read_dir(root, folder));
+        entries.insert(folder.clone(), read_dir(root, folder));
     }
+    entries
+}
+
+fn decorations(root: &Path) -> Scan {
+    let mut result = Scan::default();
     if let Some(status) = crate::git::status(root) {
         for change in &status.changes {
             let letter = result.letters.entry(change.path.clone()).or_insert(change.status);
@@ -120,8 +125,10 @@ pub struct FilesPanel {
     workspace: String,
     root: PathBuf,
     revision: u64,
+    scans: HashMap<PathBuf, Scan>,
     rows: Vec<TreeRow>,
-    loading: bool,
+    listing: u64,
+    decorating: bool,
     stale: bool,
 }
 
@@ -136,7 +143,16 @@ impl FilesPanel {
             }
         })
         .detach();
-        let mut panel = FilesPanel { workspace, root, revision: 0, rows: Vec::new(), loading: false, stale: false };
+        let mut panel = FilesPanel {
+            workspace,
+            root,
+            revision: 0,
+            scans: HashMap::new(),
+            rows: Vec::new(),
+            listing: 0,
+            decorating: false,
+            stale: false,
+        };
         panel.reload(cx);
         panel
     }
@@ -153,29 +169,60 @@ impl FilesPanel {
     fn set_root(&mut self, root: &Path, cx: &mut Context<Self>) {
         if self.root != root {
             self.root = root.to_path_buf();
-            self.rows.clear();
             self.revision = store::store(cx).read(cx).revision(root);
+            self.rebuild(cx);
             self.reload(cx);
         }
     }
 
+    fn rebuild(&mut self, cx: &mut Context<Self>) {
+        let expanded = self.expanded(cx);
+        self.rows = self.scans.get(&self.root).map(|scan| build_rows(scan, &expanded)).unwrap_or_default();
+        cx.notify();
+    }
+
     fn reload(&mut self, cx: &mut Context<Self>) {
-        if self.loading {
-            self.stale = true;
-            return;
-        }
-        self.loading = true;
+        self.list(cx);
+        self.decorate(cx);
+    }
+
+    fn list(&mut self, cx: &mut Context<Self>) {
+        self.listing += 1;
+        let listing = self.listing;
         let root = self.root.clone();
         let expanded = self.expanded(cx);
         cx.spawn(async move |this, cx| {
-            let keep = expanded.clone();
-            let rows = cx.background_executor().spawn(async move { build_rows(&scan(&root, &keep), &keep) }).await;
+            let folder = root.clone();
+            let entries = cx.background_executor().spawn(async move { list(&folder, &expanded) }).await;
             let _ = this.update(cx, |panel, cx| {
-                panel.loading = false;
-                panel.rows = rows;
-                cx.notify();
+                if panel.listing == listing {
+                    panel.scans.entry(root).or_default().entries = entries;
+                    panel.rebuild(cx);
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn decorate(&mut self, cx: &mut Context<Self>) {
+        if self.decorating {
+            self.stale = true;
+            return;
+        }
+        self.decorating = true;
+        let root = self.root.clone();
+        cx.spawn(async move |this, cx| {
+            let folder = root.clone();
+            let found = cx.background_executor().spawn(async move { decorations(&folder) }).await;
+            let _ = this.update(cx, |panel, cx| {
+                panel.decorating = false;
+                let scan = panel.scans.entry(root.clone()).or_default();
+                (scan.letters, scan.folders, scan.ignored) = (found.letters, found.folders, found.ignored);
+                if panel.root == root {
+                    panel.rebuild(cx);
+                }
                 if std::mem::take(&mut panel.stale) {
-                    panel.reload(cx);
+                    panel.decorate(cx);
                 }
             });
         })
@@ -191,7 +238,8 @@ impl FilesPanel {
                 project.expanded.insert(path);
             }
         });
-        self.reload(cx);
+        self.rebuild(cx);
+        self.list(cx);
     }
 }
 
