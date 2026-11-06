@@ -2,34 +2,43 @@
   <img src="docs/banner.png" width="100%" alt="Nucli"/>
 </p>
 
-### Nucli is a native macOS agents-first terminal. It launches the agent CLIs you already use in real terminal tabs and conveniently organizes them.
+### Nucli is an agents-first terminal for macOS, Linux and Windows. It launches the agent CLIs you already use in real terminal tabs and organizes them by project.
 
 ## Features
 
-- Swift and AppKit only: no Electron, no web views, no telemetry
-- Projects and workspaces with any number of agent and shell tabs
-- Automatic agent detection with live status and resumable conversations
-- Smart contextual keybindings and UI with modern window and pane management
+- Projects and workspaces with any number of agent and shell tabs, split panes and a terminal panel per project
+- Automatic agent detection with live status, notifications and resumable conversations
+- Review what agents change: live git diffs, staging, commits, a commit graph, and a file view you can edit in place
+- A fast square monospace UI in Rust, with themes, tree-sitter highlighting and a command palette for everything
+- Settings and keybindings are plain JSON files
+- No telemetry, no network calls
 
 ## Installing
 
-1. Download `Nucli.dmg` from [Releases](https://github.com/denipolis/nucli/releases)
-2. Open it and drag `Nucli.app` to `Applications`
-3. Builds are not notarized, so run `xattr -dr com.apple.quarantine /Applications/Nucli.app` once
+Download the build for your system from [Releases](https://github.com/denipolis/nucli/releases).
 
-Or run `./scripts/install_latest_github.sh` (needs `gh`): it installs the latest release to `/Applications`.
+- **macOS**: open `Nucli-*.dmg` and drag `Nucli.app` to `Applications`. Builds are not notarized, so run `xattr -dr com.apple.quarantine /Applications/Nucli.app` once.
+- **Linux**: unpack `nucli-*.tar.gz` and run `nucli`. It needs Vulkan drivers.
+- **Windows**: unpack `Nucli-*.zip` and run `nucli.exe`.
+
+On macOS and Linux, `./scripts/install_latest_github.sh` (needs `gh`) installs the latest release.
 
 ## Building
 
-Requires macOS 14 or newer to run, Xcode 26 to build.
+Requires a recent stable Rust. On Linux, also the development packages listed in `.github/workflows/build.yml`.
 
 1. `git clone https://github.com/denipolis/nucli.git`
 2. `cd nucli`
-3. `./scripts/bundle.sh`
-4. `open build/Nucli.app`
+3. `cargo run`
 
-For development, `./scripts/bundle.sh dev` builds `build/Nucli Dev.app`, a debug build.
+A debug build is called Nucli Dev and keeps its own settings and data, so it is safe next to an installed Nucli. `./scripts/package.sh` builds the release archive for your system into `dist/`.
+
+## Documentation
+
+- [Behavior](docs/SPEC.md)
+- [Keybindings](docs/KEYBINDINGS.md)
+- [Architecture](docs/ARCHITECTURE.md)
 
 ## License
 
-[MIT](LICENSE). Nucli is not affiliated with Anthropic, OpenAI or any other agent vendor. Agent names are trademarks of their owners.
+[MIT](LICENSE). Bundled fonts and dependencies are listed in [LEGAL.md](LEGAL.md). Nucli is not affiliated with Anthropic, OpenAI or any other agent vendor. Agent names are trademarks of their owners.

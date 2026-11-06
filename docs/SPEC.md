@@ -37,7 +37,7 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 
 ## Projects
 
-- A project is a folder. Open one with `⌘O`, by dropping a folder on the sidebar or the empty viewport, from a History entry, or by opening a tab in a new folder (`⌥⇧⌘T`).
+- A project is a folder. Open one with `⌘O`, by dropping a folder on the window, from a History entry, by opening a tab in a new folder (`⌥⇧⌘T`), by dropping it on the Dock icon on macOS, or from the command line with `nucli <folder>`.
 - Projects list in the sidebar in a user-defined order (drag to reorder). Each row shows the folder glyph, the name and the uncommitted diff against `HEAD` as green `+N` and red `-M` (hidden when clean or not a git repository). The numbers update live.
 - Rename (double-click or context menu; empty restores the folder name), Color (12 theme colors or none; tints the folder glyph and the rows of its tabs), Move to Workspace (another workspace or a new one), Reveal in File Manager, Close Project (`⇧⌘W`, ends its tabs after confirming running agents).
 - Collapsing a project hides its tabs; the state is remembered.
@@ -108,11 +108,11 @@ An agent profile is `{name, executable, arguments, config_dir, env, theme}` in `
 - Each tab has an activity: **working**, **waiting** (asks for permission or input), **idle**, **done** (finished while not watched) or **exited**.
 - Claude Code: read from its status file `<config>/sessions/<pid>.json` (`busy`, `waiting`, `idle`) once per second. The `<pid>.<hash>.key` files next to it hold secrets and are never read.
 - Other agents: output based. Output gaps under 1.5s are one busy run; busy for 2s is working; after at least 5s of work, 2s of silence is done.
-- The bell and OSC `9` / `777;notify` notifications also mark a tab done.
+- The bell and OSC `9` / `777;notify` notifications also mark a tab done. A process that exits with an error does too.
 - Any CLI started by hand in a shell tab is detected from the terminal's foreground process, gets its agent glyph, and gets the same status.
 - Shown in the sidebar on the right of the tab row: spinner (working), `?` in orange (waiting), `✓` in green with a green title (done), `✗` in red (exited with an error).
 - Done and waiting are ignored for the tab the user is looking at, and cleared when the tab is shown.
-- A desktop notification ("Claude finished", "Claude is waiting for input") is posted when a tab becomes done or waiting and is not the one being watched, if `notifications` is on. Clicking it shows the tab. On macOS the Dock icon shows the number of tabs that need attention.
+- A desktop notification ("Claude finished", "Claude is waiting for input") is posted when a tab becomes done or waiting and is not the one being watched, if `notifications` is on. Clicking it shows the tab (macOS and Linux). On macOS the Dock icon shows the number of tabs that need attention.
 
 ### Subagents
 
@@ -128,6 +128,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 - `⌘`-click opens URLs in the browser and file paths (`path`, `path:line`, `path:line:col`, relative to the shell's folder or the project) in the file view at that line. `⌘`-hover underlines them.
 - Dropping files on a terminal types their shell-quoted paths; dropped text is typed as is.
 - macOS keys: `⌘←` / `⌘→` line start / end, `⌘⌫` delete line, `⌥←` / `⌥→` word back / forward, `⌥⌫` delete word, `⌥` is Meta.
+- Box and block characters are drawn by Nucli so they join seamlessly at any line height. Rounded box corners are drawn square.
 - Scrollback: 10000 lines. The scroll position sticks while new output arrives unless at the bottom.
 - `⌘=` / `⌘-` / `⌘0` change the font size of terminals and the file view, saved to `font_size`.
 
@@ -140,7 +141,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 ## Splits
 
 - `⌘D` / `⇧⌘D` open a new tab (the last used agent or shell) to the right of / below the focused pane. `⌥⌘W` closes the split; the tab keeps running in the sidebar.
-- Dropping a sidebar tab on a pane: the outer quarter of each edge splits on that side, the center replaces the pane.
+- Dropping a sidebar tab on the viewport or a pane: the outer quarter of each edge splits on that side, the center replaces the pane.
 - `⌥⌘←→↑↓` move focus. Clicking a pane focuses it. Unfocused panes are dimmed.
 - Tabs in a split form a group, marked in the sidebar with a joined bar. Selecting a tab of the group focuses its pane; selecting another tab shows that tab alone and keeps the group, which comes back when one of its tabs is selected.
 - Context menu of a grouped tab: Remove from Split, Unsplit All.
@@ -196,6 +197,7 @@ Text tabs `FILES  CHANGES  HISTORY` (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing
 - External changes (an agent writing the file) reload the view unless it has unsaved edits; saving then overwrites.
 - `esc` hides the file view (tabs stay); `⌘W` closes the shown file tab.
 - Open With… asks for an application once and remembers it per file extension; later the menu lists remembered applications first.
+- `⌘F` finds in the file: matches are highlighted, `enter` / `⌘G` next, `⇧⌘G` previous, `esc` closes.
 
 ## Command palette
 
@@ -217,7 +219,7 @@ One row at the bottom of the window, for the focused tab or file:
 - `⌘,` opens `settings.json` in the file view; "Open Keybindings" opens `keybindings.json`. Both reload when saved, from Nucli or any editor. Invalid JSON keeps the previous settings and shows the error in the status bar.
 - `settings.json` keys: `theme`, `appearance` (`system`, `light`, `dark`), `font_size`, `ui_font_size`, `line_height`, `cursor` (`block`, `bar`, `underline`), `cursor_blink`, `ligatures`, `restore_tabs`, `notifications`, `agents`, `shells`. Commands that change settings (theme, font size, detection, notifications) rewrite the file with all keys.
 - `keybindings.json` maps a key to a command name, e.g. `{"cmd-t": "new_tab", "cmd-shift-d": null}`; `null` removes a default. The palette shows every command's name and current key.
-- **Themes**: Nucli (dark and light pairs following the system), Nucli Amber and Nucli Phosphor (monochrome dark), and Vitesse Dark, Dark Soft, Black, Light, Light Soft. A theme sets every UI color, the 16 terminal colors and the syntax colors. An automatic theme follows the system appearance; a fixed one sets the window appearance to match.
+- **Themes**: Nucli (dark and light pairs following the system), Nucli Amber and Nucli Phosphor (monochrome dark), and Vitesse Dark, Dark Soft, Black, Light, Light Soft. A theme sets every UI color, the 16 terminal colors and the syntax colors. An automatic theme follows the system appearance; `appearance` can force its light or dark side.
 - **Shells**: `{name, path}` list. Filled on first launch from the login shell and `/etc/shells` (Windows: PowerShell, Windows PowerShell, Command Prompt, Git Bash and WSL when installed); "Detect Shells" adds missing ones.
 
 ## Restore
@@ -238,7 +240,7 @@ The development build uses `nucli-dev` / `Nucli Dev` instead.
 
 ## Import from Nucli 1
 
-On macOS, when `settings.json` does not exist yet and the `uk.polishch.nucli` defaults do, the first launch imports agent profiles, shells, theme, font size, workspaces and projects (path, name, color). Tabs, scrollback and keybindings are not imported.
+On macOS, when `settings.json` does not exist yet and the `uk.polishch.nucli` defaults do, the first launch imports agent profiles, shells, appearance and terminal options, workspaces and projects (path, name, color). Tabs, scrollback and keybindings are not imported.
 
 ## Privacy
 
