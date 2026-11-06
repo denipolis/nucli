@@ -389,7 +389,9 @@ pub fn graph(commits: &[Commit]) -> Vec<GraphRow> {
     for commit in commits {
         let found = waiting(&lanes, &commit.hash);
         let column = found.unwrap_or_else(|| free_lane(&mut lanes));
+        let has_branch = commit.refs.iter().any(|reference| !reference.starts_with("tag: "));
         let color = match found {
+            Some(_) if has_branch => next_color(&mut colors),
             Some(index) => lanes[index].map_or(0, |(_, color)| color),
             None => next_color(&mut colors),
         };
@@ -583,6 +585,18 @@ mod tests {
         assert_eq!(commit.refs, vec!["HEAD -> main", "origin/main", "tag: v1"]);
         assert_eq!((commit.time, commit.subject.as_str()), (1700000000, "Fix: a, b"));
         assert_eq!(parse_commit("abc\x1f\x1f\x1fAnn\x1f1\x1fs").unwrap().refs, Vec::<String>::new());
+    }
+
+    #[test]
+    fn graph_changes_color_at_a_branch() {
+        let mut base = node("b", &["a"]);
+        base.refs = vec!["origin/main".to_string()];
+        let rows = graph(&[node("c", &["b"]), base, node("a", &[])]);
+        assert_eq!(rows[0].color, 0);
+        assert_eq!(rows[1].color, 1);
+        assert_eq!(rows[2].color, 1);
+        assert_eq!(rows[1].segments.iter().find(|segment| segment.upper).map(|segment| segment.color), Some(0));
+        assert_eq!(rows[1].segments.iter().find(|segment| !segment.upper).map(|segment| segment.color), Some(1));
     }
 
     #[test]

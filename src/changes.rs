@@ -208,16 +208,16 @@ impl ChangesPanel {
                 } else {
                     icons::CHEVRON_DOWN
                 }))
-                .child(div().flex_1().text_color(theme.muted).child(title))
+                .child(div().flex_1().text_color(if staged { theme.green } else { theme.yellow }).child(title))
                 .when(tracked_or_new, |this| {
-                    this.child(action_button(format!("{id}-discard"), icons::DISCARD, theme.muted).on_click(
-                        cx.listener(move |panel, _, _, cx| {
+                    this.child(action_button(format!("{id}-discard"), icons::DISCARD, theme.red).on_click(cx.listener(
+                        move |panel, _, _, cx| {
                             panel.batch(Batch::Discard, discard_all.clone(), cx);
                             cx.stop_propagation();
-                        }),
-                    ))
+                        },
+                    )))
                     .child(
-                        action_button(format!("{id}-stage"), icons::ADD, theme.muted).on_click(cx.listener(
+                        action_button(format!("{id}-stage"), icons::ADD, theme.green).on_click(cx.listener(
                             move |panel, _, _, cx| {
                                 panel.batch(Batch::Stage, stage_all.clone(), cx);
                                 cx.stop_propagation();
@@ -226,7 +226,7 @@ impl ChangesPanel {
                     )
                 })
                 .when(staged, |this| {
-                    this.child(action_button(format!("{id}-unstage"), icons::REMOVE, theme.muted).on_click(
+                    this.child(action_button(format!("{id}-unstage"), icons::REMOVE, theme.yellow).on_click(
                         cx.listener(move |panel, _, _, cx| {
                             panel.batch(Batch::Unstage, unstage_all.clone(), cx);
                             cx.stop_propagation();
@@ -312,7 +312,7 @@ impl ChangesPanel {
                     .invisible()
                     .group_hover(hover_group, |style| style.visible())
                     .when(!staged, |this| {
-                        this.child(action_button(format!("discard-{id}"), icons::DISCARD, theme.muted).on_click(
+                        this.child(action_button(format!("discard-{id}"), icons::DISCARD, theme.red).on_click(
                             cx.listener(move |panel, _, _, cx| {
                                 panel.batch(Batch::Discard, vec![discard_change.clone()], cx);
                                 cx.stop_propagation();
@@ -323,7 +323,7 @@ impl ChangesPanel {
                         action_button(
                             format!("toggle-{id}"),
                             if staged { icons::REMOVE } else { icons::ADD },
-                            theme.muted,
+                            if staged { theme.yellow } else { theme.green },
                         )
                         .on_click(cx.listener(move |panel, _, _, cx| {
                             let kind = if staged { Batch::Unstage } else { Batch::Stage };

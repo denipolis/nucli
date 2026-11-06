@@ -3,9 +3,9 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, AppContext, ClipboardItem, Context, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    PathBuilder, Pixels, Render, SharedString, StatefulInteractiveElement, Styled, Window, canvas, div, fill, point,
-    px, relative, size, uniform_list,
+    AnyElement, AppContext, ClipboardItem, Context, HighlightStyle, Hsla, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, PathBuilder, Pixels, Render, SharedString, StatefulInteractiveElement, Styled, StyledText, Window,
+    canvas, div, fill, point, px, relative, size, uniform_list,
 };
 
 use crate::git::{self, Change, Commit, CommitDetails, GraphRow};
@@ -18,6 +18,7 @@ use crate::ui;
 use crate::window::WorkspaceView;
 
 const LANE: f32 = 12.0;
+const KNOWN_KINDS: [&str; 7] = ["feat", "fix", "docs", "chore", "style", "refactor", "perf"];
 const LANE_COLORS: [ItemColor; 8] = [
     ItemColor::Blue,
     ItemColor::Orange,
@@ -205,17 +206,118 @@ fn graph_canvas(row: GraphRow, height: Pixels, dark: bool) -> impl IntoElement {
     .h(height)
 }
 
-fn ref_label(reference: &str, theme: &crate::theme::Theme) -> impl IntoElement {
+fn lanes_through(row: GraphRow, height: Pixels, dark: bool) -> impl IntoElement {
+    let width = LANE * row.width.max(1) as f32 + 4.0;
+    canvas(
+        |_, _, _| {},
+        move |bounds, _, window, _| {
+            for segment in row.segments.iter().filter(|segment| !segment.upper) {
+                let x = bounds.origin.x + px(LANE * segment.to as f32 + LANE / 2.0);
+                let mut path = PathBuilder::stroke(px(1.5));
+                path.move_to(point(x, bounds.origin.y));
+                path.line_to(point(x, bounds.origin.y + height));
+                if let Ok(path) = path.build() {
+                    window.paint_path(path, lane_color(segment.color, dark));
+                }
+            }
+        },
+    )
+    .flex_none()
+    .w(px(width))
+    .h(height)
+}
+
+fn subject_kind(subject: &str) -> Option<&str> {
+    let head = match subject.split_once(':') {
+        Some((head, _)) => head,
+        None if KNOWN_KINDS.contains(&subject) => subject,
+        None => return None,
+    };
+    let kind = head.split('(').next()?.trim_end_matches('!');
+    (!kind.is_empty() && kind.chars().all(|c| c.is_ascii_lowercase())).then_some(kind)
+}
+
+fn subject_prefix(subject: &str) -> Option<&str> {
+    subject_kind(subject)?;
+    Some(subject.split_once(':').map_or(subject, |(head, _)| &subject[..=head.len()]))
+}
+
+fn kind_color(kind: &str, theme: &crate::theme::Theme) -> Hsla {
+    match kind {
+        "feat" => theme.green,
+        "fix" | "hotfix" => theme.red,
+        "docs" => theme.blue,
+        "style" => theme.magenta,
+        "ref" | "refactor" => theme.cyan,
+        "perf" => theme.yellow,
+        "revert" => theme.orange,
+        _ => theme.muted,
+    }
+}
+
+fn highlighted(text: String, ranges: Vec<(std::ops::Range<usize>, Hsla)>) -> StyledText {
+    StyledText::new(text)
+        .with_highlights(ranges.into_iter().map(|(range, color)| (range, HighlightStyle::color(color))))
+}
+
+fn subject_text(subject: String, theme: &crate::theme::Theme) -> StyledText {
+    let ranges = subject_kind(&subject)
+        .map(|kind| (0..subject_prefix(&subject).map_or(0, str::len), kind_color(kind, theme)))
+        .into_iter()
+        .collect();
+    highlighted(subject, ranges)
+}
+
+fn link_ranges(line: &str, theme: &crate::theme::Theme) -> Vec<(std::ops::Range<usize>, Hsla)> {
+    let mut ranges = Vec::new();
+    let mut offset = 0;
+    for word in line.split_inclusive(' ') {
+        let token = word.trim_end();
+        if token.starts_with("http") || token.contains('@') {
+            ranges.push((offset..offset + token.len(), theme.cyan));
+        }
+        offset += word.len();
+    }
+    ranges
+}
+
+fn stat_ranges(stats: &str, theme: &crate::theme::Theme) -> Vec<(std::ops::Range<usize>, Hsla)> {
+    let mut ranges = Vec::new();
+    let mut offset = 0;
+    for part in stats.split(", ") {
+        if part.contains("insertion") {
+            ranges.push((offset..offset + part.len(), theme.green));
+        } else if part.contains("deletion") {
+            ranges.push((offset..offset + part.len(), theme.red));
+        }
+        offset += part.len() + 2;
+    }
+    ranges
+}
+
+fn co_authors(message: &str) -> Vec<String> {
+    message
+        .lines()
+        .filter_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            key.trim()
+                .eq_ignore_ascii_case("co-authored-by")
+                .then(|| value.split('<').next().unwrap_or(value).trim().to_string())
+        })
+        .collect()
+}
+
+fn ref_label(reference: &str, lane: Hsla, theme: &crate::theme::Theme) -> impl IntoElement {
     let (text, background): (String, Hsla) = if let Some(name) = reference.strip_prefix("HEAD -> ") {
-        (name.to_string(), theme.accent)
+        (name.to_string(), lane)
     } else if reference == "HEAD" {
         ("HEAD".to_string(), theme.accent)
     } else if let Some(tag) = reference.strip_prefix("tag: ") {
         (format!("{} {tag}", icons::TAG), theme.yellow)
     } else if reference.contains('/') {
-        (format!("{} {reference}", icons::CLOUD), theme.orange)
+        (format!("{} {reference}", icons::CLOUD), lane)
     } else {
-        (reference.to_string(), theme.blue)
+        (reference.to_string(), lane)
     };
     div()
         .flex_shrink()
@@ -230,11 +332,12 @@ fn ref_label(reference: &str, theme: &crate::theme::Theme) -> impl IntoElement {
 
 struct CommitTooltip {
     commit: Commit,
+    lane: Hsla,
     details: Option<CommitDetails>,
 }
 
 impl CommitTooltip {
-    fn new(root: PathBuf, commit: Commit, cx: &mut Context<Self>) -> Self {
+    fn new(root: PathBuf, commit: Commit, lane: Hsla, cx: &mut Context<Self>) -> Self {
         let hash = commit.hash.clone();
         cx.spawn(async move |this, cx| {
             let details = cx.background_executor().spawn(async move { git::commit_details(&root, &hash) }).await;
@@ -244,7 +347,7 @@ impl CommitTooltip {
             });
         })
         .detach();
-        CommitTooltip { commit, details: None }
+        CommitTooltip { commit, lane, details: None }
     }
 }
 
@@ -257,7 +360,9 @@ impl Render for CommitTooltip {
         let message = details.as_ref().map(|details| details.message.clone()).unwrap_or(self.commit.subject.clone());
         let mut lines = message.lines().map(str::to_string);
         let subject = lines.next().unwrap_or_default();
-        let date = details.as_ref().map(|details| format!(" ({})", details.date)).unwrap_or_default();
+        let date = details.as_ref().map(|details| format!("({})", details.date)).unwrap_or_default();
+        let authors = co_authors(&message);
+        let lane = self.lane;
         let rule = || div().h(px(1.0)).bg(theme.border);
         div()
             .w(px(480.0))
@@ -272,27 +377,56 @@ impl Render for CommitTooltip {
             .border_1()
             .border_color(theme.border)
             .text_color(theme.text)
-            .child(div().font_weight(gpui::FontWeight::BOLD).child(self.commit.author.clone()))
-            .child(div().text_color(theme.muted).child(format!("{}{date}", relative_age(time))))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .flex_none()
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(theme.cyan)
+                            .child(self.commit.author.clone()),
+                    )
+                    .child(div().flex_none().text_color(theme.faint).child(icons::HISTORY))
+                    .child(div().flex_none().text_color(theme.yellow).child(relative_age(time)))
+                    .child(div().min_w_0().truncate().text_color(theme.muted).child(date)),
+            )
+            .children(authors.into_iter().map(|author| {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(
+                        div().flex_none().font_weight(gpui::FontWeight::BOLD).text_color(theme.magenta).child(author),
+                    )
+                    .child(div().flex_none().italic().text_color(theme.faint).child("co-author"))
+            }))
             .when(!self.commit.refs.is_empty(), |this| {
-                this.child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .gap(px(4.0))
-                        .children(self.commit.refs.iter().map(|reference| ref_label(reference, &theme))),
-                )
+                this.children(self.commit.refs.chunks(3).map(|refs| {
+                    div().flex().gap(px(4.0)).children(refs.iter().map(|reference| ref_label(reference, lane, &theme)))
+                }))
             })
             .child(rule())
-            .child(div().font_weight(gpui::FontWeight::BOLD).child(subject))
-            .children(
-                lines.filter(|line| !line.trim().is_empty()).map(|line| div().text_color(theme.muted).child(line)),
-            )
+            .child(div().font_weight(gpui::FontWeight::BOLD).child(subject_text(subject, &theme)))
+            .children(lines.filter(|line| !line.trim().is_empty()).map(|line| {
+                let ranges = link_ranges(&line, &theme);
+                div().text_color(theme.muted).child(highlighted(line, ranges))
+            }))
             .child(rule())
             .when_some(details.filter(|details| !details.stats.is_empty()), |this, details| {
-                this.child(div().text_color(theme.muted).child(details.stats))
+                let ranges = stat_ranges(&details.stats, &theme);
+                this.child(div().text_color(theme.text).child(highlighted(details.stats, ranges)))
             })
-            .child(div().text_color(theme.faint).child(self.commit.hash.clone()))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(div().flex_none().text_color(lane).child(icons::COMMIT))
+                    .child(div().min_w_0().truncate().text_color(theme.yellow).child(self.commit.hash.clone())),
+            )
     }
 }
 
@@ -340,6 +474,7 @@ impl Render for CommitsPanel {
                                 _ => theme.green,
                             };
                             let path = change.path.clone();
+                            let through = panel.graph.get(commit).cloned();
                             div()
                                 .id(("commit-row", index))
                                 .h(line)
@@ -347,9 +482,10 @@ impl Render for CommitsPanel {
                                 .flex()
                                 .items_center()
                                 .gap(px(6.0))
-                                .pl(px(28.0))
                                 .pr(px(8.0))
                                 .hover(|style| style.bg(theme.hover))
+                                .children(through.map(|row| lanes_through(row, line, theme.dark)))
+                                .child(div().flex_none().w(px(8.0)))
                                 .child(div().flex_none().text_color(color.color(theme.dark)).child(glyph))
                                 .child(div().flex_none().max_w(px(150.0)).truncate().child(name))
                                 .child(div().flex_1().min_w_0().truncate().text_color(theme.faint).child(folder))
@@ -375,6 +511,10 @@ impl Render for CommitsPanel {
                             let time = UNIX_EPOCH + Duration::from_secs(commit.time.max(0) as u64);
                             let (copy_hash, copy_subject) = (commit.hash.clone(), commit.subject.clone());
                             let hidden_refs = commit.refs.len().saturating_sub(2);
+                            let lane = graph.as_ref().map_or(theme.accent, |row| lane_color(row.color, theme.dark));
+                            let kind = subject_kind(&commit.subject).map(|kind| kind_color(kind, &theme));
+                            let prefix = subject_prefix(&commit.subject).unwrap_or_default().to_string();
+                            let rest = commit.subject[prefix.len()..].trim_start().to_string();
                             let (tooltip_root, tooltip_commit) = (panel.root.clone(), commit.clone());
                             div()
                                 .id(("commit-row", index))
@@ -401,7 +541,7 @@ impl Render for CommitsPanel {
                                                     .refs
                                                     .iter()
                                                     .take(2)
-                                                    .map(|reference| ref_label(reference, &theme)),
+                                                    .map(|reference| ref_label(reference, lane, &theme)),
                                             )
                                             .when(hidden_refs > 0, |this| {
                                                 this.child(
@@ -413,13 +553,10 @@ impl Render for CommitsPanel {
                                             }),
                                     )
                                 })
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .min_w_0()
-                                        .truncate()
-                                        .child(SharedString::from(commit.subject.clone())),
-                                )
+                                .when_some(kind, |this, color| {
+                                    this.child(div().flex_none().text_color(color).child(prefix.clone()))
+                                })
+                                .child(div().flex_1().min_w_0().truncate().child(SharedString::from(rest.clone())))
                                 .child(
                                     div()
                                         .flex()
@@ -432,7 +569,7 @@ impl Render for CommitsPanel {
                                 )
                                 .tooltip(move |_, cx| {
                                     let (root, commit) = (tooltip_root.clone(), tooltip_commit.clone());
-                                    cx.new(|cx| CommitTooltip::new(root, commit, cx)).into()
+                                    cx.new(|cx| CommitTooltip::new(root, commit, lane, cx)).into()
                                 })
                                 .on_click(cx.listener(move |panel, _, _, cx| panel.toggle(commit_index, cx)))
                                 .on_mouse_down(
@@ -491,4 +628,27 @@ pub fn panel(
     let root = path.to_path_buf();
     entity.update(cx, |panel, cx| panel.set_root(&root, cx));
     entity.into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_commit_kinds() {
+        assert_eq!(subject_kind("feat: a"), Some("feat"));
+        assert_eq!(subject_kind("fix(search): a"), Some("fix"));
+        assert_eq!(subject_kind("ref!: a"), Some("ref"));
+        assert_eq!(subject_kind("docs"), Some("docs"));
+        assert_eq!(subject_kind("Note: a"), None);
+        assert_eq!(subject_kind("plain subject"), None);
+        assert_eq!(subject_prefix("fix(search): a b"), Some("fix(search):"));
+        assert_eq!(subject_prefix("docs"), Some("docs"));
+    }
+
+    #[test]
+    fn reads_co_authors() {
+        let message = "feat: a\n\nbody\n\nCo-Authored-By: Some One <a@b.c>\nco-authored-by: Other";
+        assert_eq!(co_authors(message), vec!["Some One".to_string(), "Other".to_string()]);
+    }
 }
