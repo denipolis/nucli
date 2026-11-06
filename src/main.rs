@@ -52,6 +52,25 @@ use gpui::{App, Application};
 use crate::commands::Quit;
 use crate::settings::Settings;
 
+fn start_application() -> Application {
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let started = std::panic::catch_unwind(Application::new);
+    std::panic::set_hook(hook);
+    started.unwrap_or_else(|panic| {
+        let reason = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap_or("unknown error");
+        let reason = reason.rsplit("value: ").next().unwrap_or(reason);
+        let text = format!("Nucli could not start. Check your graphics drivers.\n\n{reason}");
+        eprintln!("{text}");
+        notify::alert(&text);
+        std::process::exit(1);
+    })
+}
+
 fn load_fonts(cx: &mut App) {
     let fonts: Vec<Cow<'static, [u8]>> = vec![
         Cow::Borrowed(include_bytes!("../assets/fonts/MapleMono-NF-Regular.ttf")),
@@ -173,7 +192,7 @@ fn open_folders(folders: Vec<std::path::PathBuf>, cx: &mut App) {
 }
 
 fn main() {
-    let application = Application::new();
+    let application = start_application();
     let (opened, mut opened_events) = futures::channel::mpsc::unbounded::<Vec<std::path::PathBuf>>();
     application.on_open_urls(move |urls| {
         let _ = opened.unbounded_send(urls.iter().filter_map(|url| folder_from_url(url)).collect());
