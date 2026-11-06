@@ -18,8 +18,8 @@ fn chip(id: &'static str, glyph: &'static str, theme: &Theme) -> Stateful<Div> {
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(6.0))
-        .px(px(6.0))
+        .gap(px(4.0))
+        .px(px(4.0))
         .bg(theme.elevated)
         .border_1()
         .border_color(theme.border)
@@ -33,7 +33,6 @@ fn program(session: &Session) -> Option<String> {
 }
 
 pub fn render(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Option<AnyElement> {
-    let theme = ui::theme(cx);
     let error = cx
         .try_global::<SettingsError>()
         .and_then(|error| error.0.clone())
@@ -42,16 +41,20 @@ pub fn render(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Option<A
     if session.is_none() && error.is_none() {
         return None;
     }
+    let theme =
+        session.as_ref().and_then(|session| session.read(cx).view.theme.clone()).unwrap_or_else(|| ui::theme(cx));
+    let size = (settings::get(cx).ui_font_size() - 2.0).max(8.0);
     let mut row = div()
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(6.0))
-        .px(px(6.0))
-        .h(px((settings::get(cx).ui_font_size() * 2.4).round()))
+        .gap(px(4.0))
+        .pl(px(10.0))
+        .pr(px(10.0))
+        .pb(px(4.0))
+        .text_size(px(size))
+        .line_height(px((size * 1.5).round()))
         .bg(theme.background)
-        .border_t_1()
-        .border_color(theme.border)
         .overflow_hidden();
     if let Some(session) = session {
         let session = session.read(cx);

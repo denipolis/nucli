@@ -210,7 +210,7 @@ Tabs `FILES  CHANGES  HISTORY` (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing a hi
 
 ## Status chips
 
-One row under the selected tab, not under the whole window, with framed chips:
+One row of small framed chips directly under the selected tab, in the terminal's own background with no rule above, so it reads as part of the terminal:
 
 - The shell's current folder (click: Reveal / Copy Path).
 - Git branch (click: switch to one of the 30 newest local branches or create a new one).
