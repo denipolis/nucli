@@ -230,7 +230,7 @@ impl Store {
     pub fn watched(&self, id: &str, cx: &mut Context<Self>) -> bool {
         let Some(workspace) = self.workspace_of(id) else { return false };
         let Some(window) = self.windows.get(&workspace.id).copied() else { return false };
-        window.update(cx, |view, window, cx| window.is_window_active() && view.shows(id, cx)).unwrap_or(false)
+        workspace.shows(id) && window.update(cx, |_, window, _| window.is_window_active()).unwrap_or(false)
     }
 
     pub fn mark_attention(&mut self, id: &str, text: Option<String>, cx: &mut Context<Self>) {

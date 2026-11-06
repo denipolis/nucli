@@ -48,18 +48,17 @@ case "$TARGET" in
 PLIST
     codesign --force --deep --sign - "$APP"
     OUT="dist/Nucli-$TARGET.dmg"
-    if command -v create-dmg >/dev/null; then
-      mkdir dist/dmg
-      mv "$APP" dist/dmg/
-      create-dmg --volname Nucli --volicon assets/icon/nucli.icns --background assets/icon/dmg-background.tiff \
-        --window-pos 200 200 --window-size 660 400 --icon-size 128 --text-size 13 \
-        --icon Nucli.app 180 190 --app-drop-link 480 190 --hide-extension Nucli.app --no-internet-enable \
-        "$OUT" dist/dmg
-      rm -rf dist/dmg
-    else
-      hdiutil create -volname Nucli -srcfolder "$APP" -ov -format UDZO "$OUT"
-      rm -rf "$APP"
+    mkdir dist/dmg
+    mv "$APP" dist/dmg/
+    if ! command -v create-dmg >/dev/null || ! create-dmg --volname Nucli --volicon assets/icon/nucli.icns \
+      --background assets/icon/dmg-background.tiff --window-pos 200 200 --window-size 660 400 --icon-size 128 \
+      --text-size 13 --icon Nucli.app 180 190 --app-drop-link 480 190 --hide-extension Nucli.app \
+      --no-internet-enable "$OUT" dist/dmg; then
+      rm -f dist/rw.*.dmg "$OUT"
+      ln -s /Applications dist/dmg/Applications
+      hdiutil create -volname Nucli -srcfolder dist/dmg -ov -format UDZO "$OUT"
     fi
+    rm -rf dist/dmg
     ;;
   *windows*)
     cp "$BUILD/nucli.exe" dist/stage/

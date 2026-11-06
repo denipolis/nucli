@@ -63,6 +63,7 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
         .child(
             div()
                 .id("panel-header")
+                .on_mouse_down(MouseButton::Left, cx.listener(crate::resize::start(crate::resize::Drag::PanelSide)))
                 .flex()
                 .flex_none()
                 .items_center()

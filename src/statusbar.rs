@@ -47,7 +47,7 @@ pub fn render(view: &mut WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyE
         .min_w_0()
         .child(div().px(px(6.0)).bg(theme.accent).text_color(theme.on_accent).child(mode));
     if let Some(folder) = folder {
-        let reveal = folder.clone();
+        let (reveal, copy) = (folder.clone(), folder.clone());
         left = left.child(
             div()
                 .id("status-folder")
@@ -55,7 +55,16 @@ pub fn render(view: &mut WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyE
                 .text_color(theme.muted)
                 .hover(|style| style.text_color(theme.text))
                 .child(format!("{} {}", icons::FOLDER, paths::display(&folder)))
-                .on_click(move |_, _, cx| cx.reveal_path(&reveal)),
+                .on_click(cx.listener(move |view, event: &gpui::ClickEvent, _, cx| {
+                    let (reveal, copy) = (reveal.clone(), copy.clone());
+                    let items = vec![
+                        crate::menu::action(crate::actions::reveal_label(), move |_, _, cx| cx.reveal_path(&reveal)),
+                        crate::menu::action("Copy Path", move |_, _, cx| {
+                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(copy.to_string_lossy().into_owned()))
+                        }),
+                    ];
+                    view.open_menu(event.position(), items, cx);
+                })),
         );
     }
     if let Some(branch) = branch {

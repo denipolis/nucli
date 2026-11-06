@@ -12,9 +12,12 @@ pub enum Drag {
     Sidebar,
     Panel,
     Terminal,
+    PanelSide,
 }
 
-fn start(drag: Drag) -> impl Fn(&mut WorkspaceView, &gpui::MouseDownEvent, &mut Window, &mut Context<WorkspaceView>) {
+pub fn start(
+    drag: Drag,
+) -> impl Fn(&mut WorkspaceView, &gpui::MouseDownEvent, &mut Window, &mut Context<WorkspaceView>) {
     move |view, _, _, cx| {
         view.resizing = Some(drag);
         cx.stop_propagation();
@@ -70,6 +73,12 @@ pub fn mouse_move(
             Drag::Panel if !panel_hidden => {
                 let value = if side == Side::Left { x - sidebar } else { width - x };
                 state.window.panel_width = value.clamp(160.0, (width * 0.6).max(160.0));
+            }
+            Drag::PanelSide => {
+                let wanted = if x > width / 2.0 { Side::Right } else { Side::Left };
+                if store.ui.panel_side != wanted {
+                    store.ui.panel_side = wanted;
+                }
             }
             Drag::Terminal => {
                 let status = (crate::settings::get(cx).ui_font_size() * 1.9).round();

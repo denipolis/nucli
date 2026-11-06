@@ -39,6 +39,7 @@ pub struct WorkspaceView {
     pub resizing: Option<crate::resize::Drag>,
     pub pane_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
     pub dragging_titlebar: bool,
+    pub shown_tab: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -83,6 +84,11 @@ pub fn open(workspace: &str, cx: &mut App) -> Option<WindowHandle<WorkspaceView>
         }
     });
     let _ = handle.update(cx, |view, window, cx| view.focus_current(window, cx));
+    store.update(cx, |store, cx| {
+        if store.ui.sidebar_tab == crate::persist::SidebarTab::History && store.history.is_none() {
+            store.refresh_history(cx);
+        }
+    });
     Some(handle)
 }
 
@@ -92,7 +98,14 @@ impl WorkspaceView {
         let store = store::store(cx);
         let filter = cx.new(|cx| TextInput::new("filter", cx));
         let subscriptions = vec![
-            cx.observe(&store, |_, _, cx| cx.notify()),
+            cx.observe_in(&store, window, |view, store, window, cx| {
+                let gone = view.shown_tab.as_ref().is_some_and(|tab| !store.read(cx).sessions.contains_key(tab));
+                view.shown_tab = view.state(cx).and_then(|state| state.selected_tab()).map(String::from);
+                if view.palette.is_none() && view.rename.is_none() && (gone || window.focused(cx).is_none()) {
+                    view.focus_current(window, cx);
+                }
+                cx.notify();
+            }),
             cx.observe_global::<settings::Settings>(|_, cx| cx.notify()),
             cx.subscribe_in(&filter, window, |view, _, event, window, cx| match event {
                 InputEvent::Cancel => {
@@ -158,6 +171,7 @@ impl WorkspaceView {
             resizing: None,
             pane_bounds: Default::default(),
             dragging_titlebar: false,
+            shown_tab: None,
             _subscriptions: subscriptions,
         }
     }
@@ -180,33 +194,11 @@ impl WorkspaceView {
     }
 
     pub fn visible_tabs(&self, cx: &App) -> Vec<String> {
-        let Some(state) = self.state(cx) else { return Vec::new() };
-        let mut tabs: Vec<String> = match state.selected_tab() {
-            Some(id) => match crate::splits::group(&state.layouts, id) {
-                Some(index) => crate::splits::tabs(&state.layouts[index]),
-                None => vec![id.to_string()],
-            },
-            None => Vec::new(),
-        };
-        if let Some(project) = state.current_project()
-            && project.terminal_shown
-            && let Some(terminal) = &project.active_terminal
-        {
-            tabs.push(terminal.clone());
-        }
-        tabs
-    }
-
-    pub fn shows(&self, id: &str, cx: &App) -> bool {
-        self.visible_tabs(cx).iter().any(|tab| tab == id) && !self.file_shown(cx)
+        self.state(cx).map(Workspace::visible_tabs).unwrap_or_default()
     }
 
     pub fn file_shown(&self, cx: &App) -> bool {
-        self.state(cx).and_then(|state| state.current_project()).is_some_and(|project| {
-            project.file_shown
-                && project.active_file.is_some()
-                && matches!(self.state(cx).and_then(|s| s.selected.clone()), Some(Selected::Project(_)))
-        })
+        self.state(cx).is_some_and(Workspace::file_shown)
     }
 
     pub fn focus_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -444,14 +436,16 @@ impl Render for WorkspaceView {
         let ui_size = settings::get(cx).ui_font_size();
         let Some(state) = self.state(cx).cloned() else { return div().into_any_element() };
         let ui_state = self.store(cx).ui.clone();
+        let terminal = crate::panel::terminal_panel(self, window, cx);
+        let content = (terminal.is_none() || !state.window.terminal_maximized).then(|| self.viewport(window, cx));
         let viewport = div()
             .flex()
             .flex_col()
             .flex_1()
             .min_w_0()
             .h_full()
-            .child(div().flex_1().min_h_0().child(self.viewport(window, cx)))
-            .children(crate::panel::terminal_panel(self, window, cx));
+            .children(content.map(|content| div().flex_1().min_h_0().child(content)))
+            .children(terminal);
         let panel = (!ui_state.panel_hidden).then(|| crate::panel::render(self, window, cx));
         let mut body = div().flex().flex_row().flex_1().min_h_0().overflow_hidden();
         if !state.window.sidebar_hidden {

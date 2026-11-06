@@ -30,7 +30,7 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 - `⌘N` asks for a name and opens a new workspace window. The first launch creates "Personal".
 - Switch windows with the workspace popup at the bottom of the sidebar, the command palette, or the system window switcher.
 - **Closing a workspace window closes the workspace**: its tabs are saved like on quit (conversations and terminal output included), the processes end, and the workspace is marked closed. It asks first only when processes are running or files are unsaved.
-- A closed workspace reopens from the workspace popup, the palette ("Reopen Workspace: Work") or File › Reopen Workspace on macOS. Its tabs come back as they were.
+- A closed workspace reopens from the workspace popup or the palette ("Reopen Workspace: Work"). Its tabs come back as they were.
 - Rename Workspace… and Delete Workspace… live in the workspace popup and the palette. Delete confirms, ends the workspace's processes and removes its projects.
 - Quitting keeps every workspace and reopens the ones that were open. When every window was closed, the last used workspace opens.
 - The window that was focused last comes up in front.

@@ -160,6 +160,32 @@ impl Workspace {
         }
     }
 
+    pub fn file_shown(&self) -> bool {
+        matches!(self.selected, Some(Selected::Project(_)))
+            && self.current_project().is_some_and(|project| project.file_shown && project.active_file.is_some())
+    }
+
+    pub fn visible_tabs(&self) -> Vec<String> {
+        let mut tabs: Vec<String> = match self.selected_tab() {
+            Some(id) => match crate::splits::group(&self.layouts, id) {
+                Some(index) => crate::splits::tabs(&self.layouts[index]),
+                None => vec![id.to_string()],
+            },
+            None => Vec::new(),
+        };
+        let project = if self.selected.is_some() { self.current_project() } else { Some(&self.scratch) };
+        if let Some(terminal) =
+            project.filter(|project| project.terminal_shown).and_then(|project| project.active_terminal.as_ref())
+        {
+            tabs.push(terminal.clone());
+        }
+        tabs
+    }
+
+    pub fn shows(&self, id: &str) -> bool {
+        self.visible_tabs().iter().any(|tab| tab == id) && !self.file_shown()
+    }
+
     fn from_file(file: WorkspaceFile) -> Workspace {
         Workspace {
             id: file.id,
@@ -196,6 +222,7 @@ pub struct Store {
     pub skip_close_confirm_until: u64,
     pub conversations: HashMap<PathBuf, Vec<Conversation>>,
     pub history: Option<Vec<Conversation>>,
+    conversations_loading: std::collections::HashSet<PathBuf>,
     pub tick: usize,
     pub tick_fast: usize,
     pub diffstats: HashMap<PathBuf, crate::git::DiffStat>,
@@ -225,6 +252,7 @@ impl Store {
             skip_close_confirm_until: state.skip_close_confirm_until,
             conversations: HashMap::new(),
             history: None,
+            conversations_loading: Default::default(),
             tick: 0,
             tick_fast: 0,
             diffstats: HashMap::new(),
@@ -638,11 +666,15 @@ impl Store {
     }
 
     pub fn refresh_conversations(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if !self.conversations_loading.insert(path.clone()) {
+            return;
+        }
         let sources = crate::history::sources(&settings::get(cx).agents);
         cx.spawn(async move |this, cx| {
-            let lookup = path.clone();
+            let lookup = if path.as_os_str().is_empty() { paths::home() } else { path.clone() };
             let list = cx.background_executor().spawn(async move { crate::history::list(&lookup, &sources, 30) }).await;
             let _ = this.update(cx, |store, cx| {
+                store.conversations_loading.remove(&path);
                 if store.conversations.get(&path) != Some(&list) {
                     store.conversations.insert(path, list);
                     cx.notify();
