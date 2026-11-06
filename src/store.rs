@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui::{App, AppContext, Context, Entity, Global, Task, WindowHandle};
 
@@ -226,6 +226,8 @@ pub struct Store {
     conversations_loading: std::collections::HashSet<PathBuf>,
     pub tick: usize,
     pub tick_fast: usize,
+    pub progress: Vec<Progress>,
+    next_progress: u64,
     pub diffstats: HashMap<PathBuf, crate::git::DiffStat>,
     pub revisions: HashMap<PathBuf, u64>,
     pub watchers: crate::watcher::Watchers,
@@ -257,6 +259,8 @@ impl Store {
             conversations_loading: Default::default(),
             tick: 0,
             tick_fast: 0,
+            progress: Vec::new(),
+            next_progress: 0,
             diffstats: HashMap::new(),
             revisions: HashMap::new(),
             watchers: Default::default(),
@@ -667,15 +671,31 @@ impl Store {
         self.conversations.get(path)
     }
 
+    pub fn begin(&mut self, text: impl Into<String>) -> u64 {
+        self.next_progress += 1;
+        self.progress.push(Progress { id: self.next_progress, text: text.into(), started: Instant::now() });
+        self.next_progress
+    }
+
+    pub fn finish(&mut self, id: u64, cx: &mut Context<Self>) {
+        let shown = self.progress.iter().any(|item| item.id == id && item.started.elapsed() >= PROGRESS_DELAY);
+        self.progress.retain(|item| item.id != id);
+        if shown {
+            cx.notify();
+        }
+    }
+
     pub fn refresh_conversations(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if !self.conversations_loading.insert(path.clone()) {
             return;
         }
         let sources = crate::history::sources(&settings::get(cx).agents);
+        let progress = self.begin("loading conversations");
         cx.spawn(async move |this, cx| {
             let lookup = if path.as_os_str().is_empty() { paths::home() } else { path.clone() };
             let list = cx.background_executor().spawn(async move { crate::history::list(&lookup, &sources, 30) }).await;
             let _ = this.update(cx, |store, cx| {
+                store.finish(progress, cx);
                 store.conversations_loading.remove(&path);
                 if store.conversations.get(&path) != Some(&list) {
                     store.conversations.insert(path, list);
@@ -688,15 +708,33 @@ impl Store {
 
     pub fn refresh_history(&mut self, cx: &mut Context<Self>) {
         let sources = crate::history::sources(&settings::get(cx).agents);
+        let progress = self.begin("loading history");
         cx.spawn(async move |this, cx| {
             let list = cx.background_executor().spawn(async move { crate::history::all(&sources, 150) }).await;
             let _ = this.update(cx, |store, cx| {
+                store.finish(progress, cx);
                 store.history = Some(list);
                 cx.notify();
             });
         })
         .detach();
     }
+}
+
+pub const PROGRESS_DELAY: Duration = Duration::from_millis(200);
+
+pub struct Progress {
+    pub id: u64,
+    pub text: String,
+    pub started: Instant,
+}
+
+pub fn begin_progress(text: impl Into<String>, cx: &mut App) -> u64 {
+    store(cx).update(cx, |store, _| store.begin(text))
+}
+
+pub fn finish_progress(id: u64, cx: &mut App) {
+    store(cx).update(cx, |store, cx| store.finish(id, cx));
 }
 
 pub fn spec(

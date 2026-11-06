@@ -86,9 +86,11 @@ impl ChangesPanel {
         }
         self.loading = true;
         let root = self.root.clone();
+        let progress = store::begin_progress("git status", cx);
         cx.spawn(async move |this, cx| {
             let status = cx.background_executor().spawn(async move { git::status(&root) }).await;
             let _ = this.update(cx, |panel, cx| {
+                store::finish_progress(progress, cx);
                 panel.loading = false;
                 panel.loaded = true;
                 panel.status = status;
@@ -103,15 +105,18 @@ impl ChangesPanel {
 
     fn run(
         &mut self,
+        text: &str,
         action: impl FnOnce(&Path) -> Result<(), String> + Send + 'static,
         done: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
         cx: &mut Context<Self>,
     ) {
         let root = self.root.clone();
         let workspace = self.workspace.clone();
+        let progress = store::begin_progress(text, cx);
         cx.spawn(async move |this, cx| {
             let result = cx.background_executor().spawn(async move { action(&root) }).await;
             let _ = this.update(cx, |panel, cx| {
+                store::finish_progress(progress, cx);
                 match result {
                     Ok(()) => done(panel, cx),
                     Err(error) => {
@@ -138,6 +143,7 @@ impl ChangesPanel {
             return;
         }
         self.run(
+            "git commit",
             move |root| git::commit(root, &text),
             |panel, cx| panel.message.update(cx, |input, cx| input.clear(cx)),
             cx,
@@ -150,8 +156,8 @@ impl ChangesPanel {
             return;
         }
         match kind {
-            Batch::Stage => self.run(move |root| git::stage(root, &paths), |_, _| {}, cx),
-            Batch::Unstage => self.run(move |root| git::unstage(root, &paths), |_, _| {}, cx),
+            Batch::Stage => self.run("git add", move |root| git::stage(root, &paths), |_, _| {}, cx),
+            Batch::Unstage => self.run("git restore --staged", move |root| git::unstage(root, &paths), |_, _| {}, cx),
             Batch::Discard => self.confirm_discard(changes, cx),
         }
     }
@@ -173,7 +179,7 @@ impl ChangesPanel {
                 if answer.await == Ok(0) {
                     let _ = panel.update(cx, |panel, cx| {
                         let root = panel.root.clone();
-                        panel.run(move |_| discard(&root, &changes), |_, _| {}, cx);
+                        panel.run("discarding changes", move |_| discard(&root, &changes), |_, _| {}, cx);
                     });
                 }
             })

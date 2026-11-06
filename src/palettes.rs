@@ -89,10 +89,12 @@ fn load_files(
     as_files: bool,
     cx: &mut Context<WorkspaceView>,
 ) {
+    let progress = store::begin_progress("listing files", cx);
     cx.spawn(async move |_, cx| {
         let dir = project.clone();
         let files = cx.background_executor().spawn(async move { list_files(&dir) }).await;
         let _ = cx.update(|cx| {
+            store::finish_progress(progress, cx);
             palette.update(cx, |palette, cx| {
                 let mut extra = file_items(&project, &recent, &files, cx);
                 if !as_files {
@@ -296,9 +298,12 @@ pub fn branches(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<
     for branch in list {
         let (target, name) = (dir.clone(), branch.clone());
         items.push(
-            Item::new(branch.clone(), move |_, window, cx| run_git(window, cx, crate::git::switch(&target, &name)))
-                .glyph(icons::BRANCH, None)
-                .detail(if Some(&branch) == current.as_ref() { "current" } else { "" }),
+            Item::new(branch.clone(), move |_, window, cx| {
+                let (target, name) = (target.clone(), name.clone());
+                run_git(format!("git switch {name}"), window, cx, move || crate::git::switch(&target, &name))
+            })
+            .glyph(icons::BRANCH, None)
+            .detail(if Some(&branch) == current.as_ref() { "current" } else { "" }),
         );
     }
     let target = dir.clone();
@@ -307,7 +312,10 @@ pub fn branches(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<
             let target = target.clone();
             crate::actions::prompt(view, "new branch", "", window, cx, move |name, _, window, cx| {
                 if !name.is_empty() {
-                    run_git(window, cx, crate::git::create_branch(&target, &name));
+                    let target = target.clone();
+                    run_git(format!("git switch -c {name}"), window, cx, move || {
+                        crate::git::create_branch(&target, &name)
+                    });
                 }
             });
         })
@@ -317,9 +325,25 @@ pub fn branches(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<
     view.show_palette(palette, window, cx);
 }
 
-fn run_git(window: &mut Window, cx: &mut App, result: Result<(), String>) {
-    if let Err(error) = result {
-        drop(window.prompt(PromptLevel::Warning, "git failed", Some(&error), &["OK"], cx));
-    }
-    store::store(cx).update(cx, |_, cx| cx.notify());
+fn run_git(
+    text: String,
+    window: &mut Window,
+    cx: &mut App,
+    action: impl FnOnce() -> Result<(), String> + Send + 'static,
+) {
+    let handle = window.window_handle();
+    let progress = store::begin_progress(text, cx);
+    cx.spawn(async move |cx| {
+        let result = cx.background_executor().spawn(async move { action() }).await;
+        let _ = cx.update(|cx| {
+            store::finish_progress(progress, cx);
+            if let Err(error) = result {
+                let _ = handle.update(cx, |_, window, cx| {
+                    drop(window.prompt(PromptLevel::Warning, "git failed", Some(&error), &["OK"], cx));
+                });
+            }
+            store::store(cx).update(cx, |_, cx| cx.notify());
+        });
+    })
+    .detach();
 }

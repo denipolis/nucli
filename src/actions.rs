@@ -958,6 +958,7 @@ fn change_font(delta: f32, cx: &mut App) {
 }
 
 pub fn detect(cx: &mut App, agents_only: bool) {
+    let progress = crate::store::begin_progress(if agents_only { "detecting agents" } else { "detecting shells" }, cx);
     cx.spawn(async move |cx| {
         let (agents, shells) =
             cx.background_executor()
@@ -966,6 +967,7 @@ pub fn detect(cx: &mut App, agents_only: bool) {
                 })
                 .await;
         let _ = cx.update(|cx| {
+            crate::store::finish_progress(progress, cx);
             settings::update(cx, |settings| {
                 for profile in agents {
                     if !settings.agents.iter().any(|existing| existing.name == profile.name) {

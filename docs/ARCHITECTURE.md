@@ -43,7 +43,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `prompt.rs` | Confirmation dialogs, installed with `set_prompt_builder`. |
 | `text_input.rs` | Single line input with IME. |
 | `resize.rs` | Pane resize handles. |
-| `titlebar.rs` | Title bar: workspace name and toggles. |
+| `titlebar.rs` | Title bar: workspace name, location, status messages. |
 | `statusbar.rs` | Status chips under the viewport. |
 | `settings_view.rs` | Settings page in the viewport. |
 | `theme.rs`, `ui.rs` | Palettes, derived UI colors, active theme. |
@@ -56,6 +56,8 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 `Store` is the single source of truth. Tabs are referred to by id everywhere; `Store.sessions` maps ids to entities, so projects move between workspaces without touching the running processes. Windows observe the store and re-render. Output from a terminal notifies only its session.
 
 Everything per window lives in `Workspace` so it is saved with it. A window view only keeps what does not outlive it: open menus, the palette, rename state, editors.
+
+Background work reports itself with `store::begin_progress` and `store::finish_progress`; the title bar shows it after `PROGRESS_DELAY`. Beginning does not notify, because the 110 ms spinner timer redraws while anything is in progress, so quick work causes no extra renders.
 
 Saving is debounced (`Store::schedule_save`). Terminal output is written only on quit and when a workspace closes (`Store::snapshot(true, _)`); `persist::prune_scrollback` removes files nothing refers to, because closed workspaces keep theirs.
 

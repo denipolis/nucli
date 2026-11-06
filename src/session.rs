@@ -192,6 +192,14 @@ impl Session {
         self.exit.is_none()
     }
 
+    pub fn is_starting(&self) -> bool {
+        let age = self.started.elapsed().unwrap_or_default();
+        self.is_running()
+            && age >= crate::store::PROGRESS_DELAY
+            && age < std::time::Duration::from_secs(15)
+            && self.terminal.activity.last_output.load(std::sync::atomic::Ordering::Acquire) == 0
+    }
+
     pub fn apply_theme(&mut self, cx: &App) {
         let own = self.profile_theme(cx).map(|id| std::rc::Rc::new(crate::theme::resolve(&id, ui::system_dark(cx))));
         let theme = own.clone().unwrap_or_else(|| ui::theme(cx));

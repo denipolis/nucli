@@ -98,6 +98,7 @@ impl CommitsPanel {
         }
         self.loading = true;
         let root = self.root.clone();
+        let progress = store::begin_progress("git log", cx);
         cx.spawn(async move |this, cx| {
             let (commits, graph) = cx
                 .background_executor()
@@ -108,6 +109,7 @@ impl CommitsPanel {
                 })
                 .await;
             let _ = this.update(cx, |panel, cx| {
+                store::finish_progress(progress, cx);
                 panel.loading = false;
                 panel.loaded = true;
                 panel.is_repo = commits.is_some();
@@ -140,9 +142,11 @@ impl CommitsPanel {
         cx.notify();
         let root = self.root.clone();
         let hash = self.commits[index].hash.clone();
+        let progress = store::begin_progress("git show", cx);
         cx.spawn(async move |this, cx| {
             let files = cx.background_executor().spawn(async move { git::commit_changes(&root, &hash) }).await;
             let _ = this.update(cx, |panel, cx| {
+                store::finish_progress(progress, cx);
                 if panel.expanded == Some(index) {
                     panel.files = Some(files.unwrap_or_default());
                     cx.notify();

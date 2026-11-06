@@ -211,10 +211,12 @@ impl FilesPanel {
         }
         self.decorating = true;
         let root = self.root.clone();
+        let progress = store::begin_progress("git status", cx);
         cx.spawn(async move |this, cx| {
             let folder = root.clone();
             let found = cx.background_executor().spawn(async move { decorations(&folder) }).await;
             let _ = this.update(cx, |panel, cx| {
+                store::finish_progress(progress, cx);
                 panel.decorating = false;
                 let scan = panel.scans.entry(root.clone()).or_default();
                 (scan.letters, scan.folders, scan.ignored) = (found.letters, found.folders, found.ignored);

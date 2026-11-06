@@ -81,8 +81,12 @@ impl Store {
             loop {
                 cx.background_executor().timer(Duration::from_millis(110)).await;
                 let alive = this.update(cx, |store, cx| {
-                    let working = store.sessions.values().any(|session| session.read(cx).activity == Activity::Working);
-                    if working {
+                    let busy = !store.progress.is_empty()
+                        || store.sessions.values().any(|session| {
+                            let session = session.read(cx);
+                            session.activity == Activity::Working || session.is_starting()
+                        });
+                    if busy {
                         store.tick_fast = store.tick_fast.wrapping_add(1);
                         cx.notify();
                     }

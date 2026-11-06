@@ -10,7 +10,7 @@ macOS 12+, Linux (X11 and Wayland) and Windows 10+. Everything below applies to 
 
 One window per open workspace. From top to bottom:
 
-1. **Title bar**: the workspace name as an inverted block (click: workspace menu). On macOS the traffic lights sit at the left edge of this bar; on Linux and Windows window controls can sit at the right.
+1. **Title bar**: the workspace name as an inverted block on the left (click: workspace menu), the location in the middle, status messages on the right (see Title bar). On macOS the traffic lights sit at the left edge of this bar; on Linux and Windows window controls can sit at the right.
 2. **Body**: sidebar, panel, viewport. The panel sits between the sidebar and the viewport (left, default) or right of the viewport. Sidebar and panel widths are draggable and remembered. The viewport holds the selected tab or file, the status chips and the terminal panel.
 
 Every pane except the viewport can be hidden. With all panes hidden the viewport fills the window.
@@ -207,6 +207,11 @@ Tabs `FILES  CHANGES  HISTORY` (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing a hi
 - Fuzzy matching on subsequences with bonuses for word starts, separators, camel case and consecutive characters; file names score above folders. Matched characters are highlighted.
 - `enter` runs, `⌘enter` runs the alternate action (files: open in the default app), arrows and page keys move, `esc` or clicking outside closes.
 - **Select Theme** lists every theme and previews the highlighted one live; `enter` keeps it, `esc` restores.
+
+## Title bar
+
+- **Location**: a framed box in the middle with the folder glyph, the project name and the selected tab, file or `settings`. Clicking it opens the command palette. Path and branch are on the status chips.
+- **Status messages** on the right show what Nucli is doing with a character spinner: `git status`, `git log`, `git commit`, `git switch main`, `listing files`, `loading history`, `detecting agents`, `starting <tab>`. A message appears once the work has taken 200 ms, so quick work stays silent; other running work shows as `+N`. With nothing running it shows this workspace's agents (`2 working`, `1 waiting`, `1 done`), or `ready`.
 
 ## Status chips
 
