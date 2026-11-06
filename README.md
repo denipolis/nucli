@@ -10,7 +10,7 @@
 - Automatic agent detection with live status, notifications and resumable conversations
 - Review what agents change: live git diffs, staging, commits, a commit graph, and a file view you can edit in place
 - A fast square monospace UI in Rust, with themes, tree-sitter highlighting and a command palette for everything
-- Settings and keybindings are plain JSON files
+- A settings page, backed by plain JSON files you can also edit
 - No telemetry, no network calls
 
 ## Installing

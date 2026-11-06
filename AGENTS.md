@@ -13,7 +13,7 @@ The full behavior is specified in `docs/SPEC.md`. Keep it in sync with the code.
 - A project path **never follows a shell's cwd**.
 - **Remember everything**: the app recalls the user's last choice so a repeated action is one keystroke (New Tab… then `Enter`).
 - **Every command is in the command palette.** macOS also gets a native menu bar; Linux and Windows rely on the palette and the in-window controls.
-- **Settings are files**: `settings.json` and `keybindings.json`, opened in Nucli's own file view and reloaded live.
+- **Settings are files**: `settings.json` and `keybindings.json`, opened in Nucli's own file view and reloaded live. The settings page edits the same `settings.json`.
 - Every pane is hideable except the main viewport.
 - Keybindings: see `docs/KEYBINDINGS.md`. Keep it updated when shortcuts change.
 

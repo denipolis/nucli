@@ -31,6 +31,7 @@ mod prompt;
 mod resize;
 mod session;
 mod settings;
+mod settings_view;
 mod sidebar;
 mod splits;
 mod splits_view;

@@ -86,6 +86,7 @@ pub fn open_file(
     window: &mut Window,
     cx: &mut Context<WorkspaceView>,
 ) {
+    view.settings = None;
     let workspace = view.workspace.clone();
     let path = project.to_path_buf();
     let name = relative.to_string();

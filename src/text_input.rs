@@ -507,7 +507,9 @@ impl Element for InputElement {
     ) {
         let focus = self.input.read(cx).focus.clone();
         window.handle_input(&focus, ElementInputHandler::new(bounds, self.input.clone()), cx);
-        if let Some(selection) = prepaint.selection.take() {
+        if focus.is_focused(window)
+            && let Some(selection) = prepaint.selection.take()
+        {
             window.paint_quad(selection);
         }
         let Some(line) = prepaint.line.take() else { return };

@@ -38,6 +38,7 @@ pub struct WorkspaceView {
     pub files: crate::file_view::Files,
     pub resizing: Option<crate::resize::Drag>,
     pub pane_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
+    pub settings: Option<crate::settings_view::SettingsPage>,
     pub dragging_titlebar: bool,
     pub shown_tab: Option<String>,
     _subscriptions: Vec<Subscription>,
@@ -111,6 +112,10 @@ impl WorkspaceView {
         let filter = cx.new(|cx| TextInput::new("filter", cx));
         let subscriptions = vec![
             cx.observe_in(&store, window, |view, store, window, cx| {
+                let selected = view.state(cx).and_then(|state| state.selected.clone());
+                if view.settings.as_ref().is_some_and(|page| page.selected != selected) {
+                    crate::settings_view::close(view, window, cx);
+                }
                 let gone = view.shown_tab.as_ref().is_some_and(|tab| !store.read(cx).sessions.contains_key(tab));
                 view.shown_tab = view.state(cx).and_then(|state| state.selected_tab()).map(String::from);
                 if view.palette.is_none() && view.rename.is_none() && (gone || window.focused(cx).is_none()) {
@@ -182,6 +187,7 @@ impl WorkspaceView {
             files: Default::default(),
             resizing: None,
             pane_bounds: Default::default(),
+            settings: None,
             dragging_titlebar: false,
             shown_tab: None,
             _subscriptions: subscriptions,
@@ -214,7 +220,9 @@ impl WorkspaceView {
     }
 
     pub fn focus_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(session) = self.selected_session(cx) {
+        if let Some(page) = &self.settings {
+            window.focus(&page.focus);
+        } else if let Some(session) = self.selected_session(cx) {
             let focus = session.read(cx).focus.clone();
             window.focus(&focus);
         } else if self.file_shown(cx) {
@@ -224,6 +232,7 @@ impl WorkspaceView {
         }
     }
 
+        self.settings = None;
     pub fn select(&mut self, selected: Option<Selected>, window: &mut Window, cx: &mut Context<Self>) {
         let id = self.workspace.clone();
         store::store(cx).update(cx, |store, cx| store.select(&id, selected, cx));
@@ -315,6 +324,9 @@ impl WorkspaceView {
         crate::file_view::open_path(self, path, line, window, cx);
     }
 
+        if self.settings.is_some() {
+            return crate::settings_view::render(self, window, cx);
+        }
     fn titlebar(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = ui::theme(cx);
         let state = self.state(cx);

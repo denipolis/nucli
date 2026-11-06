@@ -1068,7 +1068,8 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|_, _: &ToggleNotifications, _, cx| {
             settings::update(cx, |settings| settings.notifications = !settings.notifications)
         }))
-        .on_action(cx.listener(|view, _: &OpenSettings, window, cx| {
+        .on_action(cx.listener(|view, _: &OpenSettings, window, cx| crate::settings_view::toggle(view, window, cx)))
+        .on_action(cx.listener(|view, _: &OpenSettingsFile, window, cx| {
             crate::file_view::open_config(view, crate::paths::settings_file(), window, cx)
         }))
         .on_action(cx.listener(|view, _: &OpenKeybindings, window, cx| {

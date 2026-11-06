@@ -43,7 +43,9 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `prompt.rs` | Confirmation dialogs, installed with `set_prompt_builder`. |
 | `text_input.rs` | Single line input with IME. |
 | `resize.rs` | Pane resize handles. |
-| `statusbar.rs` | Status bar. |
+| `titlebar.rs` | Title bar: workspace name and toggles. |
+| `statusbar.rs` | Status chips under the viewport. |
+| `settings_view.rs` | Settings page in the viewport. |
 | `theme.rs`, `ui.rs` | Palettes, derived UI colors, active theme. |
 | `icons.rs` | Nerd Font codepoints, file type glyphs. |
 | `settings.rs`, `paths.rs` | `settings.json`, platform folders, atomic writes. |

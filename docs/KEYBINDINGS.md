@@ -40,7 +40,8 @@ On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ct
 | Save file | `save` | `cmd-s` | `ctrl-s` |
 | Next / previous change | `next_change` / `previous_change` | `f7` / `shift-f7` | `f7` / `shift-f7` |
 | Hide the file view | `hide_file_view` | `escape` | `escape` |
-| Settings | `open_settings` | `cmd-,` | `ctrl-,` |
+| Settings page | `open_settings` | `cmd-,` | `ctrl-,` |
+| Settings file | `open_settings_file` | | |
 | Keybindings | `open_keybindings` | | |
 | Select theme | `select_theme` | | |
 | Quit | `quit` | `cmd-q` | `ctrl-shift-q` |
