@@ -8,7 +8,7 @@ use gpui::{
     px, relative, size, uniform_list,
 };
 
-use crate::git::{self, Change, Commit, GraphRow};
+use crate::git::{self, Change, Commit, CommitDetails, GraphRow};
 use crate::history::relative_age;
 use crate::icons;
 use crate::menu;
@@ -228,6 +228,74 @@ fn ref_label(reference: &str, theme: &crate::theme::Theme) -> impl IntoElement {
         .child(text)
 }
 
+struct CommitTooltip {
+    commit: Commit,
+    details: Option<CommitDetails>,
+}
+
+impl CommitTooltip {
+    fn new(root: PathBuf, commit: Commit, cx: &mut Context<Self>) -> Self {
+        let hash = commit.hash.clone();
+        cx.spawn(async move |this, cx| {
+            let details = cx.background_executor().spawn(async move { git::commit_details(&root, &hash) }).await;
+            let _ = this.update(cx, |tooltip, cx| {
+                tooltip.details = details;
+                cx.notify();
+            });
+        })
+        .detach();
+        CommitTooltip { commit, details: None }
+    }
+}
+
+impl Render for CommitTooltip {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = ui::theme(cx);
+        let size = crate::settings::get(cx).ui_font_size();
+        let time = UNIX_EPOCH + Duration::from_secs(self.commit.time.max(0) as u64);
+        let details = self.details.clone();
+        let message = details.as_ref().map(|details| details.message.clone()).unwrap_or(self.commit.subject.clone());
+        let mut lines = message.lines().map(str::to_string);
+        let subject = lines.next().unwrap_or_default();
+        let date = details.as_ref().map(|details| format!(" ({})", details.date)).unwrap_or_default();
+        let rule = || div().h(px(1.0)).bg(theme.border);
+        div()
+            .w(px(480.0))
+            .flex()
+            .flex_col()
+            .gap(px(6.0))
+            .p(px(10.0))
+            .font_family(crate::settings::FONT)
+            .text_size(px(size))
+            .line_height(px((size * 1.5).round()))
+            .bg(theme.elevated)
+            .border_1()
+            .border_color(theme.border)
+            .text_color(theme.text)
+            .child(div().font_weight(gpui::FontWeight::BOLD).child(self.commit.author.clone()))
+            .child(div().text_color(theme.muted).child(format!("{}{date}", relative_age(time))))
+            .when(!self.commit.refs.is_empty(), |this| {
+                this.child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap(px(4.0))
+                        .children(self.commit.refs.iter().map(|reference| ref_label(reference, &theme))),
+                )
+            })
+            .child(rule())
+            .child(div().font_weight(gpui::FontWeight::BOLD).child(subject))
+            .children(
+                lines.filter(|line| !line.trim().is_empty()).map(|line| div().text_color(theme.muted).child(line)),
+            )
+            .child(rule())
+            .when_some(details.filter(|details| !details.stats.is_empty()), |this, details| {
+                this.child(div().text_color(theme.muted).child(details.stats))
+            })
+            .child(div().text_color(theme.faint).child(self.commit.hash.clone()))
+    }
+}
+
 impl Render for CommitsPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = ui::theme(cx);
@@ -248,12 +316,7 @@ impl Render for CommitsPanel {
             count,
             cx.processor(move |panel: &mut CommitsPanel, range: std::ops::Range<usize>, _, cx| {
                 let theme = ui::theme(cx);
-                let cell = crate::settings::get(cx).ui_font_size() * 0.6;
-                let column = |chars: f32| px((chars * cell).ceil());
-                let wide = store::store(cx)
-                    .read(cx)
-                    .workspace(&panel.workspace)
-                    .is_some_and(|state| state.window.panel_width > 460.0);
+                let age_width = px((crate::settings::get(cx).ui_font_size() * 0.6 * 4.0).ceil());
                 range
                     .map(|index| match rows[index].clone() {
                         Row::Note(text) => div()
@@ -312,6 +375,7 @@ impl Render for CommitsPanel {
                             let time = UNIX_EPOCH + Duration::from_secs(commit.time.max(0) as u64);
                             let (copy_hash, copy_subject) = (commit.hash.clone(), commit.subject.clone());
                             let hidden_refs = commit.refs.len().saturating_sub(2);
+                            let (tooltip_root, tooltip_commit) = (panel.root.clone(), commit.clone());
                             div()
                                 .id(("commit-row", index))
                                 .h(line)
@@ -360,19 +424,16 @@ impl Render for CommitsPanel {
                                     div()
                                         .flex()
                                         .flex_none()
-                                        .gap(px(8.0))
+                                        .justify_end()
+                                        .w(age_width)
                                         .ml(px(6.0))
                                         .text_color(theme.faint)
-                                        .when(wide, |this| {
-                                            this.child(
-                                                div()
-                                                    .w(column(7.0))
-                                                    .child(commit.hash[..commit.hash.len().min(7)].to_string()),
-                                            )
-                                            .child(div().w(column(16.0)).truncate().child(commit.author.clone()))
-                                        })
-                                        .child(div().w(column(4.0)).flex().justify_end().child(relative_age(time))),
+                                        .child(relative_age(time)),
                                 )
+                                .tooltip(move |_, cx| {
+                                    let (root, commit) = (tooltip_root.clone(), tooltip_commit.clone());
+                                    cx.new(|cx| CommitTooltip::new(root, commit, cx)).into()
+                                })
                                 .on_click(cx.listener(move |panel, _, _, cx| panel.toggle(commit_index, cx)))
                                 .on_mouse_down(
                                     MouseButton::Right,

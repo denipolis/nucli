@@ -427,6 +427,35 @@ pub fn graph(commits: &[Commit]) -> Vec<GraphRow> {
     rows
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommitDetails {
+    pub date: String,
+    pub message: String,
+    pub stats: String,
+}
+
+fn parse_details(output: &str) -> Option<CommitDetails> {
+    let mut parts = output.splitn(3, '\0');
+    Some(CommitDetails {
+        date: parts.next()?.trim().to_string(),
+        message: parts.next()?.trim().to_string(),
+        stats: parts.next().unwrap_or_default().trim().to_string(),
+    })
+}
+
+pub fn commit_details(dir: &Path, hash: &str) -> Option<CommitDetails> {
+    let args = [
+        "show",
+        "-m",
+        "--first-parent",
+        "--shortstat",
+        "--date=format-local:%B %d, %Y at %I:%M %p",
+        "--format=%ad%x00%B%x00",
+        hash,
+    ];
+    parse_details(&run(dir, &args)?)
+}
+
 pub fn commit_changes(dir: &Path, hash: &str) -> Option<Vec<Change>> {
     changes(dir, &[parent(dir, hash).as_str(), hash], false)
 }
@@ -479,6 +508,16 @@ pub fn ignored(dir: &Path) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_commit_details() {
+        let details =
+            parse_details("June 01, 2026 at 09:30 AM\0feat: a\n\nbody\n\0\n 2 files changed, 3 insertions(+)\n");
+        let details = details.unwrap();
+        assert_eq!(details.date, "June 01, 2026 at 09:30 AM");
+        assert_eq!(details.message, "feat: a\n\nbody");
+        assert_eq!(details.stats, "2 files changed, 3 insertions(+)");
+    }
 
     fn node(hash: &str, parents: &[&str]) -> Commit {
         Commit {
