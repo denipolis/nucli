@@ -246,6 +246,14 @@ pub fn open_folder(
 
 pub fn show_project(view: &mut WorkspaceView, path: &Path, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     view.select(Some(Selected::Project(path.to_path_buf())), window, cx);
+    let workspace = view.workspace.clone();
+    store::store(cx).update(cx, |store, cx| {
+        if let Some(project) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(path)) {
+            project.file_shown = project.active_file.is_some();
+        }
+        store.changed(cx);
+    });
+    view.focus_current(window, cx);
 }
 
 pub fn new_terminal_in(view: &mut WorkspaceView, path: &Path, window: &mut Window, cx: &mut Context<WorkspaceView>) {

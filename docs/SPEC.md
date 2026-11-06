@@ -42,7 +42,7 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 - Projects list in the sidebar in a user-defined order (drag to reorder). Each row shows the folder glyph, the name and the uncommitted diff against `HEAD` as green `+N` and red `-M` (hidden when clean or not a git repository). The numbers update live.
 - Rename (double-click or context menu; empty restores the folder name), Color (12 theme colors or none; tints the folder glyph and the rows of its tabs), Move to Workspace (another workspace or a new one), Reveal in File Manager, Close Project (`⇧⌘W`, ends its tabs after confirming running agents).
 - Collapsing a project hides its tabs; the state is remembered.
-- Clicking a project shows its overview in the viewport.
+- Clicking a project shows its active file when one is open, otherwise its overview. `⌂` in the file view's tab strip goes to the overview.
 - **No Project**: with nothing selected, new tabs open in the workspace's "No Project" group (home folder). It appears last in the sidebar only while it has tabs. Its tabs can be dragged into real projects. It has no Files, Changes or quick open.
 
 ### Project overview
