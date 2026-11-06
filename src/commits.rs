@@ -20,7 +20,6 @@ use crate::window::WorkspaceView;
 
 const LANE: f32 = 12.0;
 const CARD_LINES: usize = 20;
-const KNOWN_KINDS: [&str; 7] = ["feat", "fix", "docs", "chore", "style", "refactor", "perf"];
 const LANE_COLORS: [ItemColor; 8] = [
     ItemColor::Blue,
     ItemColor::Orange,
@@ -249,45 +248,9 @@ fn lanes_through(row: GraphRow, height: Pixels, dark: bool) -> impl IntoElement 
     .h(height)
 }
 
-fn subject_kind(subject: &str) -> Option<&str> {
-    let head = match subject.split_once(':') {
-        Some((head, _)) => head,
-        None if KNOWN_KINDS.contains(&subject) => subject,
-        None => return None,
-    };
-    let kind = head.split('(').next()?.trim_end_matches('!');
-    (!kind.is_empty() && kind.chars().all(|c| c.is_ascii_lowercase())).then_some(kind)
-}
-
-fn subject_prefix(subject: &str) -> Option<&str> {
-    subject_kind(subject)?;
-    Some(subject.split_once(':').map_or(subject, |(head, _)| &subject[..=head.len()]))
-}
-
-fn kind_color(kind: &str, theme: &crate::theme::Theme) -> Hsla {
-    match kind {
-        "feat" => theme.green,
-        "fix" | "hotfix" => theme.red,
-        "docs" => theme.blue,
-        "style" => theme.magenta,
-        "ref" | "refactor" => theme.cyan,
-        "perf" => theme.yellow,
-        "revert" => theme.orange,
-        _ => theme.muted,
-    }
-}
-
 fn highlighted(text: String, ranges: Vec<(std::ops::Range<usize>, Hsla)>) -> StyledText {
     StyledText::new(text)
         .with_highlights(ranges.into_iter().map(|(range, color)| (range, HighlightStyle::color(color))))
-}
-
-fn subject_text(subject: String, theme: &crate::theme::Theme) -> StyledText {
-    let ranges = subject_kind(&subject)
-        .map(|kind| (0..subject_prefix(&subject).map_or(0, str::len), kind_color(kind, theme)))
-        .into_iter()
-        .collect();
-    highlighted(subject, ranges)
 }
 
 fn link_ranges(line: &str, theme: &crate::theme::Theme) -> Vec<(std::ops::Range<usize>, Hsla)> {
@@ -411,11 +374,11 @@ impl Render for CommitTooltip {
                         div()
                             .flex_none()
                             .font_weight(gpui::FontWeight::BOLD)
-                            .text_color(theme.cyan)
+                            .text_color(theme.accent)
                             .child(self.commit.author.clone()),
                     )
                     .child(div().flex_none().text_color(theme.faint).child(icons::HISTORY))
-                    .child(div().flex_none().text_color(theme.yellow).child(relative_age(time)))
+                    .child(div().flex_none().text_color(theme.muted).child(relative_age(time)))
                     .child(div().min_w_0().truncate().text_color(theme.muted).child(date)),
             )
             .children(authors.into_iter().map(|author| {
@@ -423,9 +386,7 @@ impl Render for CommitTooltip {
                     .flex()
                     .items_center()
                     .gap(px(8.0))
-                    .child(
-                        div().flex_none().font_weight(gpui::FontWeight::BOLD).text_color(theme.magenta).child(author),
-                    )
+                    .child(div().flex_none().font_weight(gpui::FontWeight::BOLD).text_color(theme.accent).child(author))
                     .child(div().flex_none().italic().text_color(theme.faint).child("co-author"))
             }))
             .when(!self.commit.refs.is_empty(), |this| {
@@ -434,7 +395,7 @@ impl Render for CommitTooltip {
                 }))
             })
             .child(rule())
-            .child(div().font_weight(gpui::FontWeight::BOLD).child(subject_text(subject, &theme)))
+            .child(div().font_weight(gpui::FontWeight::BOLD).child(subject))
             .children(body.into_iter().map(|line| {
                 let ranges = link_ranges(&line, &theme);
                 div().text_color(theme.muted).child(highlighted(line, ranges))
@@ -540,9 +501,6 @@ impl Render for CommitsPanel {
                             let (copy_hash, copy_subject) = (commit.hash.clone(), commit.subject.clone());
                             let hidden_refs = commit.refs.len().saturating_sub(2);
                             let lane = graph.as_ref().map_or(theme.accent, |row| lane_color(row.color, theme.dark));
-                            let kind = subject_kind(&commit.subject).map(|kind| kind_color(kind, &theme));
-                            let prefix = subject_prefix(&commit.subject).unwrap_or_default().to_string();
-                            let rest = commit.subject[prefix.len()..].trim_start().to_string();
                             let (tooltip_root, tooltip_commit) = (panel.root.clone(), commit.clone());
                             div()
                                 .id(("commit-row", index))
@@ -581,10 +539,13 @@ impl Render for CommitsPanel {
                                             }),
                                     )
                                 })
-                                .when_some(kind, |this, color| {
-                                    this.child(div().flex_none().text_color(color).child(prefix.clone()))
-                                })
-                                .child(div().flex_1().min_w_0().truncate().child(SharedString::from(rest.clone())))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .truncate()
+                                        .child(SharedString::from(commit.subject.clone())),
+                                )
                                 .child(
                                     div()
                                         .flex()
@@ -661,18 +622,6 @@ pub fn panel(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn reads_commit_kinds() {
-        assert_eq!(subject_kind("feat: a"), Some("feat"));
-        assert_eq!(subject_kind("fix(search): a"), Some("fix"));
-        assert_eq!(subject_kind("ref!: a"), Some("ref"));
-        assert_eq!(subject_kind("docs"), Some("docs"));
-        assert_eq!(subject_kind("Note: a"), None);
-        assert_eq!(subject_kind("plain subject"), None);
-        assert_eq!(subject_prefix("fix(search): a b"), Some("fix(search):"));
-        assert_eq!(subject_prefix("docs"), Some("docs"));
-    }
 
     #[test]
     fn reads_co_authors() {

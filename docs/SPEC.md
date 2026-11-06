@@ -184,8 +184,8 @@ Tabs for Files, Changes and History (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing
 
 ### History (commits)
 
-- `git log` of branches, remotes, tags and `HEAD` in topological order (first 500), with a lane graph, ref labels, subject and relative date. A lane changes color at each commit a branch points to, and that commit's branch labels use the same color, so a branch reads as one color. The type of a Conventional Commits subject is colored (`feat` green, `fix` red, `docs` blue, and so on). Lanes continue through expanded files. A row shows at most two ref labels and `+N` for the rest; they shrink before the subject disappears.
-- Hovering a commit shows a colored card with everything about it: author, co-authors, relative and full date, every ref, the whole message with its links and addresses highlighted, changed files with insertions in green and deletions in red, and the full hash.
+- `git log` of branches, remotes, tags and `HEAD` in topological order (first 500), with a lane graph, ref labels, subject and relative date. A lane changes color at each commit a branch points to, and that commit's branch labels use the same color, so a branch reads as one color. Lanes continue through expanded files. A row shows at most two ref labels and `+N` for the rest; they shrink before the subject disappears.
+- Hovering a commit shows a card with everything about it: author and co-authors in the accent color, relative and full date, every ref, the whole message with its links and addresses highlighted, changed files with insertions in green and deletions in red, and the full hash.
 - Clicking a commit expands its changed files (against the first parent). Clicking a file opens the commit's diff of it, read-only.
 - Context menu: Copy Hash, Copy Message.
 
