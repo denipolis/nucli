@@ -249,6 +249,9 @@ pub fn cursor_label(view: &WorkspaceView, cx: &App) -> Option<String> {
     }
     let editor = active_editor(view, cx)?;
     let editor = editor.read(cx);
+    if editor.content != Content::Text {
+        return None;
+    }
     let language = crate::highlight::language_name(&editor.full).unwrap_or("Plain Text");
     Some(format!("{}  {language}", editor.position_label()))
 }
