@@ -87,7 +87,8 @@ impl Session {
         terminal.anchor.store(spec.kind != Kind::Agent, std::sync::atomic::Ordering::Release);
         if let Some(text) = spec.restored.as_deref().filter(|text| !text.trim().is_empty()) {
             let body = text.replace('\n', "\r\n");
-            terminal.feed(format!("\x1b[2m{body}\x1b[0m\r\n\x1b[2m── restored ──\x1b[0m\r\n").as_bytes());
+            let mark = terminal::RESTORED_MARK;
+            terminal.feed(format!("\x1b[2m{body}\x1b[0m\r\n\x1b[2m{mark}\x1b[0m\r\n").as_bytes());
         }
         let agent = spec.profile.as_ref().and_then(AgentProfile::kind);
         Ok(cx.new(|cx| {

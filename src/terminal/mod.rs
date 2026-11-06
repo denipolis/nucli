@@ -317,18 +317,14 @@ impl Terminal {
         }
         let grid = term.grid();
         let top = -(grid.history_size() as i32);
-        let bottom = grid.screen_lines() as i32 - 1;
+        let bottom = grid.cursor.point.line.0 - 1;
         let mut lines: Vec<String> = Vec::new();
         for line in top..=bottom {
             let row = &grid[Line(line)];
             let text: String = (0..grid.columns()).map(|col| row[Column(col)].c).collect();
             lines.push(text.trim_end().to_string());
         }
-        while lines.last().is_some_and(|line| line.is_empty()) {
-            lines.pop();
-        }
-        let start = lines.len().saturating_sub(last_lines);
-        lines[start..].join("\n")
+        clean_output(lines, last_lines)
     }
 
     pub fn selection_text(&self) -> Option<String> {
@@ -338,6 +334,18 @@ impl Terminal {
     pub fn cursor_line(&self) -> Point {
         self.term.lock().grid().cursor.point
     }
+}
+
+pub const RESTORED_MARK: &str = "── restored ──";
+
+fn clean_output(mut lines: Vec<String>, last_lines: usize) -> String {
+    lines.retain(|line| line != RESTORED_MARK);
+    while lines.last().is_some_and(|line| line.is_empty()) {
+        lines.pop();
+    }
+    let first = lines.iter().position(|line| !line.is_empty()).unwrap_or(lines.len());
+    let start = first.max(lines.len().saturating_sub(last_lines));
+    lines[start..].join("\n")
 }
 
 pub fn cursor_style(shape: crate::settings::CursorShape, blinking: bool) -> CursorStyle {
@@ -480,6 +488,14 @@ mod tests {
         assert_eq!(anchor_bottom(b"x", false, true), b"\x1b[999;1Hx".to_vec());
         assert_eq!(anchor_bottom(b"\x1b[?1049h\x1b[2J", false, false), b"\x1b[?1049h\x1b[2J".to_vec());
         assert_eq!(anchor_bottom(b"\x1b[2J", true, false), b"\x1b[2J".to_vec());
+    }
+
+    #[test]
+    fn cleans_saved_output() {
+        let lines = |items: &[&str]| items.iter().map(|item| item.to_string()).collect::<Vec<_>>();
+        assert_eq!(clean_output(lines(&["", "", "a", RESTORED_MARK, "b", ""]), 100), "a\nb");
+        assert_eq!(clean_output(lines(&["a", "b", "c"]), 2), "b\nc");
+        assert_eq!(clean_output(lines(&["", RESTORED_MARK]), 10), "");
     }
 
     #[test]
