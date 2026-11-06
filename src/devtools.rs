@@ -124,6 +124,10 @@ fn send_event(line: &str) {
         if window.is_null() {
             return;
         }
+        if *kind == "front" {
+            let _: () = msg_send![window, orderFrontRegardless];
+            return;
+        }
         if *kind == "key" {
             let [text, code, flags] = rest else { return };
             let text = match *text {
