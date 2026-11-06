@@ -214,7 +214,7 @@ fn save_cache() {
 }
 
 fn cache_file() -> PathBuf {
-    paths::cache_dir().join("conversations.json")
+    paths::cache_dir().join("history.json")
 }
 
 fn read_prefix(path: &Path, limit: u64) -> String {
