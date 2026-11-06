@@ -34,6 +34,12 @@ fn run(line: &str, cx: &mut App) {
         return;
     }
     #[cfg(target_os = "macos")]
+    if command == "event" {
+        let event = rest.to_string();
+        cx.spawn(async move |_| send_event(&event)).detach();
+        return;
+    }
+    #[cfg(target_os = "macos")]
     if command == "menu" {
         let path = rest.trim().to_string();
         inspect_app(&path, false);
@@ -99,6 +105,77 @@ fn run(line: &str, cx: &mut App) {
         }
         _ => {}
     });
+}
+
+#[cfg(target_os = "macos")]
+#[allow(unexpected_cfgs)]
+fn send_event(line: &str) {
+    use core_graphics::geometry::{CGPoint, CGRect};
+    use objc::runtime::{BOOL, NO, Object};
+    use objc::{class, msg_send, sel, sel_impl};
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    let [number, kind, rest @ ..] = parts.as_slice() else { return };
+    let Ok(number) = number.parse::<isize>() else { return };
+    let time: f64 = 0.0;
+    let null: *mut Object = std::ptr::null_mut();
+    unsafe {
+        let app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+        let window: *mut Object = msg_send![app, windowWithWindowNumber: number];
+        if window.is_null() {
+            return;
+        }
+        if *kind == "key" {
+            let [text, code, flags] = rest else { return };
+            let text = match *text {
+                "esc" => "\u{1b}",
+                "ret" => "\r",
+                "space" => " ",
+                other => other,
+            };
+            let Ok(text) = std::ffi::CString::new(text) else { return };
+            let chars: *mut Object = msg_send![class!(NSString), stringWithUTF8String: text.as_ptr()];
+            let event: *mut Object = msg_send![class!(NSEvent),
+                keyEventWithType: 10usize
+                location: CGPoint::new(0.0, 0.0)
+                modifierFlags: flags.parse::<usize>().unwrap_or(0)
+                timestamp: time
+                windowNumber: number
+                context: null
+                characters: chars
+                charactersIgnoringModifiers: chars
+                isARepeat: NO
+                keyCode: code.parse::<u16>().unwrap_or(0)];
+            let handled: BOOL = msg_send![window, performKeyEquivalent: event];
+            let menu: *mut Object = msg_send![app, mainMenu];
+            let claimed: BOOL = if handled == NO { msg_send![menu, performKeyEquivalent: event] } else { handled };
+            eprintln!("EVENT window={} menu={}", handled != NO, claimed != NO && handled == NO);
+            if claimed == NO {
+                let _: () = msg_send![window, sendEvent: event];
+            }
+            return;
+        }
+        let [x, y] = rest else { return };
+        let (Ok(x), Ok(y)) = (x.parse::<f64>(), y.parse::<f64>()) else { return };
+        let content: *mut Object = msg_send![window, contentView];
+        let frame: CGRect = msg_send![content, frame];
+        let code: usize = match *kind {
+            "down" => 1,
+            "up" => 2,
+            "move" => 5,
+            _ => 6,
+        };
+        let event: *mut Object = msg_send![class!(NSEvent),
+            mouseEventWithType: code
+            location: CGPoint::new(x, frame.size.height - y)
+            modifierFlags: 0usize
+            timestamp: time
+            windowNumber: number
+            context: null
+            eventNumber: 0isize
+            clickCount: 1isize
+            pressure: 1.0f32];
+        let _: () = msg_send![window, sendEvent: event];
+    }
 }
 
 #[cfg(target_os = "macos")]
