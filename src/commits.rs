@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -43,6 +44,7 @@ pub struct CommitsPanel {
     revision: u64,
     commits: Vec<Commit>,
     graph: Vec<GraphRow>,
+    cache: HashMap<PathBuf, (Option<Vec<Commit>>, Vec<GraphRow>)>,
     loaded: bool,
     is_repo: bool,
     loading: bool,
@@ -68,6 +70,7 @@ impl CommitsPanel {
             revision: 0,
             commits: Vec::new(),
             graph: Vec::new(),
+            cache: HashMap::new(),
             loaded: false,
             is_repo: true,
             loading: false,
@@ -82,9 +85,19 @@ impl CommitsPanel {
     fn set_root(&mut self, root: &Path, cx: &mut Context<Self>) {
         if self.root != root {
             self.root = root.to_path_buf();
-            self.commits.clear();
-            self.graph.clear();
-            self.loaded = false;
+            match self.cache.get(root).cloned() {
+                Some((commits, graph)) => {
+                    self.loaded = true;
+                    self.is_repo = commits.is_some();
+                    self.commits = commits.unwrap_or_default();
+                    self.graph = graph;
+                }
+                None => {
+                    self.loaded = false;
+                    self.commits.clear();
+                    self.graph.clear();
+                }
+            }
             self.expanded = None;
             self.files = None;
             self.revision = store::store(cx).read(cx).revision(root);
@@ -101,10 +114,11 @@ impl CommitsPanel {
         let root = self.root.clone();
         let progress = store::begin_progress("git log", cx);
         cx.spawn(async move |this, cx| {
+            let folder = root.clone();
             let (commits, graph) = cx
                 .background_executor()
                 .spawn(async move {
-                    let commits = git::log(&root, 500);
+                    let commits = git::log(&folder, 500);
                     let graph = commits.as_ref().map(|commits| git::graph(commits)).unwrap_or_default();
                     (commits, graph)
                 })
@@ -112,6 +126,13 @@ impl CommitsPanel {
             let _ = this.update(cx, |panel, cx| {
                 store::finish_progress(progress, cx);
                 panel.loading = false;
+                panel.cache.insert(root.clone(), (commits.clone(), graph.clone()));
+                if panel.root != root {
+                    if std::mem::take(&mut panel.stale) {
+                        panel.reload(cx);
+                    }
+                    return;
+                }
                 panel.loaded = true;
                 panel.is_repo = commits.is_some();
                 let previous =

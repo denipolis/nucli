@@ -501,15 +501,69 @@ pub fn files(dir: &Path) -> Option<Vec<String>> {
     Some(files)
 }
 
-pub fn ignored(dir: &Path) -> Vec<String> {
-    run(dir, &["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"])
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TreeStatus {
+    pub changes: Vec<(String, char, bool)>,
+    pub ignored: Vec<String>,
+}
+
+fn parse_tree_status(output: &str, prefix: &str) -> TreeStatus {
+    let mut tree = TreeStatus::default();
+    for entry in output.split('\0') {
+        let (Some(code), Some(path)) = (entry.get(..2), entry.get(3..)) else { continue };
+        let Some(path) = path.strip_prefix(prefix).filter(|path| !path.is_empty()) else { continue };
+        let mut letters = code.chars();
+        let (index, worktree) = (letters.next().unwrap_or(' '), letters.next().unwrap_or(' '));
+        match (index, worktree) {
+            ('?', _) => tree.changes.push((path.to_string(), 'U', false)),
+            ('U', _) | (_, 'U') => tree.changes.push((path.to_string(), 'M', false)),
+            _ => {
+                if index != ' ' {
+                    tree.changes.push((path.to_string(), index, true));
+                }
+                if worktree != ' ' {
+                    tree.changes.push((path.to_string(), worktree, false));
+                }
+            }
+        }
+    }
+    tree
+}
+
+pub fn tree_status(dir: &Path) -> Option<TreeStatus> {
+    let prefix = run(dir, &["rev-parse", "--show-prefix"])?;
+    let args = ["status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all", "--", "."];
+    let mut tree = parse_tree_status(&run(dir, &args)?, prefix.trim_end_matches('\n'));
+    let ignored = ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"];
+    tree.ignored = run(dir, &ignored)
         .map(|output| nul_split(&output))
         .unwrap_or_default()
+        .into_iter()
+        .map(|path| path.trim_end_matches('/').to_string())
+        .collect();
+    Some(tree)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_tree_status() {
+        let output = " M sub/a.txt\0M  sub/b.txt\0MM sub/c.txt\0?? sub/new.txt\0UU sub/d.txt\0 M other.txt\0";
+        let tree = parse_tree_status(output, "sub/");
+        assert_eq!(
+            tree.changes,
+            vec![
+                ("a.txt".to_string(), 'M', false),
+                ("b.txt".to_string(), 'M', true),
+                ("c.txt".to_string(), 'M', true),
+                ("c.txt".to_string(), 'M', false),
+                ("new.txt".to_string(), 'U', false),
+                ("d.txt".to_string(), 'M', false),
+            ]
+        );
+    }
 
     #[test]
     fn parses_commit_details() {

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use gpui::prelude::FluentBuilder;
@@ -20,6 +21,7 @@ pub struct ChangesPanel {
     root: PathBuf,
     revision: u64,
     status: Option<Status>,
+    cache: HashMap<PathBuf, Option<Status>>,
     loaded: bool,
     loading: bool,
     stale: bool,
@@ -58,6 +60,7 @@ impl ChangesPanel {
             root,
             revision: 0,
             status: None,
+            cache: HashMap::new(),
             loaded: false,
             loading: false,
             stale: false,
@@ -72,8 +75,9 @@ impl ChangesPanel {
     fn set_root(&mut self, root: &Path, cx: &mut Context<Self>) {
         if self.root != root {
             self.root = root.to_path_buf();
-            self.status = None;
-            self.loaded = false;
+            let cached = self.cache.get(root).cloned();
+            self.loaded = cached.is_some();
+            self.status = cached.flatten();
             self.revision = store::store(cx).read(cx).revision(root);
             self.reload(cx);
         }
@@ -88,13 +92,17 @@ impl ChangesPanel {
         let root = self.root.clone();
         let progress = store::begin_progress("git status", cx);
         cx.spawn(async move |this, cx| {
-            let status = cx.background_executor().spawn(async move { git::status(&root) }).await;
+            let folder = root.clone();
+            let status = cx.background_executor().spawn(async move { git::status(&folder) }).await;
             let _ = this.update(cx, |panel, cx| {
                 store::finish_progress(progress, cx);
                 panel.loading = false;
-                panel.loaded = true;
-                panel.status = status;
-                cx.notify();
+                panel.cache.insert(root.clone(), status.clone());
+                if panel.root == root {
+                    panel.loaded = true;
+                    panel.status = status;
+                    cx.notify();
+                }
                 if std::mem::take(&mut panel.stale) {
                     panel.reload(cx);
                 }

@@ -68,22 +68,21 @@ fn list(root: &Path, expanded: &BTreeSet<String>) -> HashMap<String, Vec<Entry>>
 
 fn decorations(root: &Path) -> Scan {
     let mut result = Scan::default();
-    if let Some(status) = crate::git::status(root) {
-        for change in &status.changes {
-            let letter = result.letters.entry(change.path.clone()).or_insert(change.status);
-            if !change.staged {
-                *letter = change.status;
-            }
-            let is_new = matches!(change.status, 'U' | 'A');
-            let mut parent = change.path.as_str();
-            while let Some((folder, _)) = parent.rsplit_once('/') {
-                let current = result.folders.entry(folder.to_string()).or_insert(is_new);
-                *current = *current && is_new;
-                parent = folder;
-            }
+    let Some(tree) = crate::git::tree_status(root) else { return result };
+    for (path, status, staged) in tree.changes {
+        let letter = result.letters.entry(path.clone()).or_insert(status);
+        if !staged {
+            *letter = status;
+        }
+        let is_new = matches!(status, 'U' | 'A');
+        let mut parent = path.as_str();
+        while let Some((folder, _)) = parent.rsplit_once('/') {
+            let current = result.folders.entry(folder.to_string()).or_insert(is_new);
+            *current = *current && is_new;
+            parent = folder;
         }
     }
-    result.ignored = crate::git::ignored(root).into_iter().map(|path| path.trim_end_matches('/').to_string()).collect();
+    result.ignored = tree.ignored.into_iter().collect();
     result
 }
 
