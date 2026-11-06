@@ -1232,10 +1232,7 @@ impl Editor {
                         "Toggle Replace",
                         &theme,
                     )
-                    .on_click(cx.listener(|editor, _, window, cx| {
-                        let shown = editor.find.as_ref().is_some_and(|find| find.show_replace);
-                        editor.open_find(!shown, window, cx);
-                    })),
+                    .on_click(cx.listener(|editor, _, window, cx| editor.toggle_replace(window, cx))),
                 )
             })
             .child(field(find.input.clone(), find.invalid))
@@ -1335,13 +1332,21 @@ impl Editor {
     }
 
     fn open_find(&mut self, replace: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let selected = self.selected_text().filter(|text| !text.contains('\n') && !text.is_empty());
+        let selection = self.selection();
+        let selected = self
+            .selected_text()
+            .filter(|text| !text.contains('\n') && !text.is_empty() && self.focus.is_focused(window))
+            .filter(|_| {
+                !self.find.as_ref().is_some_and(|find| {
+                    find.hits.get(find.current).is_some_and(|hit| Some((hit.start, hit.end)) == selection)
+                })
+            });
         let replace = replace && self.is_editable();
         if self.find.is_none() {
             self.find = Some(self.new_find(window, cx));
         }
         let Some(find) = self.find.as_mut() else { return };
-        find.show_replace = replace;
+        find.show_replace |= replace;
         let (input, replacement) = (find.input.clone(), find.replacement.clone());
         let text = selected.unwrap_or_else(|| input.read(cx).text.clone());
         input.update(cx, |input, cx| input.set_text(&text, cx));
@@ -1353,6 +1358,17 @@ impl Editor {
             input.read(cx).focus(window);
         }
         self.search(true, cx);
+    }
+
+    fn toggle_replace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(find) = self.find.as_mut() else { return };
+        find.show_replace = !find.show_replace;
+        if find.show_replace {
+            find.replacement.read(cx).focus(window);
+        } else {
+            find.input.read(cx).focus(window);
+        }
+        cx.notify();
     }
 
     fn new_find(&mut self, window: &mut Window, cx: &mut Context<Self>) -> FindState {
