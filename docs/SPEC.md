@@ -135,8 +135,9 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 
 ## Terminal panel
 
-- A panel under the viewport with the project's own shells, one tab strip (`TERMINAL  1 zsh  2 zsh  +`). Every tab of the project shows the same panel.
-- `` ⌃` `` shows and focuses it (starting a shell if the project has none), and hides it when it already has focus. `` ⌃⇧` `` opens another shell. `⌘W` inside it closes that shell. Hiding keeps the shells running. Its height is draggable and remembered; a maximize button lets it fill the viewport.
+- A panel under the viewport with the project's own shells, one tab strip in the terminal's background with no rule below it. Every tab of the project shows the same panel.
+- Each tab shows what is running right now: `ssh` during `ssh host`, `sleep` during `sleep 60`, the shell's name otherwise, updated once per second. A custom name from renaming the tab wins. A green play glyph marks a running command. `×` appears on hover and on the selected tab.
+- `` ⌃` `` shows and focuses it (starting a shell if the project has none), and hides it when it already has focus. `` ⌃⇧` `` opens another shell. `⌘W` inside it closes that shell. Hiding keeps the shells running and keeps the tab strip at the bottom of the viewport; clicking a tab or the chevron shows the terminal again. Its height is draggable and remembered.
 - Panel shells use the shell last started anywhere, else the first available.
 
 ## Splits

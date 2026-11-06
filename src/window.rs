@@ -355,7 +355,7 @@ impl Render for WorkspaceView {
         let Some(state) = self.state(cx).cloned() else { return div().into_any_element() };
         let ui_state = self.store(cx).ui.clone();
         let terminal = crate::panel::terminal_panel(self, window, cx);
-        let content = (terminal.is_none() || !state.window.terminal_maximized).then(|| self.viewport(window, cx));
+        let content = self.viewport(window, cx);
         let status = crate::statusbar::render(self, cx);
         let viewport = div()
             .flex()
@@ -363,7 +363,7 @@ impl Render for WorkspaceView {
             .flex_1()
             .min_w_0()
             .h_full()
-            .children(content.map(|content| div().flex_1().min_h_0().child(content)))
+            .child(div().flex_1().min_h_0().child(content))
             .children(status)
             .children(terminal);
         let panel = (!ui_state.panel_hidden).then(|| crate::panel::render(self, window, cx));

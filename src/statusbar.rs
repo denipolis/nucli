@@ -3,10 +3,8 @@ use gpui::{
     StatefulInteractiveElement, Styled, div, px,
 };
 
-use crate::agents;
 use crate::icons;
 use crate::paths;
-use crate::session::Session;
 use crate::settings::{self, SettingsError};
 use crate::theme::Theme;
 use crate::ui;
@@ -61,11 +59,6 @@ fn file_chips(view: &WorkspaceView, theme: &Theme, cx: &App) -> Vec<AnyElement> 
         );
     }
     chips
-}
-
-fn program(session: &Session) -> Option<String> {
-    let shell = session.shell.as_deref().map(agents::command_name);
-    session.foreground.clone().filter(|name| Some(name) != shell.as_ref())
 }
 
 pub fn render(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Option<AnyElement> {
@@ -136,7 +129,7 @@ pub fn render(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Option<A
                     .on_click(|_, window, cx| window.dispatch_action(Box::new(crate::commands::ShowChanges), cx)),
             );
         }
-        if let Some(name) = program(session) {
+        if let Some(name) = session.program().map(str::to_string) {
             row = row.child(chip("status-program", icons::PLAY, &theme).child(name));
         }
     }

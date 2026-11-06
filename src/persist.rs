@@ -75,7 +75,6 @@ pub struct WindowState {
     pub panel_width: f32,
     pub terminal_height: f32,
     pub sidebar_hidden: bool,
-    pub terminal_maximized: bool,
 }
 
 impl Default for WindowState {
@@ -86,7 +85,6 @@ impl Default for WindowState {
             panel_width: 280.0,
             terminal_height: 240.0,
             sidebar_hidden: false,
-            terminal_maximized: false,
         }
     }
 }

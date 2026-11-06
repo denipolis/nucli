@@ -105,47 +105,58 @@ pub fn terminal_panel(
         Some(_) => state.current_project()?.clone(),
         None => state.scratch.clone(),
     };
-    if !project.terminal_shown || project.terminals.is_empty() {
+    if project.terminals.is_empty() {
         return None;
     }
+    let shown = project.terminal_shown;
     let active = project.active_terminal.clone().or_else(|| project.terminals.first().cloned())?;
     let session = view.store(cx).session(&active)?.clone();
     let height = state.window.terminal_height;
-    let maximized = state.window.terminal_maximized;
-    let mut strip = div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(px(4.0))
-        .px(px(6.0))
-        .py(px(2.0))
-        .border_b_1()
-        .border_color(theme.border)
-        .child(div().px(px(6.0)).mr(px(6.0)).bg(theme.muted).text_color(theme.on_accent).child("TERMINAL"));
-    for (index, id) in project.terminals.iter().enumerate() {
+    let mut strip = div().flex().flex_none().items_center().gap(px(2.0)).pl(px(6.0)).pr(px(6.0)).py(px(3.0));
+    for id in &project.terminals {
         let Some(entity) = view.store(cx).session(id) else { continue };
         let data = entity.read(cx);
-        let selected = *id == active;
+        let current = *id == active;
+        let selected = shown && current;
+        let (glyph, glyph_color) = match (crate::sidebar::tab_glyph(data), data.program()) {
+            ((glyph, Some(color)), _) => (glyph, color.color(theme.dark)),
+            (_, Some(_)) => (icons::PLAY, theme.green),
+            ((glyph, None), None) => (glyph, theme.faint),
+        };
+        let text_color = if data.attention {
+            theme.green
+        } else if !data.is_running() {
+            theme.faint
+        } else if current {
+            theme.text
+        } else {
+            theme.muted
+        };
         let tint = data.color.map(|color| color.color(theme.dark));
-        let title = format!("{} {}", index + 1, data.display_title());
+        let title = data.terminal_title();
         let (select_id, menu_id, close_id) = (id.clone(), id.clone(), id.clone());
         let path = project.path.clone();
+        let group = SharedString::from(format!("terminal-tab-{id}"));
         strip = strip.child(
             div()
                 .id(SharedString::from(format!("terminal-tab-{id}")))
+                .group(group.clone())
                 .flex()
-                .gap(px(6.0))
+                .items_center()
+                .gap(px(8.0))
                 .px(px(6.0))
                 .when(selected, |this| this.bg(theme.accent).text_color(theme.on_accent))
                 .when(!selected, |this| {
-                    this.text_color(tint.unwrap_or(theme.muted)).hover(|style| style.bg(theme.hover))
+                    this.text_color(tint.unwrap_or(text_color)).hover(|style| style.bg(theme.hover))
                 })
-                .when(data.attention, |this| this.text_color(theme.green))
+                .child(div().flex_none().when(!selected, |this| this.text_color(glyph_color)).child(glyph))
                 .child(title)
                 .child(
                     div()
                         .id(SharedString::from(format!("terminal-close-{id}")))
+                        .flex_none()
                         .text_color(if selected { theme.on_accent } else { theme.faint })
+                        .when(!selected, |this| this.invisible().group_hover(group, |style| style.visible()))
                         .child(icons::CLOSE)
                         .on_click(cx.listener(move |view, _, window, cx| {
                             store::store(cx).update(cx, |store, cx| store.close_tab(&close_id, cx));
@@ -161,6 +172,7 @@ pub fn terminal_panel(
                             store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path))
                         {
                             project.active_terminal = Some(id.clone());
+                            project.terminal_shown = true;
                         }
                         store.changed(cx);
                     });
@@ -187,31 +199,39 @@ pub fn terminal_panel(
             cx.listener(move |view, _, window, cx| crate::actions::new_terminal_in(view, &new_path, window, cx)),
         ))
         .child(div().flex_1())
-        .child(button("terminal-maximize", icons::MAXIMIZE).on_click(cx.listener(|view, _, _, cx| {
-            let workspace = view.workspace.clone();
-            store::store(cx).update(cx, |store, cx| {
-                if let Some(state) = store.workspace_mut(&workspace) {
-                    state.window.terminal_maximized = !state.window.terminal_maximized;
-                }
-                store.changed(cx);
-            });
-        })))
-        .child(button("terminal-hide", icons::CHEVRON_DOWN).on_click(cx.listener(|view, _, window, cx| {
-            set_shown(view, false, cx);
-            view.focus_current(window, cx);
-        })));
-    let panel = div()
-        .flex()
-        .flex_col()
-        .flex_none()
-        .border_t_1()
-        .border_color(theme.border)
-        .when(maximized, |this| this.flex_1().min_h_0())
-        .when(!maximized, |this| this.h(px(height)))
-        .child(crate::resize::handle_vertical(view, cx))
-        .child(strip)
-        .child(div().flex_1().min_h_0().child(session));
+        .child(
+            button("terminal-toggle", if shown { icons::CHEVRON_DOWN } else { icons::CHEVRON_UP })
+                .on_click(cx.listener(move |view, _, window, cx| toggle_terminal_panel(view, !shown, window, cx))),
+        );
+    let panel = div().flex().flex_col().flex_none().bg(theme.background).border_t_1().border_color(theme.border);
+    let panel = if shown {
+        panel
+            .h(px(height))
+            .child(crate::resize::handle_vertical(view, cx))
+            .child(strip)
+            .child(div().flex_1().min_h_0().child(session))
+    } else {
+        panel.child(strip)
+    };
     Some(panel.into_any_element())
+}
+
+fn toggle_terminal_panel(view: &mut WorkspaceView, shown: bool, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    set_shown(view, shown, cx);
+    if !shown {
+        view.focus_current(window, cx);
+        return;
+    }
+    let path = panel_target(view, cx);
+    let active = view
+        .state(cx)
+        .and_then(|state| state.project(&path))
+        .and_then(|project| project.active_terminal.clone().or_else(|| project.terminals.first().cloned()));
+    if let Some(session) = active.and_then(|id| view.store(cx).session(&id).cloned()) {
+        let focus = session.read(cx).focus.clone();
+        window.focus(&focus);
+    }
+    cx.notify();
 }
 
 fn panel_target(view: &WorkspaceView, cx: &App) -> std::path::PathBuf {

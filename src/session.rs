@@ -202,6 +202,21 @@ impl Session {
         self.exit.is_none()
     }
 
+    pub fn program(&self) -> Option<&str> {
+        let shell = self.shell.as_deref().map(agents::command_name);
+        self.foreground
+            .as_deref()
+            .filter(|name| Some(*name) != shell.as_deref() && !agents::KNOWN_SHELLS.contains(name))
+    }
+
+    pub fn terminal_title(&self) -> String {
+        if let Some(name) = self.name.as_ref().filter(|name| !name.is_empty()) {
+            return name.clone();
+        }
+        let shell = || self.shell.as_deref().map(agents::command_name).unwrap_or_else(|| "shell".into());
+        if self.is_running() { self.foreground.clone().unwrap_or_else(shell) } else { shell() }
+    }
+
     pub fn is_starting(&self) -> bool {
         let age = self.started.elapsed().unwrap_or_default();
         self.is_running()

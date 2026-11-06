@@ -22,6 +22,9 @@ pub const KNOWN: [&str; 13] = [
     "droid",
 ];
 
+pub const KNOWN_SHELLS: [&str; 12] =
+    ["zsh", "bash", "sh", "fish", "nu", "dash", "ksh", "tcsh", "csh", "pwsh", "powershell", "cmd"];
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentKind {
