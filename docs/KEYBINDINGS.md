@@ -1,6 +1,6 @@
 # Keybindings
 
-Defaults below. Every command can be rebound in `keybindings.json` (palette: "Open Keybindings"): `{"cmd-t": "new_tab", "cmd-shift-d": null}`. Keys use `cmd`, `ctrl`, `alt`, `shift` and names like `enter`, `escape`, `tab`, `space`, `left`, `pageup`, `f7`; `null` removes a default. The command palette shows each command's name and current key.
+Defaults below. Every command can be rebound under Settings, Keybindings, or in `keybindings.json` (palette: "Open Keybindings File"): `{"cmd-t": "new_tab", "cmd-shift-d": null}`. Keys use `cmd`, `ctrl`, `alt`, `shift` and names like `enter`, `escape`, `tab`, `space`, `left`, `pageup`, `f7`; `null` removes a default. The command palette shows each command's name and current key.
 
 On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ctrl-r`, …), so app commands use `ctrl-shift`. Inside the file view and text inputs the usual `ctrl-c`, `ctrl-v`, `ctrl-x`, `ctrl-a`, `ctrl-z` and `ctrl-s` work.
 
@@ -42,7 +42,8 @@ On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ct
 | Hide the file view | `hide_file_view` | `escape` | `escape` |
 | Settings page | `open_settings` | `cmd-,` | `ctrl-,` |
 | Settings file | `open_settings_file` | | |
-| Keybindings | `open_keybindings` | | |
+| Keybindings in settings | `open_keybindings` | | |
+| Keybindings file | `open_keybindings_file` | | |
 | Select theme | `select_theme` | | |
 | Quit | `quit` | `cmd-q` | `ctrl-shift-q` |
 

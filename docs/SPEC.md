@@ -229,8 +229,14 @@ The row is hidden for projects and settings. An invalid settings or keybindings 
 
 ## Settings
 
-- `⌘,` shows the settings page in the viewport: theme cards, appearance, sizes, line height, ligatures, cursor, reopening tabs, notifications, agent profiles (name, executable, arguments, config folder) and shells. Every change applies at once and is written to `settings.json`. `esc` or selecting a tab or file closes it.
-- "Open Settings File" and "Open Keybindings" open `settings.json` and `keybindings.json` in the file view; the settings page links to both. Both reload when saved, from Nucli or any editor. Invalid JSON keeps the previous settings and shows the error on the status row. An agent's `env` and `theme` and every key binding are only in the files.
+- `⌘,` shows the settings page in the viewport, with vertical tabs by category. The last category is remembered. Every change applies at once and is written to the same files. `esc` or selecting a tab or file closes it.
+  - **General**: reopening tabs, notifications, link to `settings.json`.
+  - **Appearance**: theme cards, system, light or dark mode, interface size.
+  - **Terminal**: font size, line height, ligatures, cursor.
+  - **Agents**: name, executable, arguments and config folder of each profile, add, remove, detect. An agent's `env` and `theme` are only in the file.
+  - **Shells**: name and path, add, remove, detect.
+  - **Keybindings**: every command with its key, a filter, and a link to `keybindings.json`. Click a key and press the new one (`esc` cancels); a changed key has a reset button; a key used twice in the same context turns red. "Open Keybindings" opens this category.
+- "Open Settings File" and "Open Keybindings File" open the JSON files in the file view. Both reload when saved, from Nucli or any editor. Invalid JSON keeps the previous settings and shows the error on the status row.
 - `settings.json` keys: `theme`, `appearance` (`system`, `light`, `dark`), `font_size`, `ui_font_size`, `line_height`, `cursor` (`block`, `bar`, `underline`), `cursor_blink`, `ligatures`, `restore_tabs`, `notifications`, `agents`, `shells`. Commands that change settings (theme, font size, detection, notifications) rewrite the file with all keys.
 - `keybindings.json` maps a key to a command name, e.g. `{"cmd-t": "new_tab", "cmd-shift-d": null}`; `null` removes a default. The palette shows every command's name and current key.
 - **Themes**: Nucli (dark and light pairs following the system), Nucli Amber and Nucli Phosphor (monochrome dark), and Vitesse Dark, Dark Soft, Black, Light, Light Soft. A theme sets every UI color, the 16 terminal colors and the syntax colors. An automatic theme follows the system appearance; `appearance` can force its light or dark side.

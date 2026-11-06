@@ -1085,6 +1085,9 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
             crate::file_view::open_config(view, crate::paths::settings_file(), window, cx)
         }))
         .on_action(cx.listener(|view, _: &OpenKeybindings, window, cx| {
+            crate::settings_view::show(view, Some(crate::persist::SettingsSection::Keybindings), window, cx)
+        }))
+        .on_action(cx.listener(|view, _: &OpenKeybindingsFile, window, cx| {
             crate::file_view::open_config(view, crate::paths::keybindings_file(), window, cx)
         }))
         .on_action(cx.listener(|view, _: &ToggleTerminal, window, cx| crate::panel::toggle_terminal(view, window, cx)))

@@ -78,6 +78,7 @@ actions!(
         OpenSettings,
         OpenSettingsFile,
         OpenKeybindings,
+        OpenKeybindingsFile,
         SelectTheme,
         DetectAgents,
         DetectShells,
@@ -184,6 +185,7 @@ pub const COMMANDS: &[Command] = &[
     command!("open_settings", "Open Settings", OpenSettings, "cmd-,", "ctrl-,"),
     command!("open_settings_file", "Open Settings File", OpenSettingsFile, "", ""),
     command!("open_keybindings", "Open Keybindings", OpenKeybindings, "", ""),
+    command!("open_keybindings_file", "Open Keybindings File", OpenKeybindingsFile, "", ""),
     command!("select_theme", "Select Theme", SelectTheme, "", ""),
     command!("detect_agents", "Detect Agents", DetectAgents, "", ""),
     command!("detect_shells", "Detect Shells", DetectShells, "", ""),
@@ -289,6 +291,31 @@ pub fn read_overrides() -> Result<Vec<(String, Option<String>)>, String> {
     Ok(map.into_iter().map(|(key, value)| (key, value.as_str().map(String::from))).collect())
 }
 
+fn rebound(map: &mut serde_json::Map<String, serde_json::Value>, name: &str, default: &str, key: Option<&str>) {
+    map.retain(|bound, value| value.as_str() != Some(name) && !(bound == default && value.is_null()));
+    if let Some(key) = key.filter(|key| *key != default) {
+        map.insert(key.to_string(), serde_json::Value::String(name.to_string()));
+        if !default.is_empty() {
+            map.entry(default.to_string()).or_insert(serde_json::Value::Null);
+        }
+    }
+}
+
+pub fn rebind(name: &str, key: Option<&str>) {
+    let Some(command) = find(name) else { return };
+    let mut map = match std::fs::read_to_string(paths::keybindings_file()) {
+        Ok(text) => match serde_json::from_str(&text) {
+            Ok(map) => map,
+            Err(_) => return,
+        },
+        Err(_) => serde_json::Map::new(),
+    };
+    rebound(&mut map, name, default_key(command), key);
+    if let Ok(json) = serde_json::to_string_pretty(&map) {
+        let _ = paths::write_atomic(&paths::keybindings_file(), format!("{json}\n").as_bytes());
+    }
+}
+
 pub fn shifted_alias(key: &str) -> Option<String> {
     let (head, last) = key.rsplit_once('-')?;
     let symbol = match last {
@@ -387,7 +414,7 @@ pub fn menus() -> Vec<Menu> {
     vec![
         Menu {
             name: "Nucli".into(),
-            items: items(&["about", "-", "open_settings", "open_keybindings", "select_theme", "-"])
+            items: items(&["about", "-", "open_settings", "-"])
                 .into_iter()
                 .chain([MenuItem::os_submenu("Services", SystemMenuType::Services), MenuItem::separator()])
                 .chain(items(&["hide", "hide_others", "show_all", "-", "quit"]))
@@ -495,6 +522,22 @@ pub fn menus() -> Vec<Menu> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rebinds_keys() {
+        let mut map = serde_json::Map::new();
+        rebound(&mut map, "new_tab", "cmd-t", Some("cmd-j"));
+        assert_eq!(map.get("cmd-j").and_then(|value| value.as_str()), Some("new_tab"));
+        assert!(map.get("cmd-t").is_some_and(|value| value.is_null()));
+        rebound(&mut map, "new_tab", "cmd-t", Some("cmd-y"));
+        assert!(!map.contains_key("cmd-j"));
+        map.insert("cmd-t".into(), serde_json::Value::String("other".into()));
+        rebound(&mut map, "new_tab", "cmd-t", None);
+        assert!(!map.contains_key("cmd-y"));
+        assert_eq!(map.get("cmd-t").and_then(|value| value.as_str()), Some("other"));
+        rebound(&mut map, "other", "", None);
+        assert!(map.is_empty());
+    }
 
     #[test]
     fn names_are_unique() {

@@ -9,6 +9,18 @@ use crate::theme::ItemColor;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
 #[serde(rename_all = "lowercase")]
+pub enum SettingsSection {
+    #[default]
+    General,
+    Appearance,
+    Terminal,
+    Agents,
+    Shells,
+    Keybindings,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[serde(rename_all = "lowercase")]
 pub enum SidebarTab {
     #[default]
     Projects,
@@ -40,6 +52,7 @@ pub struct Ui {
     pub panel_tab: PanelTab,
     pub panel_side: Side,
     pub panel_hidden: bool,
+    pub settings_section: SettingsSection,
 }
 
 impl Default for Ui {
@@ -49,6 +62,7 @@ impl Default for Ui {
             panel_tab: PanelTab::Files,
             panel_side: Side::Left,
             panel_hidden: false,
+            settings_section: SettingsSection::General,
         }
     }
 }

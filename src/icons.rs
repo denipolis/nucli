@@ -1,6 +1,8 @@
 use crate::theme::ItemColor;
 
 pub const PLAY: &str = "\u{f04b}";
+pub const SETTINGS: &str = "\u{eb51}";
+pub const KEYBOARD: &str = "\u{eae4}";
 pub const FOLDER: &str = "\u{e5ff}";
 pub const FOLDER_OPEN: &str = "\u{e5fe}";
 pub const FILE: &str = "\u{ea7b}";
