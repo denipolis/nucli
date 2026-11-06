@@ -543,11 +543,33 @@ impl Session {
             }?;
             return Some(Link { line: point.line.0, start, end, target });
         }
-        let text: Vec<char> = (0..grid.columns()).map(|column| row[Column(column)].c).collect();
-        let (start, end, token) = links::token_at(&text, point.column.0)?;
+        let columns = grid.columns();
+        let wraps = |line: i32| grid[Line(line)][Column(columns - 1)].flags.contains(Flags::WRAPLINE);
+        let top = -(grid.history_size() as i32);
+        let bottom = grid.screen_lines() as i32 - 1;
+        let mut first = point.line.0;
+        while first > top && wraps(first - 1) {
+            first -= 1;
+        }
+        let mut last = point.line.0;
+        while last < bottom && wraps(last) {
+            last += 1;
+        }
+        let text: Vec<char> = (first..=last)
+            .flat_map(|line| (0..columns).map(move |column| (line, column)))
+            .map(|(line, column)| grid[Line(line)][Column(column)].c)
+            .collect();
+        let offset = (point.line.0 - first) as usize * columns;
+        let (start, end, token) = links::token_at(&text, offset + point.column.0)?;
         drop(term);
         let target = links::classify(&token, self.working_dir(), &self.project)?;
-        Some(Link { line: point.line.0, start, end, target })
+        let (row_start, row_end) = (offset, offset + columns - 1);
+        Some(Link {
+            line: point.line.0,
+            start: start.max(row_start) - row_start,
+            end: end.min(row_end) - row_start,
+            target,
+        })
     }
 
     fn update_hover(&mut self, position: Point<Pixels>, modifiers: &gpui::Modifiers, cx: &mut Context<Self>) {
