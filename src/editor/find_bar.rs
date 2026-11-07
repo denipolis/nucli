@@ -93,33 +93,21 @@ impl Editor {
         } else {
             (format!("{} of {}", find.current + 1, find.hits.len()), theme.muted)
         };
+        let row = px((size * 1.6).round() + 2.0);
         let field = |input: Entity<TextInput>, invalid: bool| {
             div()
-                .flex_1()
-                .min_w_0()
+                .w_full()
+                .h(row)
                 .px(px(4.0))
                 .bg(theme.background)
                 .border_1()
                 .border_color(if invalid { theme.red } else { theme.border })
                 .child(input)
         };
+        let controls = || div().flex().items_center().gap(px(4.0)).h(row);
         let editable = self.is_editable();
-        let top = div()
-            .flex()
-            .items_center()
-            .gap(px(4.0))
-            .when(editable, |this| {
-                this.child(
-                    find_button(
-                        "find-expand",
-                        if find.show_replace { icons::CHEVRON_DOWN } else { icons::CHEVRON_RIGHT },
-                        "Toggle Replace",
-                        &theme,
-                    )
-                    .on_click(cx.listener(|editor, _, window, cx| editor.toggle_replace(window, cx))),
-                )
-            })
-            .child(field(find.input.clone(), find.invalid))
+        let replacing = find.show_replace && editable;
+        let top = controls()
             .child(find_toggle("find-case", "Aa", "Match Case", options.case, &theme).on_click(
                 cx.listener(|editor, _, _, cx| editor.change_options(|options| options.case = !options.case, cx)),
             ))
@@ -133,7 +121,15 @@ impl Editor {
                 find_toggle("find-scope", "≡", "Find in Selection", find.scope.is_some(), &theme)
                     .on_click(cx.listener(|editor, _, _, cx| editor.toggle_scope(cx))),
             )
-            .child(div().flex_none().min_w(px(70.0)).flex().justify_center().text_color(label_color).child(label))
+            .child(
+                div()
+                    .flex_none()
+                    .min_w(px((size * 6.5).round()))
+                    .flex()
+                    .justify_center()
+                    .text_color(label_color)
+                    .child(label),
+            )
             .child(
                 find_button("find-previous", icons::ARROW_UP, "Previous Match", &theme)
                     .on_click(cx.listener(|editor, _, _, cx| editor.find_step(-1, cx))),
@@ -146,13 +142,8 @@ impl Editor {
                 find_button("find-close", icons::CLOSE, "Close", &theme)
                     .on_click(cx.listener(|editor, _, window, cx| editor.close_find(window, cx))),
             );
-        let bottom = (find.show_replace && editable).then(|| {
-            div()
-                .flex()
-                .items_center()
-                .gap(px(4.0))
-                .pl(px(20.0))
-                .child(field(find.replacement.clone(), false))
+        let bottom = replacing.then(|| {
+            controls()
                 .child(find_toggle("find-preserve", "AB", "Preserve Case", options.preserve, &theme).on_click(
                     cx.listener(|editor, _, _, cx| {
                         editor.change_options(|options| options.preserve = !options.preserve, cx)
@@ -167,6 +158,12 @@ impl Editor {
                         .on_click(cx.listener(|editor, _, _, cx| editor.replace_all(cx))),
                 )
         });
+        let column = || div().flex().flex_col().gap(px(4.0));
+        let fields = column()
+            .flex_1()
+            .min_w_0()
+            .child(field(find.input.clone(), find.invalid))
+            .when(replacing, |this| this.child(field(find.replacement.clone(), false)));
         Some(
             div()
                 .id("find-bar")
@@ -176,7 +173,7 @@ impl Editor {
                 .w(px(540.0))
                 .max_w(gpui::relative(0.95))
                 .flex()
-                .flex_col()
+                .items_start()
                 .gap(px(4.0))
                 .p(px(6.0))
                 .occlude()
@@ -186,8 +183,22 @@ impl Editor {
                 .border_1()
                 .border_color(theme.accent)
                 .on_key_down(cx.listener(Self::find_key))
-                .child(top)
-                .children(bottom)
+                .when(editable, |this| {
+                    this.child(
+                        find_button(
+                            "find-expand",
+                            if find.show_replace { icons::CHEVRON_DOWN } else { icons::CHEVRON_RIGHT },
+                            "Toggle Replace",
+                            &theme,
+                        )
+                        .h(row)
+                        .flex()
+                        .items_center()
+                        .on_click(cx.listener(|editor, _, window, cx| editor.toggle_replace(window, cx))),
+                    )
+                })
+                .child(fields)
+                .child(column().flex_none().child(top).children(bottom))
                 .into_any_element(),
         )
     }
