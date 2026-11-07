@@ -5,7 +5,7 @@ use gpui::{Context, Window};
 use crate::actions;
 use crate::window::WorkspaceView;
 
-const HOLD: Duration = Duration::from_millis(350);
+const HOLD: Duration = Duration::from_millis(200);
 const POLL: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Copy, PartialEq)]

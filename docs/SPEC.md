@@ -60,8 +60,8 @@ Shown in the viewport for a selected project, and after its last tab closes:
 
 A tab is an agent or a shell living in a project. Agents and shells look the same in the sidebar; only the glyph differs.
 
-- `⌘T`: new tab with the last used shell (fallback: the first shell). Holding it for 350 ms opens the **shell picker** instead.
-- `⇧⌘T`: new tab with the agent last used in this project (fallback: last used anywhere, then the first agent). Holding it for 350 ms opens the **agent picker** instead: agents, then the project's recent conversations.
+- `⌘T`: new tab with the last used shell (fallback: the first shell). Holding it for 200 ms opens the **shell picker** instead.
+- `⇧⌘T`: new tab with the agent last used in this project (fallback: last used anywhere, then the first agent). Holding it for 200 ms opens the **agent picker** instead: agents, then the project's recent conversations.
 - Pickers open over the viewport with the last used launcher preselected. Digits `1`–`9` pick a launcher directly. Conversation rows resume. "New Shell…" and "New Agent…" open them from the palette.
 - **New Tab…** (`+` button, palette, project menu): one picker with agents, shells and conversations.
 - `⌥⇧⌘T`: New Tab…, but asks for a folder first (and opens it as a project).
