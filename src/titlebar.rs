@@ -12,6 +12,7 @@ use crate::ui;
 use crate::window::WorkspaceView;
 
 const TRAFFIC_LIGHT_CENTER: f32 = 17.0;
+const LOCATION_WIDTH: f32 = 640.0;
 
 fn location(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
@@ -35,7 +36,8 @@ fn location(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement
         .gap(px(8.0))
         .flex_shrink()
         .min_w_0()
-        .max_w(px(520.0))
+        .w(px(LOCATION_WIDTH))
+        .overflow_hidden()
         .px(px(10.0))
         .bg(theme.background)
         .border_1()
