@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, App, Context, Div, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    StatefulInteractiveElement, Styled, Window, WindowControlArea, div, px,
 };
 
 use crate::icons;
@@ -13,6 +13,7 @@ use crate::window::WorkspaceView;
 
 const TRAFFIC_LIGHT_CENTER: f32 = 17.0;
 const LOCATION_WIDTH: f32 = 427.0;
+const CAPTION_BUTTON_WIDTH: f32 = 46.0;
 
 fn location(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
@@ -31,6 +32,7 @@ fn location(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement
     };
     div()
         .id("location")
+        .occlude()
         .flex()
         .items_center()
         .gap(px(8.0))
@@ -136,8 +138,9 @@ pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceV
         .items_center()
         .h(height)
         .pl(px(if cfg!(target_os = "macos") { 78.0 } else { 8.0 }))
-        .pr(px(8.0))
+        .pr(px(if cfg!(windows) { 0.0 } else { 8.0 }))
         .gap(px(10.0))
+        .when(cfg!(windows), |this| this.window_control_area(WindowControlArea::Drag))
         .bg(theme.surface)
         .border_b_1()
         .border_color(theme.border)
@@ -158,6 +161,7 @@ pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceV
             div().flex().flex_1().min_w_0().child(
                 div()
                     .id("workspace-name")
+                    .occlude()
                     .flex_none()
                     .when(cfg!(target_os = "macos"), |this| {
                         this.relative().top(px(TRAFFIC_LIGHT_CENTER) - (height - px(1.0)) / 2.0)
@@ -173,22 +177,56 @@ pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceV
             ),
         )
         .child(location)
-        .child(status)
-        .when(client_decorated, |this| {
-            let control = |id: &'static str, glyph: &'static str| {
-                div()
-                    .id(id)
-                    .px(px(6.0))
-                    .text_color(theme.muted)
-                    .hover(|style| style.text_color(theme.accent))
-                    .child(glyph)
-            };
-            let id = view.workspace.clone();
-            this.child(control("window-minimize", icons::REMOVE).on_click(|_, window, _| window.minimize_window()))
-                .child(control("window-zoom", icons::MAXIMIZE).on_click(|_, window, _| window.zoom_window()))
-                .child(control("window-close", icons::CLOSE).on_click(move |_, window, cx| {
-                    crate::actions::close_workspace_window(&id, window, cx);
-                }))
-        })
+        .child(
+            div()
+                .flex()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .items_center()
+                .child(status)
+                .when(client_decorated, |this| {
+                    let control = |id: &'static str, glyph: &'static str| {
+                        div()
+                            .id(id)
+                            .px(px(6.0))
+                            .text_color(theme.muted)
+                            .hover(|style| style.text_color(theme.accent))
+                            .child(glyph)
+                    };
+                    let id = view.workspace.clone();
+                    this.child(
+                        control("window-minimize", icons::REMOVE).on_click(|_, window, _| window.minimize_window()),
+                    )
+                    .child(control("window-zoom", icons::MAXIMIZE).on_click(|_, window, _| window.zoom_window()))
+                    .child(control("window-close", icons::CLOSE).on_click(move |_, window, cx| {
+                        crate::actions::close_workspace_window(&id, window, cx);
+                    }))
+                })
+                .when(cfg!(windows), |this| {
+                    let control = |id: &'static str, glyph: &'static str, area: WindowControlArea| {
+                        div()
+                            .id(id)
+                            .occlude()
+                            .window_control_area(area)
+                            .flex()
+                            .flex_none()
+                            .items_center()
+                            .justify_center()
+                            .w(px(CAPTION_BUTTON_WIDTH))
+                            .h_full()
+                            .text_color(theme.muted)
+                            .hover(|style| style.bg(theme.hover).text_color(theme.text))
+                            .child(glyph)
+                    };
+                    let zoom = if window.is_maximized() { icons::CAPTION_RESTORE } else { icons::CAPTION_MAXIMIZE };
+                    this.child(control("caption-minimize", icons::CAPTION_MINIMIZE, WindowControlArea::Min))
+                        .child(control("caption-zoom", zoom, WindowControlArea::Max))
+                        .child(
+                            control("caption-close", icons::CAPTION_CLOSE, WindowControlArea::Close)
+                                .hover(|style| style.bg(theme.red).text_color(theme.on_accent)),
+                        )
+                }),
+        )
         .into_any_element()
 }

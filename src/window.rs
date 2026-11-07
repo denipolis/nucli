@@ -70,7 +70,7 @@ pub fn open(workspace: &str, cx: &mut App) -> Option<WindowHandle<WorkspaceView>
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(TitlebarOptions {
             title: Some(state.name.clone().into()),
-            appears_transparent: cfg!(target_os = "macos"),
+            appears_transparent: cfg!(any(target_os = "macos", windows)),
             traffic_light_position: Some(point(px(10.0), px(9.0))),
         }),
         app_id: Some("uk.polishch.nucli".into()),
