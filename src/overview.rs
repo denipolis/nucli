@@ -245,16 +245,11 @@ pub fn empty(_view: &mut WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyE
         ("open_project", "open project"),
         ("command_palette", "command palette"),
     ];
-    let mut list = div().flex().flex_col().gap(px(4.0));
+    let mut keys = div().flex().flex_col().items_end().gap(px(4.0)).text_color(theme.accent);
+    let mut labels = div().flex().flex_col().gap(px(4.0)).text_color(theme.muted);
     for (name, label) in lines {
-        let key = commands::key_for(name, cx);
-        list = list.child(
-            div()
-                .flex()
-                .gap(px(16.0))
-                .child(div().w(px(120.0)).flex().justify_end().text_color(theme.accent).child(key))
-                .child(div().text_color(theme.muted).child(label)),
-        );
+        keys = keys.child(div().child(commands::key_for(name, cx)));
+        labels = labels.child(div().child(label));
     }
     div()
         .size_full()
@@ -264,7 +259,7 @@ pub fn empty(_view: &mut WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyE
         .justify_center()
         .gap(px(20.0))
         .child(div().text_color(theme.faint).child(LOGO))
-        .child(list)
+        .child(div().flex().gap(px(16.0)).child(keys).child(labels))
         .child(div().text_color(theme.faint).child("or drop a folder here"))
         .into_any_element()
 }
