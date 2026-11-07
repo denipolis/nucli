@@ -7,8 +7,9 @@ pub mod view;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::{RecvTimeoutError, channel};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use alacritty_terminal::event::{Event as TermEvent, EventListener, WindowSize};
 use alacritty_terminal::grid::{Dimensions, Scroll};
@@ -364,22 +365,43 @@ fn spawn_reader(
     anchor: Arc<AtomicBool>,
     activity: Arc<Activity>,
 ) {
+    let (chunks, received) = channel::<Vec<u8>>();
+    std::thread::spawn(move || {
+        let mut buffer = vec![0u8; 65536];
+        while let Ok(count @ 1..) = reader.read(&mut buffer) {
+            if chunks.send(buffer[..count].to_vec()).is_err() {
+                break;
+            }
+        }
+    });
     std::thread::spawn(move || {
         let mut processor: Processor = Processor::new();
-        let mut buffer = vec![0u8; 65536];
         let mut first = true;
         let mut scanner = Scanner::default();
         loop {
-            let count = match reader.read(&mut buffer) {
-                Ok(0) | Err(_) => break,
-                Ok(count) => count,
+            let next = match processor.sync_timeout().sync_timeout() {
+                Some(deadline) => received.recv_timeout(deadline.saturating_duration_since(Instant::now())),
+                None => received.recv().map_err(|_| RecvTimeoutError::Disconnected),
+            };
+            let chunk = match next {
+                Ok(chunk) => chunk,
+                Err(RecvTimeoutError::Timeout) => {
+                    processor.stop_sync(&mut *term.lock());
+                    listener.wakeup();
+                    continue;
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    processor.stop_sync(&mut *term.lock());
+                    listener.wakeup();
+                    break;
+                }
             };
             let now = now_ms();
             let last = activity.last_output.swap(now, Ordering::AcqRel);
             if now.saturating_sub(last) > 1500 {
                 activity.busy_since.store(now, Ordering::Release);
             }
-            let chunk = &buffer[..count];
+            let chunk = chunk.as_slice();
             for text in scanner.notifications(chunk) {
                 let _ = listener.events.unbounded_send(Event::Notify(text));
             }
@@ -481,6 +503,57 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn run(program: &str, args: &[&str]) -> (Terminal, UnboundedReceiver<Event>) {
+        let launch = Launch {
+            program: program.into(),
+            args: args.iter().map(|arg| arg.to_string()).collect(),
+            env: Vec::new(),
+            clear_env: false,
+            remove_env: Vec::new(),
+            cwd: std::env::temp_dir(),
+        };
+        let size = GridSize { cols: 80, rows: 24, cell_width: 8.0, cell_height: 16.0 };
+        let spawned = Terminal::spawn(launch, size, CursorStyle::default()).expect("the shell starts");
+        spawned.0.anchor.store(true, Ordering::Release);
+        spawned
+    }
+
+    fn screen(terminal: &Terminal) -> String {
+        let term = terminal.term.lock();
+        let mut text = String::new();
+        for line in 0..term.screen_lines() as i32 {
+            let row = &term.grid()[Line(line)];
+            text.extend((0..term.columns()).map(|column| row[Column(column)].c));
+            text.push('\n');
+        }
+        text
+    }
+
+    fn wait_for(terminal: &Terminal, text: &str) {
+        let start = std::time::Instant::now();
+        while !screen(terminal).contains(text) {
+            let waited = start.elapsed() > std::time::Duration::from_secs(30);
+            assert!(!waited, "no {text:?} on screen:\n{}", screen(terminal));
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn an_interactive_shell_shows_output_and_takes_input() {
+        let (mut terminal, _events) = if cfg!(windows) { run("cmd.exe", &[]) } else { run("/bin/sh", &[]) };
+        terminal.write(b"echo nucli-typed\r\n");
+        wait_for(&terminal, "nucli-typed");
+        terminal.kill();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unfinished_synchronized_update_still_reaches_the_screen() {
+        let (mut terminal, _events) = run("/bin/sh", &["-c", "printf '\\033[?2026hnucli-synced'; sleep 40"]);
+        wait_for(&terminal, "nucli-synced");
+        terminal.kill();
+    }
 
     #[test]
     fn anchors_clears_outside_alternate_screen() {
