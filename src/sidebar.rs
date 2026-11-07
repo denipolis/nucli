@@ -287,8 +287,8 @@ fn project_row(
                 }))
         })
         .drag_over::<DraggedTab>(move |style, _, _, _| style.bg(selection))
-        .on_drop(cx.listener(move |view, drag: &DraggedTab, _, cx| {
-            crate::actions::move_tab(view, &drag.id, &drop_tab_path, None, cx);
+        .on_drop(cx.listener(move |view, drag: &DraggedTab, window, cx| {
+            crate::actions::move_tab(view, &drag.id, &drop_tab_path, None, window, cx);
         }))
         .into_any_element()
 }
@@ -376,8 +376,8 @@ fn tab_row(
         )
         .on_drag(dragged, |drag: &DraggedTab, _, _, cx| cx.new(|_| DragPreview(drag.title.clone())))
         .drag_over::<DraggedTab>(move |style, _, _, _| style.border_t_1().border_color(accent))
-        .on_drop(cx.listener(move |view, drag: &DraggedTab, _, cx| {
-            crate::actions::move_tab(view, &drag.id, &drop_project, Some(drop_id.clone()), cx);
+        .on_drop(cx.listener(move |view, drag: &DraggedTab, window, cx| {
+            crate::actions::move_tab(view, &drag.id, &drop_project, Some(drop_id.clone()), window, cx);
         }));
     if info.terminal {
         row = row.opacity(0.8);
@@ -629,6 +629,7 @@ pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<W
     let empty_click = cx.listener(|view, _: &gpui::MouseDownEvent, window, cx| {
         view.select(None, window, cx);
     });
+    let selection = theme.selection;
     let empty_menu = cx.listener(|view, event: &gpui::MouseDownEvent, _, cx| {
         let items = crate::actions::workspace_menu(view, cx);
         view.open_menu(event.position, items, cx);
@@ -644,23 +645,27 @@ pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<W
         .border_color(theme.border)
         .child(header(view, cx))
         .child(
-            div().id("sidebar-list").flex_1().min_h_0().overflow_y_scroll().py(px(4.0)).children(rows).child(
-                div()
-                    .id("sidebar-empty")
-                    .min_h(px(80.0))
-                    .flex_1()
-                    .on_mouse_down(MouseButton::Left, empty_click)
-                    .on_mouse_down(MouseButton::Right, empty_menu)
-                    .on_drop(cx.listener(|view, drag: &DraggedTab, _, cx| {
-                        if let Some(path) = view
-                            .state(cx)
-                            .and_then(|state| state.project_of(&drag.id))
-                            .map(|project| project.path.clone())
-                        {
-                            crate::actions::move_tab(view, &drag.id, &path, None, cx);
-                        }
-                    })),
-            ),
+            div()
+                .id("sidebar-list")
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scroll()
+                .py(px(4.0))
+                .child(div().flex_none().children(rows))
+                .child(
+                    div()
+                        .id("sidebar-empty")
+                        .min_h(px(80.0))
+                        .flex_1()
+                        .on_mouse_down(MouseButton::Left, empty_click)
+                        .on_mouse_down(MouseButton::Right, empty_menu)
+                        .drag_over::<DraggedTab>(move |style, _, _, _| style.bg(selection))
+                        .on_drop(cx.listener(|view, drag: &DraggedTab, window, cx| {
+                            crate::actions::move_tab(view, &drag.id, std::path::Path::new(""), None, window, cx);
+                        })),
+                ),
         )
         .child(footer(view, cx))
         .into_any_element()

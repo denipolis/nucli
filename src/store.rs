@@ -430,6 +430,8 @@ impl Store {
     }
 
     pub fn select(&mut self, workspace: &str, selected: Option<Selected>, cx: &mut Context<Self>) {
+        let selected =
+            selected.filter(|selected| !matches!(selected, Selected::Project(path) if path.as_os_str().is_empty()));
         if let Some(Selected::Tab(id)) = &selected
             && let Some(session) = self.sessions.get(id)
         {

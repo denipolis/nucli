@@ -11,6 +11,7 @@ On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ct
 | New tab picker | `new_tab_picker` | `cmd-shift-t` | `ctrl-shift-space` |
 | New tab in another folder | `new_tab_in_folder` | `cmd-alt-shift-t` | `ctrl-alt-shift-t` |
 | New tab without project | `new_tab_without_project` | | |
+| Move tab or panel terminal out of its project | `move_out_of_project` | | |
 | Open project | `open_project` | `cmd-o` | `ctrl-shift-o` |
 | Quick open a file | `quick_open` | `cmd-p` | `ctrl-shift-e` |
 | Command palette | `command_palette` | `cmd-shift-p` | `ctrl-shift-p` |

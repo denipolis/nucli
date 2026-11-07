@@ -43,7 +43,8 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 - Rename (double-click or context menu; empty restores the folder name), Color (12 theme colors or none; tints the folder glyph and the rows of its tabs), Move to Workspace (another workspace or a new one), Reveal in File Manager, Close Project (`⇧⌘W`, ends its tabs after confirming running agents).
 - Collapsing a project hides its tabs; the state is remembered.
 - Clicking a project shows its active file when one is open, otherwise its overview. `⌂` in the file view's tab strip goes to the overview.
-- **No Project**: with nothing selected, new tabs open in the workspace's "No Project" group (home folder). It appears last in the sidebar only while it has tabs. Its tabs can be dragged into real projects. It has no Files, Changes or quick open.
+- **No Project**: a project is optional. Clicking the empty space of the sidebar deselects, and with nothing selected new tabs and panel terminals open in the workspace's "No Project" group (home folder). It appears last in the sidebar only while it has tabs; clicking it deselects too. It has no Files, Changes or quick open.
+- A running tab or panel terminal moves between projects by dragging it onto a project row. Dragging it onto the empty space of the sidebar, its context menu or "Move Out of Project" moves it to No Project. A move never restarts the process or changes its working folder.
 
 ### Project overview
 
@@ -160,7 +161,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 - **Workspace popup** at the bottom: all workspaces (closed ones marked), New, Rename, Delete.
 - **`+` button**: New Tab, New Tab…, New Tab Without Project…, New Terminal, Open Project….
 - Clicking empty space deselects: no project, empty viewport with key hints and "or drop a folder here".
-- Context menus: project (New Terminal, New Tab…, Rename, Color, Move to Workspace, Reveal, Close Project), tab (Rename, Color, Remove from Split, Unsplit All, Close Tab), empty space (Open Project, Rename Workspace, New Workspace, Delete Workspace).
+- Context menus: project (New Terminal, New Tab…, Rename, Color, Move to Workspace, Reveal, Close Project), tab (Rename, Color, Remove from Split, Unsplit All, Move Out of Project, Close Tab), empty space (Open Project, Rename Workspace, New Workspace, Delete Workspace).
 
 ## Panel
 

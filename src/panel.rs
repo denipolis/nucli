@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, Context, InteractiveElement, IntoElement, MouseButton, ParentElement, SharedString,
+    AnyElement, App, AppContext, Context, InteractiveElement, IntoElement, MouseButton, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Window, div, px,
 };
 
@@ -152,6 +152,7 @@ pub fn terminal_panel(
         let tint = data.color.map(|color| color.color(theme.dark));
         let title = data.terminal_title();
         let (select_id, menu_id, close_id) = (id.clone(), id.clone(), id.clone());
+        let dragged = crate::sidebar::DraggedTab { id: id.clone(), title: title.clone() };
         let path = project.path.clone();
         let group = SharedString::from(format!("terminal-tab-{id}"));
         tabs = tabs.child(
@@ -182,6 +183,9 @@ pub fn terminal_panel(
                             cx.stop_propagation();
                         })),
                 )
+                .on_drag(dragged, |drag: &crate::sidebar::DraggedTab, _, _, cx| {
+                    cx.new(|_| crate::sidebar::DragPreview(drag.title.clone()))
+                })
                 .on_click(cx.listener(move |view, _, window, cx| {
                     let workspace = view.workspace.clone();
                     let (path, id) = (path.clone(), select_id.clone());

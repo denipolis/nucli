@@ -474,6 +474,7 @@ pub fn move_tab(
     id: &str,
     project: &Path,
     before: Option<String>,
+    window: &mut Window,
     cx: &mut Context<WorkspaceView>,
 ) {
     let workspace = view.workspace.clone();
@@ -482,25 +483,38 @@ pub fn move_tab(
     store::store(cx).update(cx, |store, cx| {
         let Some(source) = store.workspaces.iter().position(|state| state.project_of(&id).is_some()) else { return };
         let Some(source_project) = store.workspaces[source].project_of_mut(&id) else { return };
-        if !source_project.tabs.contains(&id) {
-            return;
-        }
+        let panel = source_project.terminals.contains(&id);
         source_project.tabs.retain(|tab| *tab != id);
+        source_project.terminals.retain(|tab| *tab != id);
         if source_project.active_tab.as_deref() == Some(&id) {
             source_project.active_tab = source_project.tabs.first().cloned();
+        }
+        if source_project.active_terminal.as_deref() == Some(&id) {
+            source_project.active_terminal = source_project.terminals.first().cloned();
+        }
+        if source_project.terminals.is_empty() {
+            source_project.terminal_shown = false;
         }
         let Some(target) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(&project)) else {
             return;
         };
-        let index =
-            before.and_then(|before| target.tabs.iter().position(|tab| *tab == before)).unwrap_or(target.tabs.len());
-        target.tabs.insert(index, id.clone());
+        if panel {
+            target.terminals.push(id.clone());
+            target.active_terminal = Some(id.clone());
+            target.terminal_shown = true;
+        } else {
+            let index = before
+                .and_then(|before| target.tabs.iter().position(|tab| *tab == before))
+                .unwrap_or(target.tabs.len());
+            target.tabs.insert(index, id.clone());
+        }
         let cwd = target.cwd();
         if let Some(session) = store.sessions.get(&id) {
             session.update(cx, |session, _| session.project = cwd);
         }
         store.changed(cx);
     });
+    view.focus_current(window, cx);
 }
 
 pub fn move_project(view: &mut WorkspaceView, from: &Path, to: &Path, cx: &mut Context<WorkspaceView>) {
@@ -695,6 +709,12 @@ pub fn tab_menu(view: &WorkspaceView, id: &str, cx: &App) -> Vec<Item> {
         }));
     }
     items.push(Item::Separator);
+    if view.state(cx).and_then(|state| state.project_of(id)).is_some_and(|project| !project.is_scratch()) {
+        let id = id.to_string();
+        items.push(menu::action("Move Out of Project", move |view, window, cx| {
+            move_tab(view, &id, Path::new(""), None, window, cx)
+        }));
+    }
     let id = id.to_string();
     items.push(menu::action("Close Tab", move |view, window, cx| close_tab(view, &id, window, cx)));
     items
@@ -1009,6 +1029,13 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
             picker(view, &target, window, cx)
         }))
         .on_action(cx.listener(|view, _: &NewTabWithoutProject, window, cx| picker(view, Path::new(""), window, cx)))
+        .on_action(cx.listener(|view, _: &MoveOutOfProject, window, cx| {
+            let focused = crate::panel::focused_terminal(view, window, cx);
+            let selected = view.state(cx).and_then(|state| state.selected_tab()).map(String::from);
+            if let Some(id) = focused.or(selected) {
+                move_tab(view, &id, Path::new(""), None, window, cx);
+            }
+        }))
         .on_action(cx.listener(|view, _: &NewTabInFolder, window, cx| {
             choose_folder(view, window, cx, |path, view, window, cx| {
                 let workspace = view.workspace.clone();
