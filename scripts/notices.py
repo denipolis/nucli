@@ -4,6 +4,7 @@ import pathlib
 import subprocess
 import sys
 
+sys.stdout.reconfigure(encoding="utf-8")
 args = ["cargo", "metadata", "--format-version", "1", "--locked"]
 if len(sys.argv) > 1:
     args += ["--filter-platform", sys.argv[1]]
@@ -19,4 +20,4 @@ for package in sorted(metadata["packages"], key=lambda item: item["name"]):
         upper = path.name.upper()
         if path.is_file() and (upper.startswith("LICEN") or upper.startswith("COPYING") or upper.startswith("NOTICE")):
             print(f"\n--- {path.name}\n")
-            print(path.read_text(errors="replace"))
+            print(path.read_text(encoding="utf-8", errors="replace"))
