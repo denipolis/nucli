@@ -30,7 +30,7 @@ Direct dependencies, declared in `Cargo.toml`. Exact versions of everything, tra
 | [fancy-regex](https://github.com/fancy-regex/fancy-regex) | MIT | Regular expressions with backreferences and lookaround for find and replace in the file view |
 | [image](https://github.com/image-rs/image) | MIT OR Apache-2.0 | Pixel size of images in the file view, PNG writing in the development build |
 | [core-graphics](https://github.com/servo/core-foundation-rs) | MIT OR Apache-2.0 | macOS only: window capture in the development build's control file |
-| [mac-notification-sys](https://github.com/h4llow3En/mac-notification-sys) | MIT OR Apache-2.0 | macOS only: desktop notifications and their clicks |
+| [block](https://github.com/SSheldon/rust-block) | MIT | macOS only: completion handlers of the system notification API |
 | [embed-resource](https://github.com/nabijaczleweli/rust-embed-resource) | MIT | Windows only, build time: the executable icon |
 | [objc](https://github.com/SSheldon/rust-objc) | MIT | macOS only: the Dock badge |
 | [plist](https://github.com/ebarnard/rust-plist) | MIT | macOS only: reading Nucli 1 preferences once on first launch |

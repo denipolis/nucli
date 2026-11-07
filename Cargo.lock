@@ -3555,6 +3555,7 @@ version = "2.0.0"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
+ "block",
  "core-graphics 0.24.0",
  "dirs 7.0.0",
  "embed-resource",
@@ -3563,7 +3564,6 @@ dependencies = [
  "gpui",
  "image",
  "libc",
- "mac-notification-sys",
  "notify",
  "notify-rust",
  "objc",

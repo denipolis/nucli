@@ -7,6 +7,8 @@ static CLICKS: OnceLock<Mutex<UnboundedSender<String>>> = OnceLock::new();
 pub fn clicks() -> UnboundedReceiver<String> {
     let (sender, receiver) = unbounded();
     let _ = CLICKS.set(Mutex::new(sender));
+    #[cfg(target_os = "macos")]
+    center::listen();
     receiver
 }
 
@@ -17,17 +19,104 @@ fn clicked(id: String) {
 }
 
 #[cfg(target_os = "macos")]
-pub fn post(title: &str, text: &str, id: &str) {
-    use mac_notification_sys::{Notification, NotificationResponse, set_application};
-    let (title, text, id) = (title.to_string(), text.to_string(), id.to_string());
-    std::thread::spawn(move || {
-        let _ = set_application("uk.polishch.nucli");
-        let response = Notification::new().title(&title).message(&text).wait_for_click(true).send();
-        if matches!(response, Ok(NotificationResponse::Click)) {
-            clicked(id);
+#[allow(unexpected_cfgs)]
+mod center {
+    use std::ffi::{CStr, CString, c_char};
+
+    use block::{Block, ConcreteBlock};
+    use objc::declare::ClassDecl;
+    use objc::runtime::{BOOL, NO, Object, Sel};
+    use objc::{class, msg_send, sel, sel_impl};
+
+    #[link(name = "UserNotifications", kind = "framework")]
+    unsafe extern "C" {}
+
+    const ALERT_AND_SOUND: usize = (1 << 2) | (1 << 1);
+    const BANNER_LIST_AND_SOUND: usize = (1 << 4) | (1 << 3) | (1 << 1);
+
+    fn string(text: &str) -> *mut Object {
+        let text = CString::new(text.replace('\0', "")).unwrap_or_default();
+        unsafe { msg_send![class!(NSString), stringWithUTF8String: text.as_ptr()] }
+    }
+
+    fn center() -> Option<*mut Object> {
+        unsafe {
+            let bundle: *mut Object = msg_send![class!(NSBundle), mainBundle];
+            let id: *mut Object = msg_send![bundle, bundleIdentifier];
+            if id.is_null() {
+                return None;
+            }
+            Some(msg_send![class!(UNUserNotificationCenter), currentNotificationCenter])
         }
-    });
+    }
+
+    extern "C" fn did_receive(_: &Object, _: Sel, _: *mut Object, response: *mut Object, done: *mut Object) {
+        unsafe {
+            let notification: *mut Object = msg_send![response, notification];
+            let request: *mut Object = msg_send![notification, request];
+            let id: *mut Object = msg_send![request, identifier];
+            let text: *const c_char = msg_send![id, UTF8String];
+            super::clicked(CStr::from_ptr(text).to_string_lossy().into_owned());
+            (*(done as *const Block<(), ()>)).call(());
+        }
+    }
+
+    extern "C" fn will_present(_: &Object, _: Sel, _: *mut Object, _: *mut Object, done: *mut Object) {
+        unsafe { (*(done as *const Block<(usize,), ()>)).call((BANNER_LIST_AND_SOUND,)) };
+    }
+
+    pub fn listen() {
+        let Some(center) = center() else { return };
+        let Some(mut class) = ClassDecl::new("NucliNotificationDelegate", class!(NSObject)) else { return };
+        unsafe {
+            class.add_method(
+                sel!(userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:),
+                did_receive as extern "C" fn(&Object, Sel, *mut Object, *mut Object, *mut Object),
+            );
+            class.add_method(
+                sel!(userNotificationCenter:willPresentNotification:withCompletionHandler:),
+                will_present as extern "C" fn(&Object, Sel, *mut Object, *mut Object, *mut Object),
+            );
+            let delegate: *mut Object = msg_send![class.register(), new];
+            let _: () = msg_send![center, setDelegate: delegate];
+        }
+    }
+
+    pub fn post(title: &str, text: &str, id: &str) {
+        let Some(center) = center() else { return };
+        let (title, text, id, address) = (title.to_string(), text.to_string(), id.to_string(), center as usize);
+        let granted = ConcreteBlock::new(move |granted: BOOL, _: *mut Object| {
+            if granted == NO {
+                return;
+            }
+            unsafe {
+                let content: *mut Object = msg_send![class!(UNMutableNotificationContent), new];
+                let _: () = msg_send![content, setTitle: string(&title)];
+                let _: () = msg_send![content, setBody: string(&text)];
+                let sound: *mut Object = msg_send![class!(UNNotificationSound), defaultSound];
+                let _: () = msg_send![content, setSound: sound];
+                let none = std::ptr::null_mut::<Object>();
+                let request: *mut Object = msg_send![
+                    class!(UNNotificationRequest),
+                    requestWithIdentifier: string(&id)
+                    content: content
+                    trigger: none
+                ];
+                let _: () =
+                    msg_send![address as *mut Object, addNotificationRequest: request withCompletionHandler: none];
+                let _: () = msg_send![content, release];
+            }
+        })
+        .copy();
+        unsafe {
+            let _: () =
+                msg_send![center, requestAuthorizationWithOptions: ALERT_AND_SOUND completionHandler: &*granted];
+        }
+    }
 }
+
+#[cfg(target_os = "macos")]
+pub use center::post;
 
 #[cfg(not(target_os = "macos"))]
 pub fn post(title: &str, text: &str, id: &str) {
