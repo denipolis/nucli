@@ -547,6 +547,58 @@ mod tests {
         terminal.kill();
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn windows_pty_probe() {
+        use std::io::Write as _;
+        let log = |text: String| {
+            let _ = writeln!(std::io::stderr(), "PROBE {text}");
+        };
+        let bigger = GridSize { cols: 160, rows: 45, cell_width: 8.0, cell_height: 16.0 };
+        let attempt = |name: &str, anchored: bool, act: &dyn Fn(&mut Terminal)| -> bool {
+            let start = std::time::Instant::now();
+            let (mut terminal, _events) = run("cmd.exe", &[]);
+            terminal.anchor.store(anchored, Ordering::Release);
+            act(&mut terminal);
+            let mut seen_output = false;
+            let mut seen_prompt = false;
+            while start.elapsed() < std::time::Duration::from_secs(12) {
+                seen_output |= terminal.activity.last_output.load(Ordering::Acquire) != 0;
+                if screen(&terminal).contains('>') {
+                    seen_prompt = true;
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            log(format!(
+                "{name}: prompt={seen_prompt} output={seen_output} ms={} text={:?}",
+                start.elapsed().as_millis(),
+                screen(&terminal).split_whitespace().collect::<Vec<_>>().join(" ").chars().take(70).collect::<String>()
+            ));
+            terminal.kill();
+            seen_prompt
+        };
+        let mut good = true;
+        good &= attempt("plain-anchored", true, &|_| {});
+        good &= attempt("plain-unanchored", false, &|_| {});
+        good &= attempt("resize-now-anchored", true, &|terminal| terminal.resize(bigger));
+        good &= attempt("resize-now-unanchored", false, &|terminal| terminal.resize(bigger));
+        good &= attempt("focus-event-now", true, &|terminal| terminal.write(b"\x1b[I"));
+        good &= attempt("resize-and-focus-now", true, &|terminal| {
+            terminal.resize(bigger);
+            terminal.write(b"\x1b[I");
+        });
+        good &= attempt("resize-after-300ms", true, &|terminal| {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            terminal.resize(bigger);
+        });
+        let (mut first, _first_events) = run("cmd.exe", &[]);
+        wait_for(&first, ">");
+        good &= attempt("second-while-first-alive", true, &|terminal| terminal.resize(bigger));
+        first.kill();
+        assert!(good, "see the PROBE lines");
+    }
+
     #[cfg(unix)]
     #[test]
     fn an_unfinished_synchronized_update_still_reaches_the_screen() {
