@@ -40,7 +40,7 @@ On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ct
 | Clear terminal and scrollback | `clear` | `cmd-k` | `ctrl-shift-k` |
 | Find / next / previous | `find` / `find_next` / `find_previous` | `cmd-f` / `cmd-g` / `cmd-shift-g` | `ctrl-shift-f` / `f3` / `shift-f3` |
 | Replace in the file view | `replace` | `cmd-r` | `ctrl-h` |
-| Copy / paste / select all in a terminal | `copy` / `paste` / `select_all` | `cmd-c` / `cmd-v` / `cmd-a` | `ctrl-shift-c` / `ctrl-shift-v` / `ctrl-shift-a` |
+| Copy / paste / select all in a terminal (on Windows `ctrl-c` also copies while text is selected, otherwise it interrupts, and `ctrl-v` pastes) | `copy` / `paste` / `select_all` | `cmd-c` / `cmd-v` / `cmd-a` | `ctrl-shift-c` / `ctrl-shift-v` / `ctrl-shift-a` |
 | Undo / redo / cut in the file view | `undo` / `redo` / `cut` | `cmd-z` / `cmd-shift-z` / `cmd-x` | `ctrl-z` / `ctrl-shift-z` / `ctrl-x` |
 | Save file | `save` | `cmd-s` | `ctrl-s` |
 | Next / previous change | `next_change` / `previous_change` | `f7` / `shift-f7` | `f7` / `shift-f7` |

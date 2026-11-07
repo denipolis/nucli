@@ -124,6 +124,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 
 ## Terminal
 
+- On Windows `ctrl-c` copies the selection when there is one and interrupts otherwise, and `ctrl-v` pastes, as in Windows Terminal.
 - `shift-enter` sends a line feed when the program has not asked for the kitty keyboard protocol, so agents add a new line while shells still run the command.
 - Real terminal emulation: 256 colors and true color, alternate screen, mouse reporting, bracketed paste, the kitty keyboard protocol (so `⇧↩` reaches agents), OSC 8 hyperlinks, IME.
 - **Prompt at the bottom**: shell tabs start with the prompt on the last row and output grows upward. `clear` and `⌘K` keep the prompt at the bottom. Resizing a window keeps the prompt on the bottom row. Full screen programs (alternate screen) and agents are untouched. On Windows the view draws the grid lower instead of moving the cursor, which looks the same.

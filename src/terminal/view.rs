@@ -488,6 +488,22 @@ impl Session {
     }
 
     fn key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        if keys::CLIPBOARD_KEYS {
+            if keys::plain_control(&event.keystroke, "c")
+                && let Some(text) = self.terminal.selection_text()
+            {
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
+                self.terminal.term.lock().selection = None;
+                cx.stop_propagation();
+                cx.notify();
+                return;
+            }
+            if keys::plain_control(&event.keystroke, "v") {
+                cx.stop_propagation();
+                self.paste_clipboard(cx);
+                return;
+            }
+        }
         let mode = self.terminal.mode();
         if let Some(bytes) = keys::encode(&event.keystroke, mode, true) {
             cx.stop_propagation();
@@ -502,6 +518,10 @@ impl Session {
     }
 
     fn paste(&mut self, _: &commands::Paste, _window: &mut Window, cx: &mut Context<Self>) {
+        self.paste_clipboard(cx);
+    }
+
+    fn paste_clipboard(&mut self, cx: &mut Context<Self>) {
         if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
             let bytes = keys::paste(&text, self.terminal.mode());
             self.input(&bytes, cx);

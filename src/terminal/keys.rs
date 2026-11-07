@@ -48,6 +48,13 @@ pub fn mac_shortcut(keystroke: &Keystroke) -> Option<&'static [u8]> {
     }
 }
 
+pub const CLIPBOARD_KEYS: bool = cfg!(windows);
+
+pub fn plain_control(keystroke: &Keystroke, key: &str) -> bool {
+    let m = &keystroke.modifiers;
+    keystroke.key == key && m.control && !m.shift && !m.alt && !m.platform && !m.function
+}
+
 pub fn encode(keystroke: &Keystroke, mode: TermMode, option_as_meta: bool) -> Option<Vec<u8>> {
     if let Some(bytes) = mac_shortcut(keystroke) {
         return Some(bytes.to_vec());
@@ -183,5 +190,13 @@ mod tests {
     fn pastes() {
         assert_eq!(paste("a\nb", TermMode::default()), b"a\rb".to_vec());
         assert_eq!(paste("x\x1b", TermMode::BRACKETED_PASTE), b"\x1b[200~x\x1b[201~".to_vec());
+    }
+
+    #[test]
+    fn spots_plain_control_keys() {
+        assert!(plain_control(&key("ctrl-c"), "c"));
+        assert!(!plain_control(&key("ctrl-shift-c"), "c"));
+        assert!(!plain_control(&key("ctrl-alt-c"), "c"));
+        assert!(!plain_control(&key("c"), "c"));
     }
 }
