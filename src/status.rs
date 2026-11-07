@@ -46,6 +46,11 @@ fn probe(job: &Job) -> Probe {
     Probe { process, claude, subagents, branch }
 }
 
+fn capitalized(name: &str) -> String {
+    let mut chars = name.chars();
+    chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
+}
+
 impl Store {
     pub fn apply_settings(&mut self, cx: &mut Context<Self>) {
         let sessions: Vec<_> = self.sessions.values().cloned().collect();
@@ -251,7 +256,13 @@ impl Store {
         if let Some(text) = text
             && settings::get(cx).notifications
         {
-            crate::notify::post(&title, &text, id);
+            let project = self
+                .workspace_of(id)
+                .and_then(|workspace| workspace.project_of(id))
+                .filter(|project| !project.is_scratch())
+                .map(|project| project.display_name())
+                .unwrap_or_default();
+            crate::notify::post(&title, &project, &text, id);
         }
         self.update_badge(cx);
         cx.notify();
@@ -320,7 +331,7 @@ impl Session {
             cx.emit(crate::session::SessionEvent::Changed);
             cx.notify();
         }
-        let agent = self.running_agent.clone().unwrap_or_else(|| "agent".into());
+        let agent = capitalized(self.running_agent.as_deref().unwrap_or("agent"));
         match (previous, self.activity) {
             (Activity::Working, Activity::Idle) => Some(format!("{agent} finished")),
             (previous, Activity::Waiting) if previous != Activity::Waiting => {

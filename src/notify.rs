@@ -82,9 +82,10 @@ mod center {
         }
     }
 
-    pub fn post(title: &str, text: &str, id: &str) {
+    pub fn post(title: &str, project: &str, text: &str, id: &str) {
         let Some(center) = center() else { return };
-        let (title, text, id, address) = (title.to_string(), text.to_string(), id.to_string(), center as usize);
+        let (title, project, text, id) = (title.to_string(), project.to_string(), text.to_string(), id.to_string());
+        let address = center as usize;
         let granted = ConcreteBlock::new(move |granted: BOOL, _: *mut Object| {
             if granted == NO {
                 return;
@@ -92,6 +93,8 @@ mod center {
             unsafe {
                 let content: *mut Object = msg_send![class!(UNMutableNotificationContent), new];
                 let _: () = msg_send![content, setTitle: string(&title)];
+                let _: () = msg_send![content, setSubtitle: string(&project)];
+                let _: () = msg_send![content, setThreadIdentifier: string(&project)];
                 let _: () = msg_send![content, setBody: string(&text)];
                 let sound: *mut Object = msg_send![class!(UNNotificationSound), defaultSound];
                 let _: () = msg_send![content, setSound: sound];
@@ -119,9 +122,10 @@ mod center {
 pub use center::post;
 
 #[cfg(not(target_os = "macos"))]
-pub fn post(title: &str, text: &str, id: &str) {
+pub fn post(title: &str, project: &str, text: &str, id: &str) {
     use notify_rust::{Notification, NotificationResponse};
-    let (title, text, id) = (title.to_string(), text.to_string(), id.to_string());
+    let text = if project.is_empty() { text.to_string() } else { format!("{project} · {text}") };
+    let (title, id) = (title.to_string(), id.to_string());
     std::thread::spawn(move || {
         let shown = Notification::new().summary(&title).body(&text).action("default", "Show").show();
         if let Ok(handle) = shown {

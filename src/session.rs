@@ -164,7 +164,7 @@ impl Session {
                 cx.emit(SessionEvent::Changed);
                 cx.notify();
             }
-            Event::Bell => cx.emit(SessionEvent::Attention("Bell".into())),
+            Event::Bell => cx.emit(SessionEvent::Attention("Needs attention".into())),
             Event::Notify(text) => cx.emit(SessionEvent::Attention(text)),
             Event::Clipboard(text) => cx.write_to_clipboard(ClipboardItem::new_string(text)),
             Event::Exit(code) => {
