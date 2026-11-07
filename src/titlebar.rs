@@ -133,6 +133,7 @@ pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceV
     let status = status(view, cx);
     div()
         .id("titlebar")
+        .occlude()
         .flex()
         .flex_none()
         .items_center()
