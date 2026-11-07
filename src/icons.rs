@@ -54,8 +54,8 @@ pub fn agent(command: &str) -> (&'static str, ItemColor) {
         "goose" => ("\u{f01e5}", ItemColor::Brown),
         "crush" => ("\u{f004}", ItemColor::Pink),
         "qwen" => ("Q", ItemColor::Purple),
-        "copilot" => ("\u{f4b8}", ItemColor::Blue),
-        "droid" => ("\u{f0032}", ItemColor::Green),
+        "copilot" => ("\u{f06a9}", ItemColor::Blue),
+        "droid" => ("\u{f167a}", ItemColor::Green),
         _ => (AGENT, ItemColor::Gray),
     }
 }
