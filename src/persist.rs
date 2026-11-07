@@ -40,8 +40,8 @@ pub enum PanelTab {
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Side {
-    #[default]
     Left,
+    #[default]
     Right,
 }
 
@@ -61,7 +61,7 @@ impl Default for Ui {
         Ui {
             sidebar_tab: SidebarTab::Projects,
             panel_tab: PanelTab::Files,
-            panel_side: Side::Left,
+            panel_side: Side::Right,
             panel_hidden: false,
             settings_section: SettingsSection::General,
             find: crate::find::Options::default(),
