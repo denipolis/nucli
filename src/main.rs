@@ -16,6 +16,7 @@ mod fuzzy;
 mod git;
 mod highlight;
 mod history;
+mod hold;
 mod icons;
 #[cfg(target_os = "macos")]
 mod import;

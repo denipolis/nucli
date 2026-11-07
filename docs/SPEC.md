@@ -51,7 +51,7 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 Shown in the viewport for a selected project, and after its last tab closes:
 
 - Header: project name, path, git branch.
-- NEW: one row per agent profile ("new Claude session", last used first, with `[⇧⌘T enter]`), one per shell, and "new terminal" in the panel.
+- NEW: one row per agent profile ("new Claude session", last used first, with `[⇧⌘T]`), one per shell, and "new terminal" in the panel.
 - TABS: the project's open tabs with status.
 - CONVERSATIONS: the 12 newest agent conversations of this folder, with agent, age and `open` when a tab runs it. Clicking resumes it.
 - Reveal in File Manager.
@@ -60,9 +60,11 @@ Shown in the viewport for a selected project, and after its last tab closes:
 
 A tab is an agent or a shell living in a project. Agents and shells look the same in the sidebar; only the glyph differs.
 
-- `⌘T`: new tab with the agent or shell last used in this project (fallback: last used anywhere, then the first agent).
-- `⇧⌘T`: **New Tab picker** over the viewport: agents, then shells, then the project's recent conversations. The last used launcher is preselected, so `⇧⌘T` `enter` repeats it. Digits `1`–`9` pick a launcher directly. Conversation rows resume.
-- `⌥⇧⌘T`: same, but asks for a folder first (and opens it as a project).
+- `⌘T`: new tab with the last used shell (fallback: the first shell). Holding it for 350 ms opens the **shell picker** instead.
+- `⇧⌘T`: new tab with the agent last used in this project (fallback: last used anywhere, then the first agent). Holding it for 350 ms opens the **agent picker** instead: agents, then the project's recent conversations.
+- Pickers open over the viewport with the last used launcher preselected. Digits `1`–`9` pick a launcher directly. Conversation rows resume. "New Shell…" and "New Agent…" open them from the palette.
+- **New Tab…** (`+` button, palette, project menu): one picker with agents, shells and conversations.
+- `⌥⇧⌘T`: New Tab…, but asks for a folder first (and opens it as a project).
 - With nothing selected, the tab opens without a project.
 - `⌘1`…`⌘9`: tab by position in this window's sidebar. The sidebar shows the number before each tab (`1 claude`).
 - `⇧⌘]` / `⇧⌘[`: next / previous tab in sidebar order. `⌃Tab` / `⌃⇧Tab` open the tab switcher.
@@ -159,7 +161,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 - **History**: every conversation of every agent profile, newest first (max 150). Clicking resumes it in the project for its folder (opened as a project if needed).
 - **Filter** (`⌥⌘F`) at the bottom filters the visible list by name, path and title; a matching project shows all its tabs; `enter` selects the first match, `esc` clears.
 - **Workspace popup** at the bottom: all workspaces (closed ones marked), New, Rename, Delete.
-- **`+` button**: New Tab, New Tab…, New Tab Without Project…, New Terminal, Open Project….
+- **`+` button**: New Shell, New Agent, New Tab…, New Tab Without Project…, New Terminal, Open Project….
 - Clicking empty space deselects: empty viewport with key hints and "or drop a folder here".
 - Context menus: project (New Terminal, New Tab…, Rename, Color, Move to Workspace, Reveal, Close Project), tab (Rename, Color, Remove from Split, Unsplit All, Move Out of Project, Close Tab), empty space (Open Project, Rename Workspace, New Workspace, Delete Workspace).
 
@@ -243,7 +245,7 @@ The row is hidden for projects and settings. An invalid settings or keybindings 
   - **Keybindings**: every command with its key, a filter, and a link to `keybindings.json`. Click a key and press the new one (`esc` cancels); a changed key has a reset button; a key used twice in the same context turns red. "Open Keybindings" opens this category.
 - "Open Settings File" and "Open Keybindings File" open the JSON files in the file view. Both reload when saved, from Nucli or any editor. Invalid JSON keeps the previous settings and shows the error on the status row.
 - `settings.json` keys: `theme`, `appearance` (`system`, `light`, `dark`), `font_size`, `ui_font_size`, `line_height`, `cursor` (`block`, `bar`, `underline`), `cursor_blink`, `ligatures`, `restore_tabs`, `notifications`, `agents`, `shells`. Commands that change settings (theme, font size, detection, notifications) rewrite the file with all keys.
-- `keybindings.json` maps a key to a command name, e.g. `{"cmd-t": "new_tab", "cmd-shift-d": null}`; `null` removes a default. The palette shows every command's name and current key.
+- `keybindings.json` maps a key to a command name, e.g. `{"cmd-t": "new_shell", "cmd-shift-d": null}`; `null` removes a default. The palette shows every command's name and current key.
 - **Themes**: Nucli (dark and light pairs following the system), Nucli Amber and Nucli Phosphor (monochrome dark), and Vitesse Dark, Dark Soft, Black, Light, Light Soft. A theme sets every UI color, the 16 terminal colors and the syntax colors. An automatic theme follows the system appearance; `appearance` can force its light or dark side.
 - **Shells**: `{name, path}` list. Filled on first launch from the login shell and `/etc/shells` (Windows: PowerShell, Windows PowerShell, Command Prompt, Git Bash and WSL when installed); "Detect Shells" adds missing ones.
 

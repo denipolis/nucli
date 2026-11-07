@@ -112,9 +112,9 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
     content = content.child(section("new", cx));
     let mut agents: Vec<_> = settings.agents.iter().filter(|profile| profile.is_launchable()).cloned().collect();
     agents.sort_by_key(|profile| Some(&profile.name) != last.as_ref());
-    let picker = commands::key_for("new_tab_picker", cx);
+    let new_agent = commands::key_for("new_agent", cx);
     for (index, profile) in agents.into_iter().enumerate() {
-        let detail = if index == 0 && !picker.is_empty() { format!("[{picker} enter]") } else { String::new() };
+        let detail = if index == 0 && !new_agent.is_empty() { format!("[{new_agent}]") } else { String::new() };
         let target = project.path.clone();
         let summary = profile.summary();
         let title = format!("new {} session", profile.name);
@@ -239,8 +239,8 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
 pub fn empty(_view: &mut WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
     let lines = [
-        ("new_tab", "new tab"),
-        ("new_tab_picker", "choose agent"),
+        ("new_shell", "new shell, hold to choose"),
+        ("new_agent", "new agent, hold to choose"),
         ("toggle_terminal", "terminal"),
         ("open_project", "open project"),
         ("command_palette", "command palette"),

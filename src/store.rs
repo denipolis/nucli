@@ -37,6 +37,7 @@ pub struct Project {
     pub file_shown: bool,
     pub recent_files: Vec<String>,
     pub last_launcher: Option<String>,
+    pub last_agent: Option<String>,
     pub saved: Vec<SavedTab>,
     pub saved_terminals: Vec<SavedTab>,
     pub expanded: BTreeSet<String>,
@@ -82,6 +83,7 @@ impl Project {
             languages: file.languages,
             recent_files: file.recent_files,
             last_launcher: file.last_launcher,
+            last_agent: file.last_agent,
             saved: file.tabs,
             saved_terminals: file.terminals,
             ..Default::default()
@@ -225,6 +227,7 @@ pub struct Store {
     pub windows: HashMap<String, WindowHandle<WorkspaceView>>,
     pub titles: HashMap<String, String>,
     pub last_launcher: Option<String>,
+    pub last_agent: Option<String>,
     pub last_shell: Option<String>,
     pub last_folder: Option<PathBuf>,
     pub last_workspace: Option<String>,
@@ -258,6 +261,7 @@ impl Store {
             windows: HashMap::new(),
             titles: HashMap::new(),
             last_launcher: state.last_launcher,
+            last_agent: state.last_agent,
             last_shell: state.last_shell,
             last_folder: state.last_folder,
             last_workspace: state.last_workspace,
@@ -374,6 +378,10 @@ impl Store {
         if name.is_some() {
             self.last_launcher = name.clone();
         }
+        let agent = name.clone().filter(|_| matches!(launcher, Launcher::Agent(_) | Launcher::Resume(_)));
+        if agent.is_some() {
+            self.last_agent = agent.clone();
+        }
         let target = self.workspace_mut(workspace)?.project_mut(project)?;
         if panel {
             target.terminals.push(id.clone());
@@ -385,6 +393,9 @@ impl Store {
             target.tabs.insert(position.unwrap_or(target.tabs.len()), id.clone());
             if name.is_some() {
                 target.last_launcher = name;
+            }
+            if agent.is_some() {
+                target.last_agent = agent;
             }
         }
         self.changed(cx);
@@ -558,6 +569,7 @@ impl Store {
             languages: project.languages.clone(),
             recent_files: project.recent_files.clone(),
             last_launcher: project.last_launcher.clone(),
+            last_agent: project.last_agent.clone(),
         };
         let state = StateFile {
             workspaces: self
@@ -575,6 +587,7 @@ impl Store {
                 })
                 .collect(),
             last_launcher: self.last_launcher.clone(),
+            last_agent: self.last_agent.clone(),
             last_shell: self.last_shell.clone(),
             last_folder: self.last_folder.clone(),
             last_workspace: self.last_workspace.clone(),

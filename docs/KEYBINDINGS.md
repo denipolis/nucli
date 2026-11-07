@@ -1,14 +1,17 @@
 # Keybindings
 
-Defaults below. Every command can be rebound under Settings, Keybindings, or in `keybindings.json` (palette: "Open Keybindings File"): `{"cmd-t": "new_tab", "cmd-shift-d": null}`. Keys use `cmd`, `ctrl`, `alt`, `shift` and names like `enter`, `escape`, `tab`, `space`, `left`, `pageup`, `f7`; `null` removes a default. The command palette shows each command's name and current key.
+Defaults below. Every command can be rebound under Settings, Keybindings, or in `keybindings.json` (palette: "Open Keybindings File"): `{"cmd-t": "new_shell", "cmd-shift-d": null}`. Keys use `cmd`, `ctrl`, `alt`, `shift` and names like `enter`, `escape`, `tab`, `space`, `left`, `pageup`, `f7`; `null` removes a default. The command palette shows each command's name and current key.
 
 On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ctrl-r`, …), so app commands use `ctrl-shift`. Inside the file view and text inputs the usual `ctrl-c`, `ctrl-v`, `ctrl-x`, `ctrl-a`, `ctrl-z` and `ctrl-s` work.
 
 | Command | Name | macOS | Linux, Windows |
 |---|---|---|---|
 | New workspace | `new_workspace` | `cmd-n` | `ctrl-shift-n` |
-| New tab (last used agent or shell) | `new_tab` | `cmd-t` | `ctrl-shift-t` |
-| New tab picker | `new_tab_picker` | `cmd-shift-t` | `ctrl-shift-space` |
+| New shell (last used), hold for the shell picker | `new_shell` | `cmd-t` | `ctrl-shift-t` |
+| New agent (last used), hold for the agent picker | `new_agent` | `cmd-shift-t` | `ctrl-shift-space` |
+| Shell picker | `new_shell_picker` | | |
+| Agent picker | `new_agent_picker` | | |
+| New tab picker | `new_tab_picker` | | |
 | New tab in another folder | `new_tab_in_folder` | `cmd-alt-shift-t` | `ctrl-alt-shift-t` |
 | New tab without project | `new_tab_without_project` | | |
 | Move tab or panel terminal out of its project | `move_out_of_project` | | |

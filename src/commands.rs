@@ -15,7 +15,10 @@ actions!(
         NewWorkspace,
         RenameWorkspace,
         DeleteWorkspace,
-        NewTab,
+        NewShell,
+        NewAgent,
+        NewShellPicker,
+        NewAgentPicker,
         NewTabPicker,
         NewTabInFolder,
         NewTabWithoutProject,
@@ -125,8 +128,11 @@ pub const COMMANDS: &[Command] = &[
     command!("new_workspace", "New Workspace", NewWorkspace, "cmd-n", "ctrl-shift-n"),
     command!("rename_workspace", "Rename Workspace", RenameWorkspace, "", ""),
     command!("delete_workspace", "Delete Workspace", DeleteWorkspace, "", ""),
-    command!("new_tab", "New Tab", NewTab, "cmd-t", "ctrl-shift-t"),
-    command!("new_tab_picker", "New Tab…", NewTabPicker, "cmd-shift-t", "ctrl-shift-space"),
+    command!("new_shell", "New Shell", NewShell, "cmd-t", "ctrl-shift-t"),
+    command!("new_agent", "New Agent", NewAgent, "cmd-shift-t", "ctrl-shift-space"),
+    command!("new_shell_picker", "New Shell…", NewShellPicker, "", ""),
+    command!("new_agent_picker", "New Agent…", NewAgentPicker, "", ""),
+    command!("new_tab_picker", "New Tab…", NewTabPicker, "", ""),
     command!("new_tab_in_folder", "New Tab in Folder…", NewTabInFolder, "cmd-alt-shift-t", "ctrl-alt-shift-t"),
     command!("new_tab_without_project", "New Tab Without Project…", NewTabWithoutProject, "", ""),
     command!("move_out_of_project", "Move Out of Project", MoveOutOfProject, "", ""),
@@ -433,7 +439,8 @@ pub fn menus() -> Vec<Menu> {
                 "rename_workspace",
                 "delete_workspace",
                 "-",
-                "new_tab",
+                "new_shell",
+                "new_agent",
                 "new_tab_picker",
                 "new_tab_in_folder",
                 "new_tab_without_project",
@@ -534,13 +541,13 @@ mod tests {
     #[test]
     fn rebinds_keys() {
         let mut map = serde_json::Map::new();
-        rebound(&mut map, "new_tab", "cmd-t", Some("cmd-j"));
-        assert_eq!(map.get("cmd-j").and_then(|value| value.as_str()), Some("new_tab"));
+        rebound(&mut map, "new_shell", "cmd-t", Some("cmd-j"));
+        assert_eq!(map.get("cmd-j").and_then(|value| value.as_str()), Some("new_shell"));
         assert!(map.get("cmd-t").is_some_and(|value| value.is_null()));
-        rebound(&mut map, "new_tab", "cmd-t", Some("cmd-y"));
+        rebound(&mut map, "new_shell", "cmd-t", Some("cmd-y"));
         assert!(!map.contains_key("cmd-j"));
         map.insert("cmd-t".into(), serde_json::Value::String("other".into()));
-        rebound(&mut map, "new_tab", "cmd-t", None);
+        rebound(&mut map, "new_shell", "cmd-t", None);
         assert!(!map.contains_key("cmd-y"));
         assert_eq!(map.get("cmd-t").and_then(|value| value.as_str()), Some("other"));
         rebound(&mut map, "other", "", None);

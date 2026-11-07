@@ -130,6 +130,7 @@ pub struct ProjectFile {
     pub languages: std::collections::BTreeMap<String, String>,
     pub recent_files: Vec<String>,
     pub last_launcher: Option<String>,
+    pub last_agent: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -165,6 +166,7 @@ pub struct WorkspaceFile {
 pub struct StateFile {
     pub workspaces: Vec<WorkspaceFile>,
     pub last_launcher: Option<String>,
+    pub last_agent: Option<String>,
     pub last_shell: Option<String>,
     pub last_folder: Option<PathBuf>,
     pub last_workspace: Option<String>,

@@ -30,6 +30,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `editor/find_bar.rs` | Find and replace bar of the text view: fields, toggles, hits and edits. |
 | `find.rs` | Find and replace: query building, matching across rows, replacement templates, case preservation. |
 | `highlight.rs` | Tree-sitter grammars and capture to token mapping. |
+| `hold.rs` | Tap or hold on the new shell and new agent keys. A key bound without a modifier, or run from a menu or the palette, acts at once. macOS sends no key-up while Cmd is held, so there it polls `CGEventSourceKeyState`. |
 | `git.rs` | `git` CLI wrapper, parsers, commit graph lanes. |
 | `history.rs` | Agent conversation files and their cache. |
 | `claude.rs` | Claude Code status files and subagents. |

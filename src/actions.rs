@@ -9,6 +9,7 @@ use gpui::{
 use crate::agents;
 use crate::commands::*;
 use crate::history::Conversation;
+use crate::hold::{self, Launch};
 use crate::icons;
 use crate::menu::{self, Item};
 use crate::palette::{self, Palette};
@@ -73,26 +74,73 @@ pub fn last_launcher(view: &WorkspaceView, project: &Path, cx: &App) -> Option<L
         })
 }
 
-fn new_tab(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+fn last_agent(view: &WorkspaceView, project: &Path, cx: &App) -> Option<agents::AgentProfile> {
+    let settings = settings::get(cx);
+    let store = view.store(cx);
+    let own = view.state(cx).and_then(|state| state.project(project));
+    [
+        own.and_then(|project| project.last_agent.clone()),
+        own.and_then(|project| project.last_launcher.clone()),
+        store.last_agent.clone(),
+        store.last_launcher.clone(),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(|name| settings.agents.iter().find(|profile| profile.name == name && profile.is_launchable()))
+    .or_else(|| settings.agents.iter().find(|profile| profile.is_launchable()))
+    .cloned()
+}
+
+fn last_shell(view: &WorkspaceView, cx: &App) -> Option<agents::ShellProfile> {
+    let shells = settings::get(cx).shells.iter().filter(|shell| shell.is_launchable());
+    let last = view.store(cx).last_shell.as_ref();
+    shells.clone().find(|shell| Some(&shell.path) == last).or_else(|| shells.clone().next()).cloned()
+}
+
+pub fn open_launch(view: &mut WorkspaceView, kind: Launch, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     let target = current_target(view, cx);
-    match last_launcher(view, &target, cx) {
+    let launcher = match kind {
+        Launch::Shell => last_shell(view, cx).map(Launcher::Shell),
+        Launch::Agent => last_agent(view, &target, cx).map(Launcher::Agent),
+    };
+    match launcher {
         Some(launcher) => launch(view, &target, launcher, window, cx),
         None => picker(view, &target, window, cx),
     }
 }
 
+pub fn choose_launch(view: &mut WorkspaceView, kind: Launch, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    let target = current_target(view, cx);
+    pick(view, &target, Some(kind), window, cx);
+}
+
 pub fn picker(view: &mut WorkspaceView, project: &Path, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    pick(view, project, None, window, cx);
+}
+
+fn pick(
+    view: &mut WorkspaceView,
+    project: &Path,
+    only: Option<Launch>,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
     let settings = settings::get(cx).clone();
     let theme = crate::ui::theme(cx);
-    let last = view
-        .state(cx)
-        .and_then(|state| state.project(project))
-        .and_then(|project| project.last_launcher.clone())
-        .or(view.store(cx).last_launcher.clone());
+    let last = match only {
+        Some(Launch::Agent) => last_agent(view, project, cx).map(|profile| profile.name),
+        Some(Launch::Shell) => last_shell(view, cx).map(|shell| shell.name),
+        None => view
+            .state(cx)
+            .and_then(|state| state.project(project))
+            .and_then(|project| project.last_launcher.clone())
+            .or(view.store(cx).last_launcher.clone()),
+    };
+    let (with_agents, with_shells) = (only != Some(Launch::Shell), only != Some(Launch::Agent));
     let mut items = Vec::new();
     let mut digit = 0;
     let mut initial = 0;
-    for profile in settings.agents.iter().filter(|profile| profile.is_launchable()) {
+    for profile in settings.agents.iter().filter(|profile| with_agents && profile.is_launchable()) {
         digit += 1;
         if Some(&profile.name) == last.as_ref() {
             initial = items.len();
@@ -110,7 +158,7 @@ pub fn picker(view: &mut WorkspaceView, project: &Path, window: &mut Window, cx:
         item.digit = Some(digit);
         items.push(item);
     }
-    for shell in settings.shells.iter().filter(|shell| shell.is_launchable()) {
+    for shell in settings.shells.iter().filter(|shell| with_shells && shell.is_launchable()) {
         digit += 1;
         if Some(&shell.name) == last.as_ref()
             && !settings.agents.iter().any(|profile| Some(&profile.name) == last.as_ref())
@@ -141,7 +189,7 @@ pub fn picker(view: &mut WorkspaceView, project: &Path, window: &mut Window, cx:
                 .collect()
         })
         .unwrap_or_default();
-    if let Some(list) = view.store(cx).conversations_for(project).cloned() {
+    if let Some(list) = view.store(cx).conversations_for(project).filter(|_| with_agents).cloned() {
         for conversation in list.into_iter().take(15) {
             let target = project.to_path_buf();
             let detail = format!(
@@ -168,7 +216,12 @@ pub fn picker(view: &mut WorkspaceView, project: &Path, window: &mut Window, cx:
         .map(|project| project.display_name())
         .unwrap_or_default();
     let palette = cx.new(|cx| {
-        let mut palette = Palette::new("new tab", &format!("in {name}"), items, initial, cx);
+        let title = match only {
+            Some(Launch::Shell) => "new shell",
+            Some(Launch::Agent) => "new agent",
+            None => "new tab",
+        };
+        let mut palette = Palette::new(title, &format!("in {name}"), items, initial, cx);
         palette.digits = true;
         palette
     });
@@ -601,7 +654,8 @@ pub fn workspace_menu(view: &WorkspaceView, cx: &App) -> Vec<Item> {
 
 pub fn add_menu(cx: &App) -> Vec<Item> {
     vec![
-        menu::command("New Tab", "new_tab", cx),
+        menu::command("New Shell", "new_shell", cx),
+        menu::command("New Agent", "new_agent", cx),
         menu::command("New Tab…", "new_tab_picker", cx),
         menu::command("New Tab Without Project…", "new_tab_without_project", cx),
         menu::command("New Terminal", "new_terminal", cx),
@@ -1017,7 +1071,14 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
     root.on_action(cx.listener(|view, _: &NewWorkspace, window, cx| new_workspace(view, window, cx)))
         .on_action(cx.listener(|view, _: &RenameWorkspace, window, cx| rename_workspace(view, window, cx)))
         .on_action(cx.listener(|view, _: &DeleteWorkspace, window, cx| delete_workspace(view, window, cx)))
-        .on_action(cx.listener(|view, _: &NewTab, window, cx| new_tab(view, window, cx)))
+        .capture_key_up(cx.listener(|view, _: &gpui::KeyUpEvent, window, cx| hold::release(view, window, cx)))
+        .on_modifiers_changed(
+            cx.listener(|view, _: &gpui::ModifiersChangedEvent, window, cx| hold::release(view, window, cx)),
+        )
+        .on_action(cx.listener(|view, _: &NewShell, window, cx| hold::press(view, Launch::Shell, window, cx)))
+        .on_action(cx.listener(|view, _: &NewAgent, window, cx| hold::press(view, Launch::Agent, window, cx)))
+        .on_action(cx.listener(|view, _: &NewShellPicker, window, cx| choose_launch(view, Launch::Shell, window, cx)))
+        .on_action(cx.listener(|view, _: &NewAgentPicker, window, cx| choose_launch(view, Launch::Agent, window, cx)))
         .on_action(cx.listener(|view, _: &NewTabPicker, window, cx| {
             let target = current_target(view, cx);
             picker(view, &target, window, cx)
