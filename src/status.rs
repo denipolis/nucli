@@ -291,7 +291,7 @@ impl Session {
     pub fn apply(&mut self, probe: Probe, agents: &HashSet<String>, cx: &mut Context<Self>) -> Option<String> {
         let name = probe.process.as_ref().map(|info| info.name.clone());
         let agent_running = name.as_ref().is_some_and(|name| agents.contains(name));
-        self.terminal.anchor.store(self.kind != Kind::Agent && !agent_running, Ordering::Release);
+        self.terminal.anchor_prompt(self.kind != Kind::Agent && !agent_running);
         let changed = self.foreground != name || self.subagents != probe.subagents;
         self.foreground = name.clone();
         self.running_agent = agent_running.then(|| name.clone().unwrap_or_default());

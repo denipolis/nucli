@@ -92,7 +92,7 @@ impl Session {
         let settings = settings::get(cx);
         let cursor = terminal::cursor_style(settings.cursor, settings.cursor_blink);
         let (mut terminal, mut events) = Terminal::spawn(launch, size, cursor)?;
-        terminal.anchor.store(spec.kind != Kind::Agent, std::sync::atomic::Ordering::Release);
+        terminal.anchor_prompt(spec.kind != Kind::Agent);
         if let Some(text) = spec.restored.as_deref().filter(|text| !text.trim().is_empty()) {
             let body = text.replace('\n', "\r\n");
             let mark = terminal::RESTORED_MARK;
