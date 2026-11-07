@@ -34,6 +34,7 @@ case "$TARGET" in
     <key>CFBundleVersion</key><string>$VERSION</string>
     <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Denys Polishchuk. MIT License.</string>
     <key>LSMinimumSystemVersion</key><string>12.0</string>
+    <key>UIDesignRequiresCompatibility</key><true/>
     <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>CFBundleDocumentTypes</key>
