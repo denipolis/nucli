@@ -20,6 +20,8 @@ use alacritty_terminal::vte::ansi::{CursorShape, CursorStyle, Processor, Rgb};
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 
+pub const LIFTS_PROMPT: bool = cfg!(windows);
+
 pub enum Event {
     Wakeup,
     Title(Option<String>),
@@ -221,7 +223,18 @@ impl Terminal {
     }
 
     pub fn anchor_prompt(&self, on: bool) {
-        self.anchor.store(on && !cfg!(windows), Ordering::Release);
+        self.anchor.store(on, Ordering::Release);
+    }
+
+    pub fn prompt_lift(&self) -> usize {
+        if !LIFTS_PROMPT || !self.anchor.load(Ordering::Acquire) {
+            return 0;
+        }
+        let term = self.term.lock();
+        if term.mode().contains(TermMode::ALT_SCREEN) || term.grid().display_offset() != 0 {
+            return 0;
+        }
+        blank_rows_below(&term)
     }
 
     pub fn write(&self, bytes: &[u8]) {
@@ -268,7 +281,8 @@ impl Terminal {
         let _ = self.master.resize(size.pty());
         let mut term = self.term.lock();
         term.resize(size);
-        if grew > 0 && self.anchor.load(Ordering::Acquire) && !term.mode().contains(TermMode::ALT_SCREEN) {
+        let anchored = !LIFTS_PROMPT && self.anchor.load(Ordering::Acquire);
+        if grew > 0 && anchored && !term.mode().contains(TermMode::ALT_SCREEN) {
             let cursor = term.grid().cursor.point;
             let below = size.rows as i32 - 1 - cursor.line.0;
             let blank = (cursor.line.0 + 1..size.rows as i32).all(|line| {
@@ -410,7 +424,7 @@ fn spawn_reader(
                 let _ = listener.events.unbounded_send(Event::Notify(text));
             }
             let mut term = term.lock();
-            if anchor.load(Ordering::Acquire) {
+            if !LIFTS_PROMPT && anchor.load(Ordering::Acquire) {
                 let alternate = term.mode().contains(TermMode::ALT_SCREEN);
                 let anchored = anchor_bottom(chunk, alternate, first);
                 processor.advance(&mut *term, &anchored);
@@ -422,6 +436,19 @@ fn spawn_reader(
             listener.wakeup();
         }
     });
+}
+
+fn blank_rows_below<T>(term: &Term<T>) -> usize {
+    let rows = term.screen_lines() as i32;
+    let cursor = term.grid().cursor.point.line.0;
+    let last = (cursor + 1..rows)
+        .rev()
+        .find(|line| {
+            let row = &term.grid()[Line(*line)];
+            (0..term.columns()).any(|column| row[Column(column)].c != ' ')
+        })
+        .unwrap_or(cursor);
+    (rows - 1 - last).max(0) as usize
 }
 
 fn spawn_waiter(mut child: Box<dyn portable_pty::Child + Send + Sync>, sender: UnboundedSender<Event>) {
@@ -549,6 +576,20 @@ mod tests {
         terminal.write(b"echo nucli-typed\r\n");
         wait_for(&terminal, "nucli-typed");
         terminal.kill();
+    }
+
+    #[test]
+    fn counts_the_blank_rows_under_the_content() {
+        let size = GridSize { cols: 20, rows: 10, cell_width: 8.0, cell_height: 16.0 };
+        let blank_rows = |bytes: &[u8]| {
+            let mut term = Term::new(Config::default(), &size, alacritty_terminal::event::VoidListener);
+            Processor::<alacritty_terminal::vte::ansi::StdSyncHandler>::new().advance(&mut term, bytes);
+            blank_rows_below(&term)
+        };
+        assert_eq!(blank_rows(b""), 9);
+        assert_eq!(blank_rows(b"one\r\ntwo"), 8);
+        assert_eq!(blank_rows(b"\x1b[5;1Hx\x1b[1;1H"), 5);
+        assert_eq!(blank_rows(b"\x1b[10;1Hx"), 0);
     }
 
     #[test]

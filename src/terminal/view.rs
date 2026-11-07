@@ -178,8 +178,12 @@ impl Element for TerminalElement {
             super::GridSize { cols, rows, cell_width: f32::from(cell.width), cell_height: f32::from(cell.height) };
         let ligatures = settings::get(cx).ligatures;
         let global_theme = ui::theme(cx);
-        let (theme, marked, term, hover, cursor_hidden, found, current) = self.session.update(cx, |session, _| {
+        let lift = self.session.update(cx, |session, _| {
             session.terminal.resize(grid);
+            cell.height * session.terminal.prompt_lift() as f32
+        });
+        let bounds = Bounds::new(point(bounds.origin.x, bounds.origin.y + lift), bounds.size);
+        let (theme, marked, term, hover, cursor_hidden, found, current) = self.session.update(cx, |session, _| {
             session.view.layout = Some((bounds.origin, cell));
             let (found, current) = match &session.view.find {
                 Some(find) => (find.matches.clone(), find.current),
