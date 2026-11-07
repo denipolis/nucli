@@ -63,7 +63,7 @@ Background work reports itself with `store::begin_progress` and `store::finish_p
 
 Saving is debounced (`Store::schedule_save`). Terminal output is written only on quit and when a workspace closes (`Store::snapshot(true, _)`); `persist::prune_scrollback` removes files nothing refers to, because closed workspaces keep theirs.
 
-No Project is a `Project` with an empty path. `Project::cwd` turns it into the home folder, and the panel and quick open skip it.
+Tabs without a project live in `Workspace::scratch`, a `Project` with an empty path that the sidebar lists without a row of its own. `Project::cwd` turns it into the home folder, and the panel and quick open skip it.
 
 ## Commands and keys
 

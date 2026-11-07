@@ -416,9 +416,6 @@ pub fn begin_rename(view: &mut WorkspaceView, target: Rename, window: &mut Windo
             view.store(cx).session(id).map(|session| session.read(cx).display_title()).unwrap_or_default()
         }
     };
-    if matches!(&target, Rename::Project(path) if path.as_os_str().is_empty()) {
-        return;
-    }
     let input = cx.new(|cx| {
         let mut input = TextInput::new("", cx);
         input.set_text(&current, cx);
@@ -623,9 +620,6 @@ pub fn project_menu(view: &WorkspaceView, path: &Path, cx: &App) -> Vec<Item> {
     {
         let target = target.clone();
         items.push(menu::action("New Tab…", move |view, window, cx| picker(view, &target, window, cx)));
-    }
-    if project.is_scratch() {
-        return items;
     }
     items.push(Item::Separator);
     {

@@ -59,7 +59,9 @@ fn row(
 
 pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
-    let Some(project) = view.state(cx).and_then(|state| state.project(path)).cloned() else {
+    let Some(project) =
+        view.state(cx).and_then(|state| state.project(path)).filter(|project| !project.is_scratch()).cloned()
+    else {
         return empty(view, cx);
     };
     let store = view.store(cx);
@@ -207,20 +209,18 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
             }
         }
     }
-    if !project.is_scratch() {
-        content = content.child(section("folder", cx));
-        let target = project.path.clone();
-        content = content.child(row(
-            "reveal".into(),
-            icons::REVEAL,
-            theme.muted,
-            crate::actions::reveal_label(),
-            "",
-            "",
-            std::rc::Rc::new(move |_, _, cx| cx.reveal_path(&target)),
-            cx,
-        ));
-    }
+    content = content.child(section("folder", cx));
+    let target = project.path.clone();
+    content = content.child(row(
+        "reveal".into(),
+        icons::REVEAL,
+        theme.muted,
+        crate::actions::reveal_label(),
+        "",
+        "",
+        std::rc::Rc::new(move |_, _, cx| cx.reveal_path(&target)),
+        cx,
+    ));
     if !loaded {
         let path = project.path.clone();
         cx.defer(move |cx| crate::store::store(cx).update(cx, |store, cx| store.refresh_conversations(path, cx)));

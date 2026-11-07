@@ -12,13 +12,13 @@ use crate::ui;
 use crate::window::WorkspaceView;
 
 const TRAFFIC_LIGHT_CENTER: f32 = 17.0;
-const LOCATION_WIDTH: f32 = 640.0;
+const LOCATION_WIDTH: f32 = 427.0;
 
 fn location(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
-    let project = view.state(cx).and_then(|state| state.current_project());
+    let project = view.state(cx).map(|state| state.current_project().unwrap_or(&state.scratch));
     let tint = project.and_then(|project| project.color).map(|color| color.color(theme.dark));
-    let name = project.filter(|project| !project.is_scratch()).map(|project| project.display_name());
+    let name = project.map(|project| project.display_name()).unwrap_or_default();
     let detail = if view.settings.is_some() {
         Some("settings".to_string())
     } else if view.file_shown(cx) {
@@ -44,7 +44,7 @@ fn location(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement
         .border_color(theme.border)
         .hover(|style| style.border_color(theme.muted))
         .child(div().flex_none().text_color(tint.unwrap_or(theme.accent)).child(icons::FOLDER))
-        .child(div().flex_none().child(name.unwrap_or_else(|| "no project".to_string())))
+        .child(div().flex_none().child(name))
         .when_some(detail, |this, detail| {
             this.child(div().flex_none().text_color(theme.faint).child("›"))
                 .child(div().min_w_0().truncate().text_color(theme.muted).child(detail))

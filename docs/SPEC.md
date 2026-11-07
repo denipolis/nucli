@@ -43,8 +43,8 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 - Rename (double-click or context menu; empty restores the folder name), Color (12 theme colors or none; tints the folder glyph and the rows of its tabs), Move to Workspace (another workspace or a new one), Reveal in File Manager, Close Project (`⇧⌘W`, ends its tabs after confirming running agents).
 - Collapsing a project hides its tabs; the state is remembered.
 - Clicking a project shows its active file when one is open, otherwise its overview. `⌂` in the file view's tab strip goes to the overview.
-- **No Project**: a project is optional. Clicking the empty space of the sidebar deselects, and with nothing selected new tabs and panel terminals open in the workspace's "No Project" group (home folder). It appears last in the sidebar only while it has tabs; clicking it deselects too. It has no Files, Changes or quick open.
-- A running tab or panel terminal moves between projects by dragging it onto a project row. Dragging it onto the empty space of the sidebar, its context menu or "Move Out of Project" moves it to No Project. A move never restarts the process or changes its working folder.
+- **Without a project**: a project is optional. Clicking the empty space of the sidebar deselects, and with nothing selected new tabs and panel terminals open in the home folder. Those tabs list below the projects with no header, in line with the project rows. They have no Files, Changes or quick open, and the title bar shows `~` in place of a project name.
+- A running tab or panel terminal moves between projects by dragging it onto a project row. Dragging it onto the empty space of the sidebar, its context menu or "Move Out of Project" takes it out of its project. A move never restarts the process or changes its working folder.
 
 ### Project overview
 
@@ -63,7 +63,7 @@ A tab is an agent or a shell living in a project. Agents and shells look the sam
 - `⌘T`: new tab with the agent or shell last used in this project (fallback: last used anywhere, then the first agent).
 - `⇧⌘T`: **New Tab picker** over the viewport: agents, then shells, then the project's recent conversations. The last used launcher is preselected, so `⇧⌘T` `enter` repeats it. Digits `1`–`9` pick a launcher directly. Conversation rows resume.
 - `⌥⇧⌘T`: same, but asks for a folder first (and opens it as a project).
-- With nothing selected, the tab goes to No Project.
+- With nothing selected, the tab opens without a project.
 - `⌘1`…`⌘9`: tab by position in this window's sidebar. The sidebar shows the number before each tab (`1 claude`).
 - `⇧⌘]` / `⇧⌘[`: next / previous tab in sidebar order. `⌃Tab` / `⌃⇧Tab` open the tab switcher.
 - Rename (double-click, context menu, palette "Rename Tab"; empty restores the automatic title, which follows the terminal title) and Color.
@@ -160,7 +160,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 - **Filter** (`⌥⌘F`) at the bottom filters the visible list by name, path and title; a matching project shows all its tabs; `enter` selects the first match, `esc` clears.
 - **Workspace popup** at the bottom: all workspaces (closed ones marked), New, Rename, Delete.
 - **`+` button**: New Tab, New Tab…, New Tab Without Project…, New Terminal, Open Project….
-- Clicking empty space deselects: no project, empty viewport with key hints and "or drop a folder here".
+- Clicking empty space deselects: empty viewport with key hints and "or drop a folder here".
 - Context menus: project (New Terminal, New Tab…, Rename, Color, Move to Workspace, Reveal, Close Project), tab (Rename, Color, Remove from Split, Unsplit All, Move Out of Project, Close Tab), empty space (Open Project, Rename Workspace, New Workspace, Delete Workspace).
 
 ## Panel

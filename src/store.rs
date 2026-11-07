@@ -58,7 +58,7 @@ impl Project {
 
     pub fn display_name(&self) -> String {
         if self.is_scratch() {
-            return "No Project".into();
+            return paths::display(&paths::home());
         }
         self.name.clone().filter(|name| !name.is_empty()).unwrap_or_else(|| {
             self.path

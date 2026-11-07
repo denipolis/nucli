@@ -46,6 +46,7 @@ pub struct TabInfo {
     pub running: bool,
     pub status: Option<(SharedString, Hsla)>,
     pub terminal: bool,
+    pub loose: bool,
     pub subagents: Vec<crate::claude::Subagent>,
 }
 
@@ -70,6 +71,7 @@ impl TabInfo {
             running: session.is_running(),
             status: status_glyph(session, theme, tick),
             terminal: session.kind == Kind::Terminal,
+            loose: false,
             subagents: session.subagents.clone(),
         }
     }
@@ -279,13 +281,11 @@ fn project_row(
                 view.open_menu(event.position, items, cx);
             }),
         )
-        .when(!project.is_scratch(), |this| {
-            this.on_drag(dragged, |drag: &DraggedProject, _, _, cx| cx.new(|_| DragPreview(drag.title.clone())))
-                .drag_over::<DraggedProject>(move |style, _, _, _| style.border_t_1().border_color(accent))
-                .on_drop(cx.listener(move |view, drag: &DraggedProject, _, cx| {
-                    crate::actions::move_project(view, &drag.path, &drop_path, cx);
-                }))
-        })
+        .on_drag(dragged, |drag: &DraggedProject, _, _, cx| cx.new(|_| DragPreview(drag.title.clone())))
+        .drag_over::<DraggedProject>(move |style, _, _, _| style.border_t_1().border_color(accent))
+        .on_drop(cx.listener(move |view, drag: &DraggedProject, _, cx| {
+            crate::actions::move_project(view, &drag.path, &drop_path, cx);
+        }))
         .drag_over::<DraggedTab>(move |style, _, _, _| style.bg(selection))
         .on_drop(cx.listener(move |view, drag: &DraggedTab, window, cx| {
             crate::actions::move_tab(view, &drag.id, &drop_tab_path, None, window, cx);
@@ -323,7 +323,7 @@ fn tab_row(
         .flex()
         .items_center()
         .gap(px(6.0))
-        .pl(px(10.0))
+        .pl(px(if info.loose { 0.0 } else { 10.0 }))
         .pr(px(8.0))
         .when(selected, |this| this.bg(theme.accent))
         .when(!selected, |this| this.hover(|style| style.bg(theme.hover)))
@@ -397,9 +397,6 @@ fn projects(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
     let mut rows = Vec::new();
     let order = state.ordered_tabs();
     for project in state.all_projects() {
-        if project.is_scratch() && project.tabs.is_empty() {
-            continue;
-        }
         let project_hit = matches(query, &[&project.display_name(), &project.path.to_string_lossy()]);
         let tabs: Vec<&String> = project
             .tabs
@@ -415,10 +412,13 @@ fn projects(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
         if !project_hit && tabs.is_empty() {
             continue;
         }
-        let selected = state.selected == Some(Selected::Project(project.path.clone()));
-        let collapsed = project.collapsed && query.trim().is_empty();
-        let status = if collapsed { hidden_status(view, project, cx) } else { None };
-        rows.push(project_row(view, project, selected, status, cx));
+        let loose = project.is_scratch();
+        let collapsed = !loose && project.collapsed && query.trim().is_empty();
+        if !loose {
+            let selected = state.selected == Some(Selected::Project(project.path.clone()));
+            let status = if collapsed { hidden_status(view, project, cx) } else { None };
+            rows.push(project_row(view, project, selected, status, cx));
+        }
         if collapsed {
             continue;
         }
@@ -433,7 +433,8 @@ fn projects(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
                     && selected_group == crate::splits::group(&state.layouts, id)
                     && state.selected_tab() == Some(id.as_str()));
             let theme = ui::theme(cx);
-            let info = TabInfo::new(session.read(cx), &theme, tick);
+            let mut info = TabInfo::new(session.read(cx), &theme, tick);
+            info.loose = loose;
             let subagents = info.subagents.clone();
             rows.push(tab_row(view, project, info, number, selected, grouped, cx));
             for subagent in subagents {

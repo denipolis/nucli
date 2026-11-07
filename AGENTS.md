@@ -9,7 +9,7 @@ The full behavior is specified in `docs/SPEC.md`. Keep it in sync with the code.
 ## Product rules
 
 - **Terminology**: a **project** is one folder (fixed path) with any number of tabs and a terminal panel. A **tab** runs an agent or a shell. A **workspace** is a named window with its own projects (e.g. Personal, Work); one window = one workspace.
-- **A project is optional**: with nothing selected, tabs and terminals run in the home folder under "No Project", and running ones can move in and out of projects.
+- **A project is optional**: with nothing selected, tabs and terminals run in the home folder and list below the projects with no header. Running ones can move in and out of projects.
 - **Left side has two panes**: the sidebar (Projects, Agents, History) and the panel (Files, Changes, History of commits). Both can be hidden; the panel can sit on either side of the viewport.
 - A project path **never follows a shell's cwd**.
 - **Remember everything**: the app recalls the user's last choice so a repeated action is one keystroke (New Tab… then `Enter`).

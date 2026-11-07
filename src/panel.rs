@@ -49,7 +49,7 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
     };
     let project = panel_project(view, cx);
     let content: AnyElement = match project {
-        None => div().p(px(10.0)).text_color(theme.faint).child("no project").into_any_element(),
+        None => div().p(px(10.0)).text_color(theme.faint).child("no project selected").into_any_element(),
         Some(path) => match tab {
             PanelTab::Files => crate::files::panel(view, &path, window, cx),
             PanelTab::Changes => crate::changes::panel(view, &path, window, cx),
