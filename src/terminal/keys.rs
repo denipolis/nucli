@@ -60,7 +60,7 @@ pub fn encode(keystroke: &Keystroke, mode: TermMode, option_as_meta: bool) -> Op
     let kitty = mode.contains(TermMode::DISAMBIGUATE_ESC_CODES);
     let key = keystroke.key.as_str();
     let special = match key {
-        "enter" => Some((13u32, b"\r".to_vec())),
+        "enter" => Some((13u32, if m.shift && !m.control && !m.alt { b"\n".to_vec() } else { b"\r".to_vec() })),
         "tab" => Some((9, if m.shift && !m.control && !m.alt { b"\x1b[Z".to_vec() } else { b"\t".to_vec() })),
         "backspace" => Some((127, if m.control { b"\x08".to_vec() } else { b"\x7f".to_vec() })),
         "escape" => Some((27, b"\x1b".to_vec())),
@@ -167,6 +167,7 @@ mod tests {
     fn encodes_keys() {
         let mode = TermMode::default();
         assert_eq!(encode(&key("enter"), mode, true), Some(b"\r".to_vec()));
+        assert_eq!(encode(&key("shift-enter"), mode, true), Some(b"\n".to_vec()));
         assert_eq!(encode(&key("ctrl-c"), mode, true), Some(vec![3]));
         assert_eq!(encode(&key("up"), mode, true), Some(b"\x1b[A".to_vec()));
         assert_eq!(encode(&key("up"), TermMode::APP_CURSOR, true), Some(b"\x1bOA".to_vec()));
