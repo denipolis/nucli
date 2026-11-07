@@ -20,7 +20,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `terminal/find.rs` | Terminal find bar. |
 | `window.rs` | `WorkspaceView`, the window root: title bar, layout, overlays, focus. |
 | `actions.rs` | Handlers for commands, launching, closing, renaming, moving, context menus, quit and close prompts. |
-| `commands.rs` | The command table: name, title, action, keys per platform, native menus, `keybindings.json`. |
+| `commands.rs` | The command table: name, title, action, keys per platform, the menus shared by the native menu bar and the title bar, `keybindings.json`. |
 | `sidebar.rs` | Projects tree, agents board, history, filter, workspace popup. |
 | `overview.rs` | Project overview and empty viewport. |
 | `panel.rs` | Panel frame and the terminal panel. |
@@ -46,7 +46,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `prompt.rs` | Confirmation dialogs, installed with `set_prompt_builder`. |
 | `text_input.rs` | Single line input with IME. |
 | `resize.rs` | Pane resize handles. |
-| `titlebar.rs` | Title bar: workspace name, location, status messages. |
+| `titlebar.rs` | Title bar: workspace name, menus on Linux and Windows, location, status messages, Windows caption buttons. |
 | `statusbar.rs` | Status chips under the viewport. |
 | `settings_view.rs` | Settings page in the viewport. |
 | `theme.rs`, `ui.rs` | Palettes, derived UI colors, active theme. |

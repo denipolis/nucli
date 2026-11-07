@@ -10,7 +10,7 @@ macOS 12+, Linux (X11 and Wayland) and Windows 10+. Everything below applies to 
 
 One window per open workspace. From top to bottom:
 
-1. **Title bar**: the workspace name in plain bold text on the left (click: workspace menu), the location in the middle, status messages on the right (see Title bar). On macOS the traffic lights sit at the left edge of this bar. On Windows this bar replaces the system title bar: it moves the window, and minimize, maximize and close sit at its right edge. On Linux window controls sit there when the compositor asks the app to draw them.
+1. **Title bar**: the workspace name in plain bold text on the left (click: workspace menu), the location in the middle, status messages on the right (see Title bar). On Linux and Windows the File, Edit, View and Window menus follow the workspace name, since those systems have no global menu bar; File also holds Settings, About and Quit. On macOS the traffic lights sit at the left edge of this bar. On Windows this bar replaces the system title bar: it moves the window, and minimize, maximize and close sit at its right edge. On Linux window controls sit there when the compositor asks the app to draw them.
 2. **Body**: sidebar, panel, viewport. The panel sits between the sidebar and the viewport (left, default) or right of the viewport. Sidebar and panel widths are draggable and remembered. The viewport holds the selected tab or file, the status chips and the terminal panel.
 
 Every pane except the viewport can be hidden. With all panes hidden the viewport fills the window.

@@ -13,7 +13,7 @@ The full behavior is specified in `docs/SPEC.md`. Keep it in sync with the code.
 - **Two side panes**: the sidebar on the left (Projects, Agents, History) and the panel, on the right by default (Files, Changes, History of commits). Both can be hidden; the panel can sit on either side of the viewport.
 - A project path **never follows a shell's cwd**.
 - **Remember everything**: the app recalls the user's last choice so a repeated action is one keystroke (`⌘T` reopens the last shell, `⇧⌘T` the last agent; hold either to choose).
-- **Every command is in the command palette.** macOS also gets a native menu bar; Linux and Windows rely on the palette and the in-window controls.
+- **Every command is in the command palette.** macOS also gets a native menu bar; Linux and Windows get the same menus in the title bar.
 - **Settings are files**: `settings.json` and `keybindings.json`, opened in Nucli's own file view and reloaded live. The settings page edits the same `settings.json`.
 - Every pane is hideable except the main viewport.
 - Keybindings: see `docs/KEYBINDINGS.md`. Keep it updated when shortcuts change.

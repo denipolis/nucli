@@ -1,9 +1,10 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, App, Context, Div, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    StatefulInteractiveElement, Styled, Window, WindowControlArea, div, px,
+    StatefulInteractiveElement, Styled, Window, WindowControlArea, div, point, px,
 };
 
+use crate::commands;
 use crate::icons;
 use crate::session::{Activity, Kind};
 use crate::settings;
@@ -124,6 +125,56 @@ fn status(view: &WorkspaceView, cx: &App) -> Div {
         .when(done > 0, |this| this.child(count(icons::CHECK, theme.green, format!("{done} done"))))
 }
 
+fn open_menu(view: &mut WorkspaceView, index: usize, cx: &mut Context<WorkspaceView>) {
+    let Some(bounds) = view.title_menu_bounds.borrow().get(index).copied() else { return };
+    let items = crate::menu::from_commands(&commands::window_menu(index), cx);
+    view.open_menu(point(bounds.left(), bounds.bottom()), items, cx);
+    view.title_menu = Some(index);
+}
+
+fn menu_bar(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Div {
+    let theme = ui::theme(cx);
+    let bounds = view.title_menu_bounds.clone();
+    let mut row = div().flex().flex_none().h_full().on_children_prepainted(move |children, _, _| {
+        *bounds.borrow_mut() = children;
+    });
+    for (index, name) in commands::WINDOW_MENUS.iter().enumerate() {
+        let open = view.title_menu == Some(index);
+        row = row.child(
+            div()
+                .id(("title-menu", index))
+                .occlude()
+                .flex()
+                .items_center()
+                .h_full()
+                .px(px(7.0))
+                .when(open, |this| this.bg(theme.accent).text_color(theme.on_accent))
+                .when(!open, |this| {
+                    this.text_color(theme.muted).hover(|style| style.bg(theme.hover).text_color(theme.text))
+                })
+                .child(*name)
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |view, _, _, cx| {
+                        if view.title_menu == Some(index) {
+                            view.title_menu = None;
+                            view.menu = None;
+                            cx.notify();
+                        } else {
+                            open_menu(view, index, cx);
+                        }
+                    }),
+                )
+                .on_hover(cx.listener(move |view, hovered: &bool, _, cx| {
+                    if *hovered && view.menu.is_some() && view.title_menu.is_some_and(|open| open != index) {
+                        open_menu(view, index, cx);
+                    }
+                })),
+        );
+    }
+    row
+}
+
 pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
     let name = view.state(cx).map(|state| state.name.clone()).unwrap_or_default();
@@ -131,6 +182,7 @@ pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceV
     let client_decorated = matches!(window.window_decorations(), gpui::Decorations::Client { .. });
     let location = location(view, cx);
     let status = status(view, cx);
+    let menus = (!cfg!(target_os = "macos")).then(|| menu_bar(view, cx));
     div()
         .id("titlebar")
         .occlude()
@@ -159,23 +211,29 @@ pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceV
             }
         })
         .child(
-            div().flex().flex_1().min_w_0().child(
-                div()
-                    .id("workspace-name")
-                    .occlude()
-                    .flex_none()
-                    .when(cfg!(target_os = "macos"), |this| {
-                        this.relative().top(px(TRAFFIC_LIGHT_CENTER) - (height - px(1.0)) / 2.0)
-                    })
-                    .font_weight(gpui::FontWeight::BOLD)
-                    .text_color(theme.text)
-                    .child(name)
-                    .on_click(cx.listener(|view, event: &gpui::ClickEvent, _, cx| {
-                        let position = event.position();
-                        let items = crate::actions::workspace_menu(view, cx);
-                        view.open_menu(position, items, cx);
-                    })),
-            ),
+            div()
+                .flex()
+                .flex_1()
+                .min_w_0()
+                .child(
+                    div()
+                        .id("workspace-name")
+                        .occlude()
+                        .flex_none()
+                        .when(cfg!(target_os = "macos"), |this| {
+                            this.relative().top(px(TRAFFIC_LIGHT_CENTER) - (height - px(1.0)) / 2.0)
+                        })
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .text_color(theme.text)
+                        .child(name)
+                        .on_click(cx.listener(|view, event: &gpui::ClickEvent, _, cx| {
+                            let position = event.position();
+                            let items = crate::actions::workspace_menu(view, cx);
+                            view.open_menu(position, items, cx);
+                        })),
+                )
+                .children(menus.map(|menus| div().flex().h_full().pl(px(8.0)).child(menus)))
+                .when(!cfg!(target_os = "macos"), |this| this.h_full().items_center().overflow_hidden()),
         )
         .child(location)
         .child(

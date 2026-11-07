@@ -42,6 +42,16 @@ pub fn command(label: impl Into<SharedString>, name: &str, cx: &App) -> Item {
     }
 }
 
+pub fn from_commands(names: &[&str], cx: &App) -> Vec<Item> {
+    names
+        .iter()
+        .map(|name| match crate::commands::find(name) {
+            Some(found) => command(found.title, name, cx),
+            None => Item::Separator,
+        })
+        .collect()
+}
+
 pub struct Menu {
     pub position: Point<Pixels>,
     pub items: Vec<Item>,

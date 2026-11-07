@@ -31,6 +31,8 @@ pub struct WorkspaceView {
     pub menu: Option<Menu>,
     pub palette: Option<Entity<Palette>>,
     pub press: Option<(crate::hold::Launch, std::time::Instant)>,
+    pub title_menu: Option<usize>,
+    pub title_menu_bounds: std::rc::Rc<std::cell::RefCell<Vec<gpui::Bounds<gpui::Pixels>>>>,
     pub prompt_text: String,
     pub switcher: Option<crate::switcher::Switcher>,
     pub panel: crate::panel::PanelState,
@@ -185,6 +187,8 @@ impl WorkspaceView {
             menu: None,
             palette: None,
             press: None,
+            title_menu: None,
+            title_menu_bounds: Default::default(),
             prompt_text: String::new(),
             switcher: None,
             panel: Default::default(),
@@ -356,6 +360,9 @@ impl Focusable for WorkspaceView {
 
 impl Render for WorkspaceView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.menu.is_none() {
+            self.title_menu = None;
+        }
         let theme = ui::theme(cx);
         let ui_size = settings::get(cx).ui_font_size();
         let Some(state) = self.state(cx).cloned() else { return div().into_any_element() };

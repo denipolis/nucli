@@ -411,6 +411,108 @@ pub fn apply(cx: &mut App, extra: Vec<KeyBinding>) {
     cx.set_global(keys);
 }
 
+const FILE_MENU: &[&str] = &[
+    "new_workspace",
+    "rename_workspace",
+    "delete_workspace",
+    "-",
+    "new_shell",
+    "new_agent",
+    "new_tab_picker",
+    "new_tab_in_folder",
+    "new_tab_without_project",
+    "move_out_of_project",
+    "open_project",
+    "quick_open",
+    "-",
+    "split_right",
+    "split_down",
+    "close_split",
+    "toggle_terminal",
+    "new_terminal",
+    "-",
+    "rename_tab",
+    "save",
+    "close",
+    "close_project",
+];
+
+const EDIT_MENU: &[&str] = &[
+    "undo",
+    "redo",
+    "-",
+    "cut",
+    "copy",
+    "paste",
+    "select_all",
+    "-",
+    "find",
+    "find_next",
+    "find_previous",
+    "replace",
+    "-",
+    "clear",
+];
+
+const VIEW_MENU: &[&str] = &[
+    "command_palette",
+    "-",
+    "toggle_sidebar",
+    "toggle_panel",
+    "move_panel",
+    "filter_sidebar",
+    "-",
+    "show_projects",
+    "show_agents",
+    "show_history",
+    "show_files",
+    "show_changes",
+    "show_commits",
+    "-",
+    "next_change",
+    "previous_change",
+    "-",
+    "focus_left",
+    "focus_right",
+    "focus_up",
+    "focus_down",
+    "-",
+    "font_bigger",
+    "font_smaller",
+    "font_reset",
+    "-",
+    "toggle_full_screen",
+];
+
+const WINDOW_MENU: &[&str] = &[
+    "minimize",
+    "zoom",
+    "-",
+    "next_tab",
+    "previous_tab",
+    "-",
+    "select_tab_1",
+    "select_tab_2",
+    "select_tab_3",
+    "select_tab_4",
+    "select_tab_5",
+    "select_tab_6",
+    "select_tab_7",
+    "select_tab_8",
+    "select_tab_9",
+];
+
+pub const WINDOW_MENUS: [&str; 4] = ["File", "Edit", "View", "Window"];
+
+pub fn window_menu(index: usize) -> Vec<&'static str> {
+    match index {
+        0 => FILE_MENU.iter().chain(&["-", "open_settings", "about", "-", "quit"]).copied().collect(),
+        1 => EDIT_MENU.to_vec(),
+        2 => VIEW_MENU.to_vec(),
+        _ => WINDOW_MENU.to_vec(),
+    }
+}
+
 pub fn menus() -> Vec<Menu> {
     let items = |names: &[&str]| -> Vec<MenuItem> {
         names
@@ -432,111 +534,25 @@ pub fn menus() -> Vec<Menu> {
                 .chain(items(&["hide", "hide_others", "show_all", "-", "quit"]))
                 .collect(),
         },
-        Menu {
-            name: "File".into(),
-            items: items(&[
-                "new_workspace",
-                "rename_workspace",
-                "delete_workspace",
-                "-",
-                "new_shell",
-                "new_agent",
-                "new_tab_picker",
-                "new_tab_in_folder",
-                "new_tab_without_project",
-                "move_out_of_project",
-                "open_project",
-                "quick_open",
-                "-",
-                "split_right",
-                "split_down",
-                "close_split",
-                "toggle_terminal",
-                "new_terminal",
-                "-",
-                "rename_tab",
-                "save",
-                "close",
-                "close_project",
-            ]),
-        },
-        Menu {
-            name: "Edit".into(),
-            items: items(&[
-                "undo",
-                "redo",
-                "-",
-                "cut",
-                "copy",
-                "paste",
-                "select_all",
-                "-",
-                "find",
-                "find_next",
-                "find_previous",
-                "replace",
-                "-",
-                "clear",
-            ]),
-        },
-        Menu {
-            name: "View".into(),
-            items: items(&[
-                "command_palette",
-                "-",
-                "toggle_sidebar",
-                "toggle_panel",
-                "move_panel",
-                "filter_sidebar",
-                "-",
-                "show_projects",
-                "show_agents",
-                "show_history",
-                "show_files",
-                "show_changes",
-                "show_commits",
-                "-",
-                "next_change",
-                "previous_change",
-                "-",
-                "focus_left",
-                "focus_right",
-                "focus_up",
-                "focus_down",
-                "-",
-                "font_bigger",
-                "font_smaller",
-                "font_reset",
-                "-",
-                "toggle_full_screen",
-            ]),
-        },
-        Menu {
-            name: "Window".into(),
-            items: items(&[
-                "minimize",
-                "zoom",
-                "-",
-                "next_tab",
-                "previous_tab",
-                "-",
-                "select_tab_1",
-                "select_tab_2",
-                "select_tab_3",
-                "select_tab_4",
-                "select_tab_5",
-                "select_tab_6",
-                "select_tab_7",
-                "select_tab_8",
-                "select_tab_9",
-            ]),
-        },
+        Menu { name: "File".into(), items: items(FILE_MENU) },
+        Menu { name: "Edit".into(), items: items(EDIT_MENU) },
+        Menu { name: "View".into(), items: items(VIEW_MENU) },
+        Menu { name: "Window".into(), items: items(WINDOW_MENU) },
     ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn window_menus_name_real_commands() {
+        for index in 0..WINDOW_MENUS.len() {
+            for name in window_menu(index) {
+                assert!(name == "-" || find(name).is_some(), "{name}");
+            }
+        }
+    }
 
     #[test]
     fn rebinds_keys() {
