@@ -52,18 +52,20 @@ pub struct TabInfo {
 
 impl TabInfo {
     pub fn new(session: &Session, theme: &crate::theme::Theme, tick: usize) -> TabInfo {
+        let title = session.display_title();
         let subtitle = if session.is_running() {
             session
-                .foreground
-                .clone()
-                .filter(|name| Some(name) != session.running_agent.as_ref() || session.kind != Kind::Agent)
+                .program()
+                .filter(|name| !title.contains(name))
+                .filter(|name| Some(*name) != session.running_agent.as_deref() || session.kind != Kind::Agent)
                 .unwrap_or_default()
+                .to_string()
         } else {
             "exited".to_string()
         };
         TabInfo {
             id: session.id.clone(),
-            title: session.display_title(),
+            title,
             subtitle,
             glyph: tab_glyph(session),
             color: session.color,
