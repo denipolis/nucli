@@ -33,6 +33,7 @@ pub struct WorkspaceView {
     pub press: Option<(crate::hold::Launch, std::time::Instant)>,
     pub title_menu: Option<usize>,
     pub title_menu_bounds: std::rc::Rc<std::cell::RefCell<Vec<gpui::Bounds<gpui::Pixels>>>>,
+    pub status_open: bool,
     pub prompt_text: String,
     pub switcher: Option<crate::switcher::Switcher>,
     pub panel: crate::panel::PanelState,
@@ -189,6 +190,7 @@ impl WorkspaceView {
             press: None,
             title_menu: None,
             title_menu_bounds: Default::default(),
+            status_open: false,
             prompt_text: String::new(),
             switcher: None,
             panel: Default::default(),
@@ -269,6 +271,9 @@ impl WorkspaceView {
             if let Some(project) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path)) {
                 project.active_terminal = Some(tab.clone());
                 project.terminal_shown = true;
+            }
+            if let Some(session) = store.sessions.get(&tab) {
+                session.update(cx, |session, _| session.attention = false);
             }
             store.changed(cx);
         });
@@ -412,7 +417,9 @@ impl Render for WorkspaceView {
             .capture_key_down(cx.listener(|view, event: &gpui::KeyDownEvent, window, cx| {
                 if event.keystroke.key == "escape"
                     && event.keystroke.modifiers == gpui::Modifiers::default()
-                    && (view.switcher.take().is_some() || view.menu.take().is_some())
+                    && (view.switcher.take().is_some()
+                        || view.menu.take().is_some()
+                        || std::mem::take(&mut view.status_open))
                 {
                     cx.stop_propagation();
                     view.focus_current(window, cx);

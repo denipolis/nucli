@@ -250,6 +250,11 @@ impl Store {
         let Some(entity) = self.sessions.get(id).cloned() else { return };
         let title = entity.update(cx, |session, cx| {
             session.attention = true;
+            let notice = text.clone().unwrap_or_else(|| match session.exit {
+                Some(Some(code)) => format!("exited with code {code}"),
+                _ => "exited".into(),
+            });
+            session.notice = Some((notice, std::time::SystemTime::now()));
             cx.notify();
             session.display_title()
         });

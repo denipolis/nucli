@@ -1,12 +1,12 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, Context, Div, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    StatefulInteractiveElement, Styled, Window, WindowControlArea, div, point, px,
+    AnyElement, App, Context, Corner, Div, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    StatefulInteractiveElement, Styled, Window, WindowControlArea, anchored, deferred, div, point, px,
 };
 
 use crate::commands;
 use crate::icons;
-use crate::session::{Activity, Kind};
+use crate::session::{Activity, Kind, Session};
 use crate::settings;
 use crate::store::PROGRESS_DELAY;
 use crate::ui;
@@ -56,28 +56,36 @@ fn location(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement
         .into_any_element()
 }
 
-fn counts(view: &WorkspaceView, cx: &App) -> (usize, usize, usize) {
-    let store = view.store(cx);
-    let mut counts = (0, 0, 0);
-    let tabs = view.state(cx).into_iter().flat_map(|state| state.all_projects()).flat_map(|project| &project.tabs);
-    for session in tabs.filter_map(|id| store.session(id)) {
-        let session = session.read(cx);
-        if session.activity == Activity::Working {
-            counts.0 += 1;
-        } else if session.activity == Activity::Waiting {
-            counts.1 += 1;
-        } else if session.attention && session.kind == Kind::Agent {
-            counts.2 += 1;
-        }
-    }
-    counts
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Status {
+    Waiting,
+    Done,
+    Working,
 }
 
-fn status(view: &WorkspaceView, cx: &App) -> Div {
-    let theme = ui::theme(cx);
+fn agents(view: &WorkspaceView, cx: &App) -> Vec<(Status, Entity<Session>, String)> {
     let store = view.store(cx);
-    let line = div().flex().flex_1().items_center().justify_end().gap(px(12.0)).min_w_0();
-    let spinner = icons::SPINNER[store.tick_fast % icons::SPINNER.len()];
+    let mut agents = Vec::new();
+    for project in view.state(cx).into_iter().flat_map(|state| state.all_projects()) {
+        let name = if project.is_scratch() { String::new() } else { project.display_name() };
+        for session in project.tabs.iter().chain(&project.terminals).filter_map(|id| store.session(id)) {
+            let data = session.read(cx);
+            let agent = data.kind == Kind::Agent || data.running_agent.is_some();
+            let status = match data.activity {
+                Activity::Waiting => Status::Waiting,
+                Activity::Working => Status::Working,
+                Activity::Idle if data.attention && agent => Status::Done,
+                Activity::Idle => continue,
+            };
+            agents.push((status, session.clone(), name.clone()));
+        }
+    }
+    agents.sort_by_key(|(status, ..)| *status);
+    agents
+}
+
+fn messages(view: &WorkspaceView, cx: &App) -> Vec<String> {
+    let store = view.store(cx);
     let mut messages: Vec<String> = store
         .progress
         .iter()
@@ -92,9 +100,141 @@ fn status(view: &WorkspaceView, cx: &App) -> Div {
             .filter(|session| session.is_starting())
             .map(|session| format!("starting {}", session.display_title())),
     );
+    messages
+}
+
+fn dropdown(
+    view: &WorkspaceView,
+    messages: &[String],
+    agents: &[(Status, Entity<Session>, String)],
+    cx: &mut Context<WorkspaceView>,
+) -> AnyElement {
+    let theme = ui::theme(cx);
+    let tick = view.store(cx).tick_fast;
+    let spinner = icons::SPINNER[tick % icons::SPINNER.len()];
+    let mut list = div()
+        .id("status-list")
+        .occlude()
+        .w(px(420.0))
+        .max_h(px(480.0))
+        .overflow_y_scroll()
+        .bg(theme.elevated)
+        .border_1()
+        .border_color(theme.border)
+        .on_mouse_down_out(cx.listener(|view, _, _, cx| {
+            view.status_open = false;
+            cx.notify();
+        }));
+    for message in messages {
+        list = list.child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.0))
+                .px(px(10.0))
+                .py(px(4.0))
+                .border_b_1()
+                .border_color(theme.border)
+                .child(div().flex_none().w(px(14.0)).text_color(theme.accent).child(spinner))
+                .child(div().min_w_0().truncate().text_color(theme.muted).child(message.clone())),
+        );
+    }
+    for (index, (status, session, project)) in agents.iter().enumerate() {
+        let data = session.read(cx);
+        let (glyph, color) =
+            crate::sidebar::status_glyph(data, &theme, tick).unwrap_or((icons::CHECK.into(), theme.green));
+        let (agent, agent_color) = crate::sidebar::tab_glyph(data);
+        let agent_color = data.color.or(agent_color).map(|color| color.color(theme.dark)).unwrap_or(theme.muted);
+        let notice = data.notice.as_ref().filter(|_| data.attention);
+        let text = match (status, notice) {
+            (Status::Working, _) if data.subagents.is_empty() => "working".to_string(),
+            (Status::Working, _) => format!("working, {} subagents", data.subagents.len()),
+            (_, Some((text, _))) => text.clone(),
+            (Status::Waiting, None) => "waiting for input".to_string(),
+            (Status::Done, None) => "finished".to_string(),
+        };
+        let age = notice.map(|(_, time)| crate::history::relative_age(*time));
+        let id = data.id.clone();
+        list = list.child(
+            div()
+                .id(("status-agent", index))
+                .flex()
+                .flex_col()
+                .px(px(10.0))
+                .py(px(4.0))
+                .border_b_1()
+                .border_color(theme.border)
+                .hover(|style| style.bg(theme.hover))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.0))
+                        .child(div().flex_none().w(px(14.0)).text_color(color).child(glyph))
+                        .child(div().flex_none().text_color(agent_color).child(agent))
+                        .child(div().flex_1().min_w_0().truncate().child(data.display_title()))
+                        .children(age.map(|age| div().flex_none().text_color(theme.faint).child(age))),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(6.0))
+                        .pl(px(20.0))
+                        .when(!project.is_empty(), |this| {
+                            this.child(div().flex_none().text_color(theme.faint).child(project.clone()))
+                        })
+                        .child(div().min_w_0().truncate().text_color(theme.muted).child(text)),
+                )
+                .on_click(cx.listener(move |view, _, window, cx| {
+                    view.status_open = false;
+                    view.reveal_tab(&id, window, cx);
+                    cx.notify();
+                })),
+        );
+    }
+    if messages.is_empty() && agents.is_empty() {
+        list = list.child(div().px(px(10.0)).py(px(4.0)).text_color(theme.faint).child("no activity"));
+    }
+    deferred(
+        anchored()
+            .anchor(Corner::TopRight)
+            .offset(point(px(0.0), px(1.0)))
+            .snap_to_window_with_margin(px(8.0))
+            .child(list),
+    )
+    .with_priority(2)
+    .into_any_element()
+}
+
+fn status(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Div {
+    let theme = ui::theme(cx);
+    let line = div().flex().flex_1().h_full().justify_end().min_w_0();
+    let messages = messages(view, cx);
+    let agents = agents(view, cx);
+    if messages.is_empty() && agents.is_empty() && !view.status_open {
+        return line;
+    }
+    let spinner = icons::SPINNER[view.store(cx).tick_fast % icons::SPINNER.len()];
+    let mut chip = div()
+        .id("status")
+        .occlude()
+        .relative()
+        .flex()
+        .items_center()
+        .gap(px(12.0))
+        .min_w_0()
+        .h_full()
+        .px(px(8.0))
+        .when(view.status_open, |this| this.bg(theme.hover))
+        .hover(|style| style.bg(theme.hover))
+        .capture_any_mouse_down(cx.listener(|view, _, _, cx| {
+            view.status_open = !view.status_open;
+            cx.stop_propagation();
+            cx.notify();
+        }));
     if let Some(message) = messages.last() {
         let others = messages.len() - 1;
-        return line
+        chip = chip
             .child(
                 div()
                     .flex()
@@ -105,24 +245,30 @@ fn status(view: &WorkspaceView, cx: &App) -> Div {
                     .child(div().flex_none().text_color(theme.accent).child(spinner))
                     .child(div().min_w_0().truncate().child(message.clone())),
             )
-            .when(others > 0, |this| {
-                this.child(div().flex_none().text_color(theme.faint).child(format!("+{others}")))
-            });
+            .when(others > 0, |this| this.child(div().flex_none().text_color(theme.faint).child(format!("+{others}"))));
+    } else {
+        let count = |status: Status, glyph: &'static str, color, label: &str| {
+            let count = agents.iter().filter(|(item, ..)| *item == status).count();
+            (count > 0).then(|| {
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(px(6.0))
+                    .text_color(theme.muted)
+                    .child(div().text_color(color).child(glyph))
+                    .child(format!("{count} {label}"))
+            })
+        };
+        chip = chip
+            .children(count(Status::Working, spinner, theme.accent, "working"))
+            .children(count(Status::Waiting, icons::QUESTION, theme.orange, "waiting"))
+            .children(count(Status::Done, icons::CHECK, theme.green, "done"));
     }
-    let (working, waiting, done) = counts(view, cx);
-    let count = |glyph: &'static str, color, text: String| {
-        div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .gap(px(6.0))
-            .text_color(theme.muted)
-            .child(div().text_color(color).child(glyph))
-            .child(text)
-    };
-    line.when(working > 0, |this| this.child(count(spinner, theme.accent, format!("{working} working"))))
-        .when(waiting > 0, |this| this.child(count(icons::QUESTION, theme.orange, format!("{waiting} waiting"))))
-        .when(done > 0, |this| this.child(count(icons::CHECK, theme.green, format!("{done} done"))))
+    if view.status_open {
+        chip = chip.child(div().absolute().right_0().bottom_0().child(dropdown(view, &messages, &agents, cx)));
+    }
+    line.child(chip)
 }
 
 fn open_menu(view: &mut WorkspaceView, index: usize, cx: &mut Context<WorkspaceView>) {
