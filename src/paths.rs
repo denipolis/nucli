@@ -52,6 +52,10 @@ pub fn settings_file() -> PathBuf {
     config_dir().join("settings.json")
 }
 
+pub fn themes_dir() -> PathBuf {
+    config_dir().join("themes")
+}
+
 pub fn keybindings_file() -> PathBuf {
     config_dir().join("keybindings.json")
 }

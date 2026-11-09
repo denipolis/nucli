@@ -15,6 +15,11 @@ impl Global for ActiveTheme {}
 pub fn init(cx: &mut App) {
     refresh_theme(cx);
     cx.observe_global::<Settings>(refresh_theme).detach();
+    cx.observe_global::<theme::Themes>(|cx| {
+        refresh_theme(cx);
+        cx.refresh_windows();
+    })
+    .detach();
 }
 
 pub fn system_dark(cx: &App) -> bool {
@@ -28,9 +33,9 @@ pub fn system_dark(cx: &App) -> bool {
 }
 
 pub fn refresh_theme(cx: &mut App) {
-    let id = settings::get(cx).theme.clone();
-    let theme = theme::resolve(&id, system_dark(cx));
-    let changed = cx.try_global::<ActiveTheme>().is_none_or(|active| active.0.id != theme.id);
+    let settings = settings::get(cx);
+    let theme = theme::resolve(&settings.theme, system_dark(cx), theme::custom(cx));
+    let changed = cx.try_global::<ActiveTheme>().is_none_or(|active| *active.0 != theme);
     if changed {
         cx.set_global(ActiveTheme(Rc::new(theme)));
         cx.refresh_windows();

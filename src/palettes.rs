@@ -263,7 +263,7 @@ pub fn everything(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Vec<
 pub fn themes(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     let current = settings::get(cx).theme.clone();
     let mut initial = 0;
-    let items: Vec<Item> = crate::theme::all()
+    let items: Vec<Item> = crate::theme::all(crate::theme::custom(cx))
         .into_iter()
         .enumerate()
         .map(|(index, (id, name))| {
@@ -275,7 +275,7 @@ pub fn themes(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
             let mut item =
                 Item::new(name, move |_, _, cx| settings::update(cx, |settings| settings.theme = theme_id.clone()))
                     .glyph(icons::THEME, None)
-                    .detail(if crate::theme::is_automatic(id) { "light + dark" } else { "" });
+                    .detail(if crate::theme::is_automatic(&id) { "light + dark" } else { "" });
             item.preview = Some(std::rc::Rc::new(move |_, _, cx| {
                 let mut settings = settings::get(cx).clone();
                 settings.theme = preview_id.clone();

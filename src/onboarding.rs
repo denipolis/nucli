@@ -15,7 +15,7 @@ use crate::paths;
 use crate::persist::StateFile;
 use crate::settings::{self, Appearance, CursorShape, FONT, Settings};
 use crate::settings_view;
-use crate::theme::Theme;
+use crate::theme::{CustomTheme, Theme};
 use crate::ui;
 
 pub struct Active;
@@ -436,14 +436,14 @@ fn mini_window(preview: &Theme) -> Div {
         )
 }
 
-fn mode_tiles(current: &Settings, theme: &Theme) -> Div {
+fn mode_tiles(current: &Settings, custom: &[CustomTheme], theme: &Theme) -> Div {
     let modes = [
         (Appearance::System, "System", "follows the system"),
         (Appearance::Light, "Light", "always light"),
         (Appearance::Dark, "Dark", "always dark"),
     ];
-    let light = crate::theme::resolve(&current.theme, false);
-    let dark = crate::theme::resolve(&current.theme, true);
+    let light = crate::theme::resolve(&current.theme, false, custom);
+    let dark = crate::theme::resolve(&current.theme, true, custom);
     div().flex().gap(px(8.0)).children(modes.map(|(mode, label, hint)| {
         let selected = current.appearance == mode;
         let preview = match mode {
@@ -620,7 +620,7 @@ impl Onboarding {
     fn ready(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let theme = ui::theme(cx);
         let current = settings::get(cx).clone();
-        let theme_name = crate::theme::all()
+        let theme_name = crate::theme::all(crate::theme::custom(cx))
             .into_iter()
             .find(|(id, _)| *id == current.theme)
             .map(|(_, name)| name.to_string())
@@ -707,13 +707,14 @@ impl Onboarding {
     fn steps(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
         let theme = ui::theme(cx);
         let current = settings::get(cx).clone();
+        let custom = crate::theme::custom(cx).to_vec();
         let (step, title, description) = STEPS[index];
         let body = match step {
             Step::Appearance => vec![
                 section("Theme", "colors", &theme).into_any_element(),
-                settings_view::theme_cards(&current, ui::system_dark(cx), &theme).into_any_element(),
+                settings_view::theme_cards(&current, &custom, ui::system_dark(cx), &theme).into_any_element(),
                 section("Mode", "light or dark", &theme).mt(px(12.0)).into_any_element(),
-                mode_tiles(&current, &theme).into_any_element(),
+                mode_tiles(&current, &custom, &theme).into_any_element(),
             ],
             Step::Terminal => {
                 let time = self.shown.elapsed().as_millis();

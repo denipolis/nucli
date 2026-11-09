@@ -105,6 +105,16 @@ fn watch_config(cx: &mut App) {
         let modified = |path: std::path::PathBuf| std::fs::metadata(path).and_then(|meta| meta.modified()).ok();
         let mut settings_time = modified(paths::settings_file());
         let mut keys_time = modified(paths::keybindings_file());
+        let stamp = || {
+            let entries = std::fs::read_dir(paths::themes_dir()).ok()?;
+            let mut files: Vec<_> = entries
+                .flatten()
+                .filter_map(|entry| Some((entry.file_name(), entry.metadata().ok()?.modified().ok()?)))
+                .collect();
+            files.sort();
+            Some(files)
+        };
+        let mut themes_stamp = stamp();
         loop {
             cx.background_executor().timer(std::time::Duration::from_millis(700)).await;
             let settings_now = modified(paths::settings_file());
@@ -112,6 +122,11 @@ fn watch_config(cx: &mut App) {
             if settings_now != settings_time {
                 settings_time = settings_now;
                 let _ = cx.update(settings::reload);
+            }
+            let themes_now = stamp();
+            if themes_now != themes_stamp {
+                themes_stamp = themes_now;
+                let _ = cx.update(theme::reload);
             }
             if keys_now != keys_time {
                 keys_time = keys_now;
@@ -251,6 +266,7 @@ fn main() {
         load_fonts(cx);
         let (settings, onboarding) = first_launch(cx);
         cx.set_global(settings);
+        theme::reload(cx);
         ui::init(cx);
         cx.set_prompt_builder(prompt::build);
         apply_keys(cx);

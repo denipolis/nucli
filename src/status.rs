@@ -74,6 +74,7 @@ impl Store {
         .detach();
         cx.observe_global::<crate::settings::Settings>(|store, cx| store.apply_settings(cx)).detach();
         cx.observe_global::<crate::ui::ActiveTheme>(|store, cx| store.apply_settings(cx)).detach();
+        cx.observe_global::<crate::theme::Themes>(|store, cx| store.apply_settings(cx)).detach();
         self.poll_task = Some(cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(Duration::from_millis(1000)).await;

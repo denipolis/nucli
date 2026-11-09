@@ -11,7 +11,7 @@ use crate::persist::{Selected, SettingsSection};
 use crate::settings::{self, Appearance, CursorShape, Settings};
 use crate::store;
 use crate::text_input::{InputEvent, TextInput};
-use crate::theme::Theme;
+use crate::theme::{CustomTheme, Theme};
 use crate::ui;
 use crate::window::WorkspaceView;
 
@@ -297,8 +297,16 @@ pub fn checkbox(id: &'static str, on: bool, set: fn(&mut Settings, bool), theme:
         .on_click(move |_, _, cx| settings::update(cx, |settings| set(settings, !on)))
 }
 
-fn theme_card(id: &'static str, name: &'static str, selected: bool, system_dark: bool, theme: &Theme) -> Stateful<Div> {
-    let preview = crate::theme::resolve(id, system_dark);
+fn theme_card(
+    id: SharedString,
+    name: SharedString,
+    current: &Settings,
+    custom: &[CustomTheme],
+    system_dark: bool,
+    theme: &Theme,
+) -> Stateful<Div> {
+    let selected = id == current.theme;
+    let preview = crate::theme::resolve(&id, system_dark, custom);
     let swatches = [preview.accent, preview.red, preview.green, preview.yellow, preview.blue, preview.muted];
     div()
         .id(SharedString::from(format!("theme-{id}")))
@@ -413,15 +421,33 @@ fn cards<T>(items: &[T], card: impl Fn(&T) -> Stateful<Div>) -> Div {
     }))
 }
 
-pub fn theme_cards(current: &Settings, system_dark: bool, theme: &Theme) -> Div {
-    cards(&crate::theme::all(), |(id, name)| theme_card(id, name, *id == current.theme, system_dark, theme))
+pub fn theme_cards(current: &Settings, custom: &[CustomTheme], system_dark: bool, theme: &Theme) -> Div {
+    cards(&crate::theme::all(custom), |(id, name)| {
+        theme_card(id.clone(), name.clone(), current, custom, system_dark, theme)
+    })
 }
 
-pub fn appearance(current: &Settings, system_dark: bool, theme: &Theme) -> Vec<AnyElement> {
+pub fn appearance(current: &Settings, custom: &[CustomTheme], system_dark: bool, theme: &Theme) -> Vec<AnyElement> {
     let modes = [("System", Appearance::System), ("Light", Appearance::Light), ("Dark", Appearance::Dark)];
     vec![
-        theme_cards(current, system_dark, theme).into_any_element(),
+        theme_cards(current, custom, system_dark, theme).into_any_element(),
         group(theme)
+            .child(row(
+                "Custom themes",
+                "JSON files in the themes folder",
+                div()
+                    .flex()
+                    .gap(px(8.0))
+                    .child(
+                        button("import-theme", "Import…", theme)
+                            .on_click(|_, window, cx| window.dispatch_action(Box::new(commands::ImportTheme), cx)),
+                    )
+                    .child(
+                        button("themes-folder", "Open folder", theme)
+                            .on_click(|_, window, cx| window.dispatch_action(Box::new(commands::OpenThemesFolder), cx)),
+                    ),
+                theme,
+            ))
             .child(row(
                 "Mode",
                 "Light or dark side of a theme",
@@ -691,6 +717,7 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
     let theme = ui::theme(cx);
     let current = settings::get(cx).clone();
     let system_dark = ui::system_dark(cx);
+    let custom = crate::theme::custom(cx).to_vec();
     let section = view.store(cx).ui.settings_section;
     let (title, description) = SECTIONS
         .iter()
@@ -727,7 +754,7 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
         }));
     let body = match (section, &view.settings) {
         (SettingsSection::General, _) => general(&current, &theme),
-        (SettingsSection::Appearance, _) => appearance(&current, system_dark, &theme),
+        (SettingsSection::Appearance, _) => appearance(&current, &custom, system_dark, &theme),
         (SettingsSection::Terminal, Some(page)) => {
             terminal(&current, page.font_picker.clone().into_any_element(), &theme)
         }

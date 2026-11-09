@@ -1,7 +1,12 @@
-use gpui::{Hsla, Rgba, rgb};
+use std::path::{Path, PathBuf};
 
+use gpui::{App, Global, Hsla, Rgba, SharedString, rgb};
+use serde::Deserialize;
+
+use crate::paths;
+
+#[derive(PartialEq)]
 pub struct Theme {
-    pub id: &'static str,
     pub dark: bool,
     pub background: Hsla,
     pub surface: Hsla,
@@ -28,6 +33,7 @@ pub struct Theme {
     pub syntax: Syntax,
 }
 
+#[derive(PartialEq)]
 pub struct Syntax {
     pub keyword: Hsla,
     pub string: Hsla,
@@ -40,6 +46,7 @@ pub struct Syntax {
     pub punctuation: Hsla,
 }
 
+#[derive(Clone, Copy)]
 struct Palette {
     id: &'static str,
     name: &'static str,
@@ -186,23 +193,134 @@ const VITESSE: [Palette; 5] = [
 pub const AUTOMATIC: [(&str, &str, &str, &str); 2] =
     [("nucli", "Nucli", "nucli-dark", "nucli-light"), ("vitesse", "Vitesse", "vitesse-dark", "vitesse-light")];
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Hex(u32);
+
+impl<'de> Deserialize<'de> for Hex {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        text.strip_prefix('#')
+            .filter(|hex| hex.len() == 6 && hex.chars().all(|char| char.is_ascii_hexdigit()))
+            .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+            .map(Hex)
+            .ok_or_else(|| serde::de::Error::custom(format!("invalid color \"{text}\", expected #rrggbb")))
+    }
+}
+
+#[derive(Clone, Deserialize, Debug, PartialEq)]
+pub struct CustomTheme {
+    #[serde(default)]
+    pub name: String,
+    pub base: Option<String>,
+    pub dark: Option<bool>,
+    pub background: Option<Hex>,
+    pub foreground: Option<Hex>,
+    pub accent: Option<Hex>,
+    pub selection: Option<Hex>,
+    pub ansi: Option<[Hex; 16]>,
+    pub syntax: Option<[Hex; 8]>,
+}
+
+#[derive(Default, PartialEq)]
+pub struct Themes {
+    pub custom: Vec<CustomTheme>,
+    pub error: Option<String>,
+}
+
+impl Global for Themes {}
+
+pub fn custom(cx: &App) -> &[CustomTheme] {
+    cx.try_global::<Themes>().map_or(&[], |themes| &themes.custom)
+}
+
+pub fn reload(cx: &mut App) {
+    let themes = load(&paths::themes_dir());
+    if cx.try_global::<Themes>() != Some(&themes) {
+        cx.set_global(themes);
+    }
+}
+
+fn load(dir: &Path) -> Themes {
+    let mut themes = Themes::default();
+    let Ok(entries) = std::fs::read_dir(dir) else { return themes };
+    let mut files: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "json"))
+        .collect();
+    files.sort();
+    for file in files {
+        match read(&file) {
+            Ok(theme) => themes.custom.push(theme),
+            Err(error) => {
+                themes.error.get_or_insert(format!("themes/{error}"));
+            }
+        }
+    }
+    themes
+}
+
+fn read(path: &Path) -> Result<CustomTheme, String> {
+    let file = path.file_name().unwrap_or_default().to_string_lossy();
+    let text = std::fs::read_to_string(path).map_err(|error| format!("{file}: {error}"))?;
+    let mut theme: CustomTheme = serde_json::from_str(&text).map_err(|error| format!("{file}: {error}"))?;
+    if theme.name.is_empty() {
+        theme.name = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+    }
+    Ok(theme)
+}
+
+pub fn install(source: &Path, dir: &Path) -> Result<String, String> {
+    let theme = read(source)?;
+    let stem = source.file_stem().unwrap_or_default().to_string_lossy();
+    let target = dir.join(format!("{stem}.json"));
+    std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    if target != source {
+        std::fs::copy(source, &target).map_err(|error| error.to_string())?;
+    }
+    Ok(theme.name)
+}
+
+impl CustomTheme {
+    fn palette(&self) -> Palette {
+        let base = self
+            .base
+            .as_deref()
+            .and_then(|id| palettes().find(|palette| palette.id == id))
+            .copied()
+            .unwrap_or(if self.dark == Some(false) { NUCLI_LIGHT } else { NUCLI_DARK });
+        let pick = |value: Option<Hex>, fallback: u32| value.map_or(fallback, |hex| hex.0);
+        Palette {
+            dark: self.dark.unwrap_or(base.dark),
+            background: pick(self.background, base.background),
+            foreground: pick(self.foreground, base.foreground),
+            accent: pick(self.accent, base.accent),
+            selection: pick(self.selection, base.selection),
+            ansi: self.ansi.map_or(base.ansi, |ansi| ansi.map(|hex| hex.0)),
+            syntax: self.syntax.map_or(base.syntax, |syntax| syntax.map(|hex| hex.0)),
+            ..base
+        }
+    }
+}
+
 fn palettes() -> impl Iterator<Item = &'static Palette> {
     [&NUCLI_DARK, &NUCLI_LIGHT, &NUCLI_AMBER, &NUCLI_PHOSPHOR].into_iter().chain(VITESSE.iter())
 }
 
-pub fn all() -> Vec<(&'static str, &'static str)> {
+pub fn all(custom: &[CustomTheme]) -> Vec<(SharedString, SharedString)> {
     AUTOMATIC
         .iter()
-        .map(|(id, name, _, _)| (*id, *name))
-        .chain(palettes().map(|palette| (palette.id, palette.name)))
+        .map(|(id, name, _, _)| ((*id).into(), (*name).into()))
+        .chain(palettes().map(|palette| (palette.id.into(), palette.name.into())))
+        .chain(custom.iter().map(|theme| (theme.name.clone().into(), theme.name.clone().into())))
         .collect()
 }
 
 pub fn is_automatic(id: &str) -> bool {
-    !palettes().any(|palette| palette.id == id)
+    AUTOMATIC.iter().any(|(pair, ..)| *pair == id)
 }
 
-pub fn resolve(id: &str, system_dark: bool) -> Theme {
+pub fn resolve(id: &str, system_dark: bool, custom: &[CustomTheme]) -> Theme {
     let pair = AUTOMATIC.iter().find(|(pair, ..)| *pair == id);
     let id = match pair {
         Some((_, _, dark, light)) => {
@@ -214,8 +332,13 @@ pub fn resolve(id: &str, system_dark: bool) -> Theme {
         }
         None => id,
     };
-    let fallback = if system_dark { &NUCLI_DARK } else { &NUCLI_LIGHT };
-    build(palettes().find(|palette| palette.id == id).unwrap_or(fallback))
+    let fallback = if system_dark { NUCLI_DARK } else { NUCLI_LIGHT };
+    let palette = palettes()
+        .find(|palette| palette.id == id)
+        .copied()
+        .or_else(|| custom.iter().find(|theme| theme.name == id).map(CustomTheme::palette))
+        .unwrap_or(fallback);
+    build(&palette)
 }
 
 fn mix(a: u32, b: u32, amount: f32) -> Hsla {
@@ -237,7 +360,6 @@ fn build(palette: &Palette) -> Theme {
     let ansi = palette.ansi;
     let tint = if palette.dark { 0.22 } else { 0.16 };
     Theme {
-        id: palette.id,
         dark: palette.dark,
         background: color(bg),
         surface: mix(bg, fg, 0.025),
@@ -341,5 +463,27 @@ impl ItemColor {
             ItemColor::Gray => (0x9E9E9E, 0x616161),
         };
         color(if dark { on_dark } else { on_light })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn custom_theme_overrides_its_base() {
+        let dir = std::env::temp_dir().join(format!("nucli-themes-{}", std::process::id()));
+        let source = std::env::temp_dir().join(format!("nucli-mint-{}.json", std::process::id()));
+        std::fs::write(&source, r##"{"base": "vitesse-light", "background": "#102030"}"##).unwrap();
+        let name = install(&source, &dir).unwrap();
+        std::fs::write(dir.join("bad.json"), r##"{"accent": "#12345"}"##).unwrap();
+        let themes = load(&dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_file(&source).unwrap();
+        assert!(themes.error.unwrap().starts_with("themes/bad.json: invalid color"));
+        let theme = resolve(&name, true, &themes.custom);
+        assert!(!theme.dark);
+        assert_eq!(theme.background, color(0x102030));
+        assert_eq!(theme.accent, color(0x1E754F));
     }
 }

@@ -885,6 +885,34 @@ pub fn close_workspace_window(id: &str, window: &mut Window, cx: &mut App) {
     .detach();
 }
 
+fn import_theme(window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    let receiver = cx.prompt_for_paths(PathPromptOptions {
+        files: true,
+        directories: false,
+        multiple: true,
+        prompt: Some("Import".into()),
+    });
+    cx.spawn_in(window, async move |_, cx| {
+        let Ok(Ok(Some(paths))) = receiver.await else { return };
+        let dir = crate::paths::themes_dir();
+        let results: Vec<Result<String, String>> = cx
+            .background_spawn(async move { paths.iter().map(|path| crate::theme::install(path, &dir)).collect() })
+            .await;
+        let _ = cx.update(|window, cx| {
+            crate::theme::reload(cx);
+            if let Some(name) = results.iter().rev().find_map(|result| result.as_ref().ok()).cloned() {
+                settings::update(cx, |settings| settings.theme = name);
+            }
+            let errors: Vec<&str> =
+                results.iter().filter_map(|result| result.as_ref().err()).map(String::as_str).collect();
+            if !errors.is_empty() {
+                drop(window.prompt(PromptLevel::Warning, "Theme not imported", Some(&errors.join("\n")), &["OK"], cx));
+            }
+        });
+    })
+    .detach();
+}
+
 pub fn end_theme_preview(cx: &mut App) {
     if let Ok(Some(saved)) = settings::Settings::read()
         && saved.theme != settings::get(cx).theme
@@ -1112,6 +1140,12 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|view, _: &CommandPalette, window, cx| command_palette(view, window, cx)))
         .on_action(cx.listener(|view, _: &QuickOpen, window, cx| crate::palettes::quick_open(view, window, cx)))
         .on_action(cx.listener(|view, _: &SelectTheme, window, cx| crate::palettes::themes(view, window, cx)))
+        .on_action(cx.listener(|_, _: &ImportTheme, window, cx| import_theme(window, cx)))
+        .on_action(cx.listener(|_, _: &OpenThemesFolder, _, cx| {
+            let dir = crate::paths::themes_dir();
+            let _ = std::fs::create_dir_all(&dir);
+            cx.open_with_system(&dir);
+        }))
         .on_action(cx.listener(|view, _: &SelectLanguage, window, cx| crate::palettes::languages(view, window, cx)))
         .on_action(cx.listener(|view, _: &Close, window, cx| close(view, window, cx)))
         .on_action(cx.listener(|view, _: &CloseProject, window, cx| {

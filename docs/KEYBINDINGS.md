@@ -50,6 +50,7 @@ On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ct
 | Keybindings in settings | `open_keybindings` | | |
 | Keybindings file | `open_keybindings_file` | | |
 | Select theme | `select_theme` | | |
+| Import theme / open themes folder | `import_theme` / `open_themes_folder` | | |
 | Select language of the shown file | `select_language` | | |
 | Rename / delete workspace | `rename_workspace` / `delete_workspace` | | |
 | Detect agents / shells | `detect_agents` / `detect_shells` | | |

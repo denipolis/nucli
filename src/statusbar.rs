@@ -67,7 +67,8 @@ pub fn render(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Option<A
     let error = cx
         .try_global::<SettingsError>()
         .and_then(|error| error.0.clone())
-        .or_else(|| cx.try_global::<crate::commands::Keys>().and_then(|keys| keys.error.clone()));
+        .or_else(|| cx.try_global::<crate::commands::Keys>().and_then(|keys| keys.error.clone()))
+        .or_else(|| cx.try_global::<crate::theme::Themes>().and_then(|themes| themes.error.clone()));
     let file_shown = view.settings.is_none() && view.file_shown(cx);
     let session = if view.settings.is_none() && !file_shown { view.selected_session(cx) } else { None };
     let theme =

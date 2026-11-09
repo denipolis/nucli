@@ -228,7 +228,9 @@ impl Session {
     }
 
     pub fn apply_theme(&mut self, cx: &App) {
-        let own = self.profile_theme(cx).map(|id| std::rc::Rc::new(crate::theme::resolve(&id, ui::system_dark(cx))));
+        let custom = crate::theme::custom(cx);
+        let own =
+            self.profile_theme(cx).map(|id| std::rc::Rc::new(crate::theme::resolve(&id, ui::system_dark(cx), custom)));
         let theme = own.clone().unwrap_or_else(|| ui::theme(cx));
         self.terminal.set_colors(terminal::view::color_table(&theme));
         self.view.theme = own;
