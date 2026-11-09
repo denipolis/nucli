@@ -264,4 +264,4 @@ pub fn empty(_view: &mut WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyE
         .into_any_element()
 }
 
-const LOGO: &str = "█▄ █ █ █ █▀▀ █   █\n█ ▀█ █▄█ █▄▄ █▄▄ █";
+pub const LOGO: &str = "█▄ █ █ █ █▀▀ █   █\n█ ▀█ █▄█ █▄▄ █▄▄ █";

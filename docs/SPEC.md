@@ -26,6 +26,14 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 - If the graphics system cannot start or no window can be opened, for example without a working driver, Nucli reports why (a message box on Windows, stderr elsewhere) and quits instead of running invisibly.
 - Confirmations are Nucli's own square dialogs on every platform: arrows or `tab` move, `enter` chooses, `esc` cancels. File and folder choosers stay native.
 
+## Onboarding
+
+- When `settings.json` does not exist, Nucli opens a setup window instead of a workspace. Nothing is written until the last step.
+- **Welcome**: only the Nucli logo, which appears column by column behind a block cursor. Then a bar fades in at the bottom: the link "moving from another machine? import your settings" (plus "used Nucli 1 before? import its settings" on macOS when Nucli 1 settings exist) on the left, `[enter] next` on the right, where the steps keep it. Agent and shell detection runs in the background meanwhile.
+- **Steps**, all full width: Appearance (a Theme section with the theme cards, then a separate Mode section with three tiles showing a miniature window in the light and dark side of the chosen theme), Terminal (live preview with the chosen font and a blinking cursor when blinking is on, the font combobox, font size, line height, ligatures, cursor), Agents and Shells (detected profiles with checkboxes, "detect again", and a note that more can be added by hand later; the first shell is the default), Ready (four large tiles filling the window: theme with swatches, terminal font with a sample, agents, default shell). Every change applies live. The bar at the bottom lists the steps (click to jump), `[esc] back` and `[enter] next` (`[enter] start` on the last step); arrows work too.
+- **Start** writes `settings.json` with the checked profiles, closes the setup window and opens the workspace window.
+- **Import backup…** takes a folder (or a file inside it) holding a previous `settings.json`, and copies `keybindings.json` and `state.json` (workspaces and projects) from it when present. **Import Nucli 1** reads the old preferences (see Import from Nucli 1). Both jump to Ready with the imported values, which can still be changed. An existing `state.json` is never overwritten.
+
 ## Workspaces
 
 - `⌘N` asks for a name and opens a new workspace window. The first launch creates "Personal".
@@ -91,7 +99,7 @@ An agent profile is `{name, executable, arguments, config_dir, env, theme}` in `
 - `env`: extra environment variables.
 - `theme`: optional theme for this profile's tabs (empty = app theme), so work and personal tabs can look different.
 
-**Detection**: on first launch, and with the palette command "Detect Agents", Nucli looks for known agent CLIs (`claude`, `codex`, `gemini`, `opencode`, `pi`, `amp`, `aider`, `cursor-agent`, `goose`, `crush`, `qwen`, `copilot`, `droid`) in the login shell's `PATH` and common install folders, and adds missing profiles. For `claude` and `codex`, every used config folder (`~/.claude*`, `~/.codex*`) becomes its own profile.
+**Detection**: during onboarding, and with the palette command "Detect Agents", Nucli looks for known agent CLIs (`claude`, `codex`, `gemini`, `opencode`, `pi`, `amp`, `aider`, `cursor-agent`, `goose`, `crush`, `qwen`, `copilot`, `droid`) in the login shell's `PATH` and common install folders, and adds missing profiles. For `claude` and `codex`, every used config folder (`~/.claude*`, `~/.codex*`) becomes its own profile.
 
 ### Launching
 
@@ -250,7 +258,7 @@ The row is hidden for projects and settings. An invalid settings or keybindings 
 - `settings.json` keys: `theme`, `appearance` (`system`, `light`, `dark`), `font`, `font_size`, `ui_font_size`, `line_height`, `cursor` (`block`, `bar`, `underline`), `cursor_blink`, `ligatures`, `restore_tabs`, `notifications`, `agents`, `shells`. Commands that change settings (theme, font size, detection, notifications) rewrite the file with all keys.
 - `keybindings.json` maps a key to a command name, e.g. `{"cmd-t": "new_shell", "cmd-shift-d": null}`; `null` removes a default. The palette shows every command's name and current key.
 - **Themes**: Nucli (dark and light pairs following the system), Nucli Amber and Nucli Phosphor (monochrome dark), and Vitesse Dark, Dark Soft, Black, Light, Light Soft. A theme sets every UI color, the 16 terminal colors and the syntax colors. An automatic theme follows the system appearance; `appearance` can force its light or dark side.
-- **Shells**: `{name, path}` list. Filled on first launch from the login shell and `/etc/shells` (Windows: PowerShell, Windows PowerShell, Command Prompt, Git Bash and WSL when installed); "Detect Shells" adds missing ones.
+- **Shells**: `{name, path}` list. Filled during onboarding from the login shell and `/etc/shells` (Windows: PowerShell, Windows PowerShell, Command Prompt, Git Bash and WSL when installed); "Detect Shells" adds missing ones.
 
 ## Restore
 
@@ -270,7 +278,7 @@ The development build uses `nucli-dev` / `Nucli Dev` instead.
 
 ## Import from Nucli 1
 
-On macOS, when `settings.json` does not exist yet and the `uk.polishch.nucli` defaults do, the first launch of a release build imports agent profiles, shells, appearance and terminal options, workspaces and projects (path, name, color). Tabs, scrollback and keybindings are not imported.
+On macOS, when the `uk.polishch.nucli` defaults exist, onboarding in a release build offers to import agent profiles, shells, appearance and terminal options, workspaces and projects (path, name, color). Tabs, scrollback and keybindings are not imported.
 
 ## Privacy
 

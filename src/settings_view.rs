@@ -214,11 +214,11 @@ fn finish_recording(view: &mut WorkspaceView, key: Option<&str>, cx: &mut Contex
     cx.notify();
 }
 
-fn group(theme: &Theme) -> Div {
+pub fn group(theme: &Theme) -> Div {
     div().flex().flex_col().border_1().border_color(theme.border).bg(theme.surface)
 }
 
-fn row(label: &'static str, hint: &'static str, control: impl IntoElement, theme: &Theme) -> Div {
+pub fn row(label: &'static str, hint: &'static str, control: impl IntoElement, theme: &Theme) -> Div {
     div()
         .flex()
         .items_center()
@@ -239,7 +239,7 @@ fn row(label: &'static str, hint: &'static str, control: impl IntoElement, theme
         .child(div().flex_none().child(control))
 }
 
-fn button(id: impl Into<SharedString>, label: impl Into<SharedString>, theme: &Theme) -> Stateful<Div> {
+pub fn button(id: impl Into<SharedString>, label: impl Into<SharedString>, theme: &Theme) -> Stateful<Div> {
     div()
         .id(id.into())
         .flex_none()
@@ -288,7 +288,7 @@ fn stepper(id: &'static str, value: String, step: f32, change: fn(&mut Settings,
         )
 }
 
-fn checkbox(id: &'static str, on: bool, set: fn(&mut Settings, bool), theme: &Theme) -> Stateful<Div> {
+pub fn checkbox(id: &'static str, on: bool, set: fn(&mut Settings, bool), theme: &Theme) -> Stateful<Div> {
     div()
         .id(id)
         .text_color(if on { theme.accent } else { theme.muted })
@@ -404,21 +404,23 @@ fn general(current: &Settings, theme: &Theme) -> Vec<AnyElement> {
     ]
 }
 
-fn appearance(current: &Settings, system_dark: bool, theme: &Theme) -> Vec<AnyElement> {
-    let modes = [("System", Appearance::System), ("Light", Appearance::Light), ("Dark", Appearance::Dark)];
-    let themes = crate::theme::all();
-    let cards = themes.chunks(THEME_COLUMNS).map(|chunk| {
+fn cards<T>(items: &[T], card: impl Fn(&T) -> Stateful<Div>) -> Div {
+    div().flex().flex_col().gap(px(8.0)).children(items.chunks(THEME_COLUMNS).map(|chunk| {
         let spacers = THEME_COLUMNS - chunk.len();
-        div()
-            .flex()
-            .gap(px(8.0))
-            .children(chunk.iter().map(|(id, name)| theme_card(id, name, *id == current.theme, system_dark, theme)))
-            .children(
-                (0..spacers).map(|_| div().flex_1().p(px(8.0)).border_1().border_color(gpui::transparent_black())),
-            )
-    });
+        div().flex().gap(px(8.0)).children(chunk.iter().map(&card)).children(
+            (0..spacers).map(|_| div().flex_1().p(px(8.0)).border_1().border_color(gpui::transparent_black())),
+        )
+    }))
+}
+
+pub fn theme_cards(current: &Settings, system_dark: bool, theme: &Theme) -> Div {
+    cards(&crate::theme::all(), |(id, name)| theme_card(id, name, *id == current.theme, system_dark, theme))
+}
+
+pub fn appearance(current: &Settings, system_dark: bool, theme: &Theme) -> Vec<AnyElement> {
+    let modes = [("System", Appearance::System), ("Light", Appearance::Light), ("Dark", Appearance::Dark)];
     vec![
-        div().flex().flex_col().gap(px(8.0)).children(cards).into_any_element(),
+        theme_cards(current, system_dark, theme).into_any_element(),
         group(theme)
             .child(row(
                 "Mode",
@@ -448,7 +450,7 @@ fn appearance(current: &Settings, system_dark: bool, theme: &Theme) -> Vec<AnyEl
     ]
 }
 
-fn terminal(current: &Settings, font: AnyElement, theme: &Theme) -> Vec<AnyElement> {
+pub fn terminal(current: &Settings, font: AnyElement, theme: &Theme) -> Vec<AnyElement> {
     let cursors = [("Block", CursorShape::Block), ("Bar", CursorShape::Bar), ("Underline", CursorShape::Underline)];
     vec![
         group(theme)

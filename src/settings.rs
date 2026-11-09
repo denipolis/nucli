@@ -105,7 +105,9 @@ pub fn get(cx: &App) -> &Settings {
 pub fn update(cx: &mut App, change: impl FnOnce(&mut Settings)) {
     let mut settings = cx.global::<Settings>().clone();
     change(&mut settings);
-    settings.write();
+    if !cx.has_global::<crate::onboarding::Active>() {
+        settings.write();
+    }
     cx.set_global(settings);
 }
 

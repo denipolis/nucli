@@ -23,6 +23,7 @@ mod icons;
 mod import;
 mod menu;
 mod notify;
+mod onboarding;
 mod overview;
 mod palette;
 mod palettes;
@@ -88,46 +89,15 @@ fn load_fonts(cx: &mut App) {
     }
 }
 
-fn first_launch(cx: &mut App) -> Settings {
+fn first_launch(cx: &mut App) -> (Settings, bool) {
     match Settings::read() {
-        Ok(Some(settings)) => settings,
-        Ok(None) => {
-            let settings = imported().unwrap_or_else(|| Settings {
-                agents: agents::detect_agents(),
-                shells: agents::detect_shells(),
-                ..Settings::default()
-            });
-            settings.write();
-            settings
-        }
+        Ok(Some(settings)) => (settings, false),
+        Ok(None) => (Settings::default(), true),
         Err(error) => {
             cx.set_global(settings::SettingsError(Some(error)));
-            Settings::default()
+            (Settings::default(), false)
         }
     }
-}
-
-#[cfg(target_os = "macos")]
-fn imported() -> Option<Settings> {
-    if paths::DEV {
-        return None;
-    }
-    let (mut settings, state) = import::read()?;
-    if settings.agents.is_empty() {
-        settings.agents = agents::detect_agents();
-    }
-    if settings.shells.is_empty() {
-        settings.shells = agents::detect_shells();
-    }
-    if !paths::state_file().exists() {
-        state.write();
-    }
-    Some(settings)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn imported() -> Option<Settings> {
-    None
 }
 
 fn watch_config(cx: &mut App) {
@@ -208,6 +178,9 @@ fn folder_from_url(url: &str) -> Option<std::path::PathBuf> {
 }
 
 fn open_folders(folders: Vec<std::path::PathBuf>, cx: &mut App) {
+    if !cx.has_global::<store::StoreHandle>() {
+        return;
+    }
     let store = store::store(cx);
     let target = store
         .read(cx)
@@ -224,6 +197,50 @@ fn open_folders(folders: Vec<std::path::PathBuf>, cx: &mut App) {
     });
 }
 
+pub fn launch(cx: &mut App) {
+    let store = store::init(cx);
+    store.update(cx, |store, cx| {
+        store.start_polling(cx);
+        store.start_watching(cx);
+    });
+    cx.on_app_quit(|cx| {
+        let state = store::store(cx).read(cx).snapshot(true, cx);
+        state.write();
+        let sessions: Vec<_> = store::store(cx).read(cx).sessions.values().cloned().collect();
+        for session in sessions {
+            session.update(cx, |session, _| session.kill());
+        }
+        async {}
+    })
+    .detach();
+    let mut open: Vec<String> = store
+        .read(cx)
+        .workspaces
+        .iter()
+        .filter(|workspace| !workspace.closed)
+        .map(|workspace| workspace.id.clone())
+        .collect();
+    if open.is_empty() {
+        let last = store.read(cx).last_workspace.clone();
+        let fallback = store.read(cx).workspaces.first().map(|workspace| workspace.id.clone());
+        open.extend(last.or(fallback));
+    }
+    let last = store.read(cx).last_workspace.clone();
+    open.sort_by_key(|id| Some(id) == last.as_ref());
+    for id in open {
+        window::open(&id, cx);
+    }
+    watch_config(cx);
+    let arguments: Vec<std::path::PathBuf> = std::env::args_os()
+        .skip(1)
+        .map(std::path::PathBuf::from)
+        .filter_map(|path| std::fs::canonicalize(path).ok())
+        .collect();
+    if !arguments.is_empty() {
+        open_folders(arguments, cx);
+    }
+}
+
 fn main() {
     let application = start_application();
     let (opened, mut opened_events) = futures::channel::mpsc::unbounded::<Vec<std::path::PathBuf>>();
@@ -232,7 +249,7 @@ fn main() {
     });
     application.run(|cx: &mut App| {
         load_fonts(cx);
-        let settings = first_launch(cx);
+        let (settings, onboarding) = first_launch(cx);
         cx.set_global(settings);
         ui::init(cx);
         cx.set_prompt_builder(prompt::build);
@@ -242,47 +259,6 @@ fn main() {
         }
         cx.on_action(|_: &Quit, cx| cx.defer(actions::request_quit));
         quit_on_terminate(cx);
-        let store = store::init(cx);
-        store.update(cx, |store, cx| {
-            store.start_polling(cx);
-            store.start_watching(cx);
-        });
-        cx.on_app_quit(|cx| {
-            let state = store::store(cx).read(cx).snapshot(true, cx);
-            state.write();
-            let sessions: Vec<_> = store::store(cx).read(cx).sessions.values().cloned().collect();
-            for session in sessions {
-                session.update(cx, |session, _| session.kill());
-            }
-            async {}
-        })
-        .detach();
-        let mut open: Vec<String> = store
-            .read(cx)
-            .workspaces
-            .iter()
-            .filter(|workspace| !workspace.closed)
-            .map(|workspace| workspace.id.clone())
-            .collect();
-        if open.is_empty() {
-            let last = store.read(cx).last_workspace.clone();
-            let fallback = store.read(cx).workspaces.first().map(|workspace| workspace.id.clone());
-            open.extend(last.or(fallback));
-        }
-        let last = store.read(cx).last_workspace.clone();
-        open.sort_by_key(|id| Some(id) == last.as_ref());
-        for id in open {
-            window::open(&id, cx);
-        }
-        watch_config(cx);
-        let arguments: Vec<std::path::PathBuf> = std::env::args_os()
-            .skip(1)
-            .map(std::path::PathBuf::from)
-            .filter_map(|path| std::fs::canonicalize(path).ok())
-            .collect();
-        if !arguments.is_empty() {
-            open_folders(arguments, cx);
-        }
         cx.spawn(async move |cx| {
             use futures::StreamExt;
             while let Some(folders) = opened_events.next().await {
@@ -292,6 +268,11 @@ fn main() {
         .detach();
         #[cfg(debug_assertions)]
         devtools::start(cx);
+        if onboarding {
+            onboarding::open(cx);
+        } else {
+            launch(cx);
+        }
         cx.activate(true);
     });
 }

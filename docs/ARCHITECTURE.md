@@ -6,7 +6,8 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 
 | File | Role |
 |---|---|
-| `main.rs` | Startup: fonts, settings (first launch detection or import), keymap, store, windows, config file polling, folders from the command line and the OS. |
+| `main.rs` | Startup: fonts, settings, keymap, then onboarding or `launch`: store, windows, config file polling, folders from the command line and the OS. |
+| `onboarding.rs` | Setup window shown when `settings.json` is missing: welcome animation, steps, backup and Nucli 1 import. While `onboarding::Active` is set, `settings::update` changes the global without writing the file. |
 | `store.rs` | `Store` (one global entity): workspaces, projects, tab ids, sessions, last choices, conversations, diff stats. Opening, closing, selecting, restoring tabs and writing `state.json`. |
 | `persist.rs` | Serialized shapes of `state.json`, restored terminal output files. |
 | `status.rs` | One second poll: foreground process, Claude Code status, subagents, branch. Attention, notifications, spinner tick, diff stat refresh, notification clicks. |
@@ -39,7 +40,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `import.rs` | macOS only: one-time import of Nucli 1 preferences. |
 | `notify.rs` | Desktop notifications and the Dock badge. macOS uses `UNUserNotificationCenter`, which needs an app bundle, so an unbundled debug binary posts none. The older `NSUserNotificationCenter` is refused for a bundle identifier that has already used the new API, as Nucli 1 did. |
 | `palette.rs`, `palettes.rs` | Palette view (query, ranked rows, prompt mode) and its item lists. |
-| `font_picker.rs` | Font combobox for terminals and the file view, used by the settings page. Focus returns to whatever had it when the list closes. |
+| `font_picker.rs` | Font combobox for terminals and the file view, used by the settings page and onboarding. Focus returns to whatever had it when the list closes. |
 | `fuzzy.rs` | Fuzzy scorer with match positions. |
 | `switcher.rs` | Tab switcher overlay. |
 | `splits.rs`, `splits_view.rs` | Layout tree and panes. |

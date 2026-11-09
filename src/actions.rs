@@ -780,6 +780,10 @@ pub fn drop_folders(
 }
 
 pub fn request_quit(cx: &mut App) {
+    if !cx.has_global::<store::StoreHandle>() {
+        cx.quit();
+        return;
+    }
     let handles: Vec<_> = store::store(cx).read(cx).windows.values().copied().collect();
     let dirty: Vec<_> = handles
         .into_iter()
