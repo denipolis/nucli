@@ -49,7 +49,8 @@ Every release bundles the license texts of all linked crates in `THIRD_PARTY_NOT
 
 - [Maple Mono NF](https://github.com/subframe7536/maple-font) v7.9 by the Maple Mono Project Authors, SIL Open Font License 1.1, no Reserved Font Name. Files in `assets/fonts/` (Regular, Bold, Italic, BoldItalic), unmodified, from the official `MapleMono-NF.zip` release (SHA-256 `59098b87c895d871635d37680e88000ae2b2b25b55428195b228ec589e35fb89`). The license text is `assets/fonts/OFL.txt`, bundled with every build. The fonts are embedded in the binary and never sold by themselves.
 - The "NF" variant contains the [Nerd Fonts](https://github.com/ryanoasis/nerd-fonts) glyph sets, patched by the font's authors; patched fonts are distributed under SIL OFL 1.1 like the base font. Nucli shows these glyphs as icons through the font only; no icon files are bundled.
-- No system fonts are bundled. Apple fonts (SF Pro, SF Mono) must not be redistributed and are not used.
+- No system fonts are bundled. Apple fonts (SF Pro, SF Mono) must not be redistributed and are never bundled or copied.
+- The user can pick any font installed on their system for terminals and the file view. Nucli only lists the installed font names and asks the system to render the chosen one; it never bundles, copies or redistributes it. Maple Mono NF stays the default and the fallback for missing glyphs.
 
 ## Icons and artwork
 

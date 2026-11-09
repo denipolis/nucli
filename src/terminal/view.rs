@@ -88,11 +88,11 @@ fn dim(color: Rgb, background: Rgb) -> Rgb {
     Rgb { r: mix(color.r, background.r), g: mix(color.g, background.g), b: mix(color.b, background.b) }
 }
 
-pub fn font(bold: bool, italic: bool, ligatures: bool) -> Font {
+pub fn font(family: &str, bold: bool, italic: bool, ligatures: bool) -> Font {
     Font {
-        family: FONT.into(),
+        family: family.to_string().into(),
         features: if ligatures { FontFeatures::default() } else { FontFeatures::disable_ligatures() },
-        fallbacks: None,
+        fallbacks: (family != FONT).then(|| gpui::FontFallbacks::from_fonts(vec![FONT.into()])),
         weight: if bold { FontWeight::BOLD } else { FontWeight::NORMAL },
         style: if italic { FontStyle::Italic } else { FontStyle::Normal },
     }
@@ -101,7 +101,7 @@ pub fn font(bold: bool, italic: bool, ligatures: bool) -> Font {
 pub fn cell_size(window: &Window, cx: &App) -> (Pixels, Size<Pixels>) {
     let settings = settings::get(cx);
     let font_size = px(settings.font_size());
-    let font_id = window.text_system().resolve_font(&font(false, false, true));
+    let font_id = window.text_system().resolve_font(&font(&settings.font, false, false, true));
     let width = window.text_system().advance(font_id, font_size, 'm').map(|size| size.width).unwrap_or(font_size * 0.6);
     let height = (font_size * settings.line_height()).round();
     (font_size, size(width, height))
@@ -176,7 +176,7 @@ impl Element for TerminalElement {
         let rows = (f32::from(bounds.size.height) / f32::from(cell.height)).floor().max(1.0) as usize;
         let grid =
             super::GridSize { cols, rows, cell_width: f32::from(cell.width), cell_height: f32::from(cell.height) };
-        let ligatures = settings::get(cx).ligatures;
+        let (family, ligatures) = (settings::get(cx).font.clone(), settings::get(cx).ligatures);
         let global_theme = ui::theme(cx);
         let lift = self.session.update(cx, |session, _| {
             session.terminal.resize(grid);
@@ -344,7 +344,7 @@ impl Element for TerminalElement {
             if let Some(text) = marked.filter(|text| !text.is_empty()) {
                 let run = TextRun {
                     len: text.len(),
-                    font: font(false, false, ligatures),
+                    font: font(&family, false, false, ligatures),
                     color: theme.text,
                     background_color: Some(theme.elevated),
                     underline: Some(UnderlineStyle { thickness: px(1.0), color: Some(theme.accent), wavy: false }),
@@ -360,7 +360,7 @@ impl Element for TerminalElement {
                     point(bounds.origin.x + cell.width * run.column as f32, bounds.origin.y + cell.height * row as f32);
                 let text_run = TextRun {
                     len: run.text.len(),
-                    font: font(run.bold, run.italic, ligatures),
+                    font: font(&family, run.bold, run.italic, ligatures),
                     color: run.color,
                     background_color: None,
                     underline: run.underline.then_some(UnderlineStyle { thickness: px(1.0), color: None, wavy: false }),

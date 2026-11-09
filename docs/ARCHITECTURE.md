@@ -39,6 +39,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `import.rs` | macOS only: one-time import of Nucli 1 preferences. |
 | `notify.rs` | Desktop notifications and the Dock badge. macOS uses `UNUserNotificationCenter`, which needs an app bundle, so an unbundled debug binary posts none. The older `NSUserNotificationCenter` is refused for a bundle identifier that has already used the new API, as Nucli 1 did. |
 | `palette.rs`, `palettes.rs` | Palette view (query, ranked rows, prompt mode) and its item lists. |
+| `font_picker.rs` | Font combobox for terminals and the file view, used by the settings page. Focus returns to whatever had it when the list closes. |
 | `fuzzy.rs` | Fuzzy scorer with match positions. |
 | `switcher.rs` | Tab switcher overlay. |
 | `splits.rs`, `splits_view.rs` | Layout tree and panes. |

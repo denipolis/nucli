@@ -27,6 +27,7 @@ pub enum CursorShape {
 pub struct Settings {
     pub theme: String,
     pub appearance: Appearance,
+    pub font: String,
     pub font_size: f32,
     pub ui_font_size: f32,
     pub line_height: f32,
@@ -44,6 +45,7 @@ impl Default for Settings {
         Settings {
             theme: "nucli".into(),
             appearance: Appearance::System,
+            font: FONT.into(),
             font_size: 13.0,
             ui_font_size: 13.0,
             line_height: NATURAL_LINE_HEIGHT,

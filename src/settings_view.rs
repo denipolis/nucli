@@ -8,7 +8,7 @@ use crate::agents::{self, AgentProfile, ShellProfile};
 use crate::commands::{self, COMMANDS, Keys};
 use crate::icons;
 use crate::persist::{Selected, SettingsSection};
-use crate::settings::{self, Appearance, CursorShape, FONT, Settings};
+use crate::settings::{self, Appearance, CursorShape, Settings};
 use crate::store;
 use crate::text_input::{InputEvent, TextInput};
 use crate::theme::Theme;
@@ -41,6 +41,7 @@ pub struct SettingsPage {
     pub selected: Option<Selected>,
     filter: Entity<TextInput>,
     recording: Option<(&'static str, Subscription)>,
+    font_picker: Entity<crate::font_picker::FontPicker>,
     agents: Rows,
     shells: Rows,
     subscriptions: Vec<Subscription>,
@@ -88,6 +89,7 @@ pub fn show(
             selected,
             filter,
             recording: None,
+            font_picker: cx.new(|cx| crate::font_picker::FontPicker::new(window, cx)),
             agents: Vec::new(),
             shells: Vec::new(),
             subscriptions: Vec::new(),
@@ -446,11 +448,11 @@ fn appearance(current: &Settings, system_dark: bool, theme: &Theme) -> Vec<AnyEl
     ]
 }
 
-fn terminal(current: &Settings, theme: &Theme) -> Vec<AnyElement> {
+fn terminal(current: &Settings, font: AnyElement, theme: &Theme) -> Vec<AnyElement> {
     let cursors = [("Block", CursorShape::Block), ("Bar", CursorShape::Bar), ("Underline", CursorShape::Underline)];
     vec![
         group(theme)
-            .child(row("Font", "Bundled with Nucli", div().text_color(theme.muted).child(FONT), theme))
+            .child(row("Font", "", div().w(px(300.0)).child(font), theme))
             .child(row(
                 "Font size",
                 "",
@@ -724,7 +726,9 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
     let body = match (section, &view.settings) {
         (SettingsSection::General, _) => general(&current, &theme),
         (SettingsSection::Appearance, _) => appearance(&current, system_dark, &theme),
-        (SettingsSection::Terminal, _) => terminal(&current, &theme),
+        (SettingsSection::Terminal, Some(page)) => {
+            terminal(&current, page.font_picker.clone().into_any_element(), &theme)
+        }
         (SettingsSection::Agents, Some(page)) => agents_page(page, &current, &theme),
         (SettingsSection::Shells, Some(page)) => shells_page(page, &current, &theme),
         (SettingsSection::Keybindings, _) => keybindings(view, &theme, cx),

@@ -21,7 +21,7 @@ The full behavior is specified in `docs/SPEC.md`. Keep it in sync with the code.
 ## Look
 
 - Square corners everywhere. No rounded rectangles, shadows, blur, glass or gradients.
-- One monospace font for the whole UI and the terminal: the bundled Maple Mono NF. Icons are its Nerd Font glyphs, never images.
+- One monospace font for the whole UI: the bundled Maple Mono NF. Terminals and the file view default to it; the user can pick any installed font for them. Icons are Maple Mono NF's Nerd Font glyphs, never images.
 - Flat panes separated by 1px rules. Dense rows on a character grid.
 - Tabs are a glyph and a name (Files, Changes, History); the active tab, the selected row and mode labels are inverted blocks.
 - All colors come from the active theme. Retro, terminal-native feel: block cursor, character spinners, bracketed key hints like `[enter]`.

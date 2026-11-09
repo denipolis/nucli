@@ -18,7 +18,7 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 ## Look
 
 - Square corners, 1px rules between panes, no shadows or blur.
-- Maple Mono NF everywhere, at two sizes: `ui_font_size` for chrome, `font_size` for terminals and the file view.
+- The bundled Maple Mono NF for the whole interface at `ui_font_size`. Terminals and the file view use `font` (Maple Mono NF by default, or any installed font, with Maple Mono NF as the fallback for missing glyphs) at `font_size`.
 - Icons are Nerd Font glyphs, colored by the theme. File types and known agents get their own glyph and color.
 - Sidebar and panel tabs are a glyph and a name. The active tab, the selected row, focused list items and mode labels are inverted: accent background, background-colored text.
 - Key hints in brackets: `[enter] open  [esc] close`.
@@ -242,12 +242,12 @@ The row is hidden for projects and settings. An invalid settings or keybindings 
 - `⌘,` shows the settings page in the viewport, with vertical tabs by category. The last category is remembered. Every change applies at once and is written to the same files. `esc` or selecting a tab or file closes it.
   - **General**: reopening tabs, notifications, link to `settings.json`.
   - **Appearance**: theme cards, system, light or dark mode, interface size.
-  - **Terminal**: font size, line height, ligatures, cursor.
+  - **Terminal**: font, font size, line height, ligatures, cursor. The font is a combobox: Maple Mono NF first, then every installed font by name, each row with a sample in that font; typing filters, arrows and `enter` pick, `esc` or clicking outside closes.
   - **Agents**: name, executable, arguments and config folder of each profile, add, remove, detect. An agent's `env` and `theme` are only in the file.
   - **Shells**: name and path, add, remove, detect.
   - **Keybindings**: every command with its key, a filter, and a link to `keybindings.json`. Click a key and press the new one (`esc` cancels); a changed key has a reset button; a key used twice in the same context turns red. "Open Keybindings" opens this category.
 - "Open Settings File" and "Open Keybindings File" open the JSON files in the file view. Both reload when saved, from Nucli or any editor. Invalid JSON keeps the previous settings and shows the error on the status row.
-- `settings.json` keys: `theme`, `appearance` (`system`, `light`, `dark`), `font_size`, `ui_font_size`, `line_height`, `cursor` (`block`, `bar`, `underline`), `cursor_blink`, `ligatures`, `restore_tabs`, `notifications`, `agents`, `shells`. Commands that change settings (theme, font size, detection, notifications) rewrite the file with all keys.
+- `settings.json` keys: `theme`, `appearance` (`system`, `light`, `dark`), `font`, `font_size`, `ui_font_size`, `line_height`, `cursor` (`block`, `bar`, `underline`), `cursor_blink`, `ligatures`, `restore_tabs`, `notifications`, `agents`, `shells`. Commands that change settings (theme, font size, detection, notifications) rewrite the file with all keys.
 - `keybindings.json` maps a key to a command name, e.g. `{"cmd-t": "new_shell", "cmd-shift-d": null}`; `null` removes a default. The palette shows every command's name and current key.
 - **Themes**: Nucli (dark and light pairs following the system), Nucli Amber and Nucli Phosphor (monochrome dark), and Vitesse Dark, Dark Soft, Black, Light, Light Soft. A theme sets every UI color, the 16 terminal colors and the syntax colors. An automatic theme follows the system appearance; `appearance` can force its light or dark side.
 - **Shells**: `{name, path}` list. Filled on first launch from the login shell and `/etc/shells` (Windows: PowerShell, Windows PowerShell, Command Prompt, Git Bash and WSL when installed); "Detect Shells" adds missing ones.

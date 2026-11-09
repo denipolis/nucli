@@ -716,11 +716,11 @@ impl Editor {
         Pos { row, col: line.text.len() }
     }
 
-    fn row_runs(&self, index: usize, theme: &Theme, ligatures: bool) -> Vec<TextRun> {
+    fn row_runs(&self, index: usize, theme: &Theme, family: &str, ligatures: bool) -> Vec<TextRun> {
         let row = &self.rows[index];
         let base = TextRun {
             len: 0,
-            font: font(false, false, ligatures),
+            font: font(family, false, false, ligatures),
             color: theme.text,
             background_color: None,
             underline: None,
@@ -768,7 +768,7 @@ impl Render for Editor {
         let digits = self.rows.iter().filter_map(|row| row.new.or(row.old)).max().unwrap_or(1).to_string().len().max(3);
         let selection = self.selection();
         let cursor = self.cursor;
-        let ligatures = settings::get(cx).ligatures;
+        let (family, ligatures) = (settings::get(cx).font.clone(), settings::get(cx).ligatures);
         let list = uniform_list(
             "editor-rows",
             count,
@@ -822,7 +822,7 @@ impl Render for Editor {
                         let caret = (index == cursor.row && focused)
                             .then(|| text_width(&row.text[..cursor.col.min(row.text.len())]));
                         let text = SharedString::from(row.text.clone());
-                        let runs = editor.row_runs(index, &theme, ligatures);
+                        let runs = editor.row_runs(index, &theme, &family, ligatures);
                         let this = cx.entity();
                         let marked = if index == cursor.row { editor.marked.clone() } else { None };
                         div()
@@ -966,7 +966,7 @@ impl Render for Editor {
             .track_focus(&self.focus)
             .size_full()
             .bg(theme.background)
-            .font_family(settings::FONT)
+            .font_family(settings::get(cx).font.clone())
             .text_size(font_size)
             .line_height(cell.height)
             .on_mouse_up(MouseButton::Left, cx.listener(|editor, _, _, _| editor.selecting = false))
