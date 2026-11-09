@@ -757,6 +757,7 @@ fn char_width(character: char) -> f32 {
 }
 
 const SCROLLBAR: f32 = 8.0;
+const SCROLLBAR_GAP: f32 = 4.0;
 
 fn text_width(text: &str) -> f32 {
     text.chars().map(char_width).sum()
@@ -988,7 +989,11 @@ impl Render for Editor {
         .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
         .with_width_from_item(Some(widest))
         .track_scroll(self.scroll.clone())
-        .size_full();
+        .absolute()
+        .top_0()
+        .left_0()
+        .right(px(SCROLLBAR))
+        .bottom(px(SCROLLBAR + SCROLLBAR_GAP));
         div()
             .id("editor")
             .key_context("FileView")
@@ -1210,7 +1215,7 @@ impl Editor {
             );
         Some(match axis {
             Axis::Vertical => thumb.top(start).right_0().w(px(SCROLLBAR)).h(length),
-            Axis::Horizontal => thumb.left(start).bottom(px(SCROLLBAR / 2.0)).h(px(SCROLLBAR)).w(length),
+            Axis::Horizontal => thumb.left(start).bottom(px(SCROLLBAR_GAP)).h(px(SCROLLBAR)).w(length),
         })
     }
 
