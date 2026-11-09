@@ -5,7 +5,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, Bounds, ClipboardItem, Context, ElementInputHandler, EntityInputHandler, FocusHandle, Hsla,
+    AnyElement, App, Axis, Bounds, ClipboardItem, Context, ElementInputHandler, EntityInputHandler, FocusHandle, Hsla,
     InteractiveElement, IntoElement, KeyBinding, ListHorizontalSizingBehavior, MouseButton, ParentElement, Pixels,
     Point, Render, ScrollStrategy, SharedString, Styled, StyledText, TextRun, UTF16Selection, UniformListScrollHandle,
     Window, actions, canvas, div, point, px, size, uniform_list,
@@ -290,6 +290,7 @@ pub struct Editor {
     last_edit: Option<Instant>,
     pub scroll: UniformListScrollHandle,
     selecting: bool,
+    scroll_drag: Option<(Axis, Pixels, Pixels)>,
     code_origin: Point<Pixels>,
     marked: Option<String>,
     pending_line: Option<usize>,
@@ -329,6 +330,7 @@ impl Editor {
             last_edit: None,
             scroll: UniformListScrollHandle::new(),
             selecting: false,
+            scroll_drag: None,
             code_origin: point(px(0.0), px(0.0)),
             marked: None,
             pending_line: None,
@@ -754,8 +756,23 @@ fn char_width(character: char) -> f32 {
     if wide { 2.0 } else { 1.0 }
 }
 
+const SCROLLBAR: f32 = 8.0;
+
 fn text_width(text: &str) -> f32 {
     text.chars().map(char_width).sum()
+}
+
+fn widest_row(rows: &[Row]) -> usize {
+    let mut widest = (0, 0.0);
+    for (index, row) in rows.iter().enumerate() {
+        if row.text.len() as f32 > widest.1 {
+            let width = text_width(&row.text);
+            if width > widest.1 {
+                widest = (index, width);
+            }
+        }
+    }
+    widest.0
 }
 
 impl Render for Editor {
@@ -768,12 +785,16 @@ impl Render for Editor {
         let digits = self.rows.iter().filter_map(|row| row.new.or(row.old)).max().unwrap_or(1).to_string().len().max(3);
         let selection = self.selection();
         let cursor = self.cursor;
+        let widest = widest_row(&self.rows);
+        let columns = if two_columns { 2.0 } else { 1.0 };
+        let gutter = cell.width * (columns * (digits as f32 + 1.0) + 3.0);
         let (family, ligatures) = (settings::get(cx).font.clone(), settings::get(cx).ligatures);
         let list = uniform_list(
             "editor-rows",
             count,
             cx.processor(move |editor: &mut Editor, range: Range<usize>, _window, cx| {
                 let theme = ui::theme(cx);
+                let scroll_x = -editor.scroll.0.borrow().base_handle.offset().x;
                 range
                     .map(|index| {
                         let row = &editor.rows[index];
@@ -827,6 +848,7 @@ impl Render for Editor {
                         let marked = if index == cursor.row { editor.marked.clone() } else { None };
                         div()
                             .id(("editor-row", index))
+                            .relative()
                             .h(cell.height)
                             .flex()
                             .flex_row()
@@ -865,31 +887,10 @@ impl Render for Editor {
                             }))
                             .child(
                                 div()
-                                    .flex()
-                                    .flex_none()
-                                    .gap(cell.width)
-                                    .pl(cell.width)
-                                    .pr(cell.width)
-                                    .text_color(if index == cursor.row { theme.muted } else { theme.faint })
-                                    .when(two_columns, |this| {
-                                        this.child(
-                                            div()
-                                                .w(cell.width * digits as f32)
-                                                .flex()
-                                                .justify_end()
-                                                .child(number(row.old)),
-                                        )
-                                    })
-                                    .child(
-                                        div().w(cell.width * digits as f32).flex().justify_end().child(number(row.new)),
-                                    )
-                                    .child(div().w(cell.width).child(marker)),
-                            )
-                            .child(
-                                div()
                                     .relative()
                                     .flex_1()
                                     .min_w_0()
+                                    .ml(gutter)
                                     .text_size(font_size)
                                     .child(
                                         canvas(
@@ -952,12 +953,40 @@ impl Render for Editor {
                                         )
                                     }),
                             )
+                            .child(
+                                div()
+                                    .absolute()
+                                    .top_0()
+                                    .bottom_0()
+                                    .left(scroll_x)
+                                    .w(gutter)
+                                    .bg(background.unwrap_or(theme.background))
+                                    .flex()
+                                    .gap(cell.width)
+                                    .pl(cell.width)
+                                    .pr(cell.width)
+                                    .text_color(if index == cursor.row { theme.muted } else { theme.faint })
+                                    .when(two_columns, |this| {
+                                        this.child(
+                                            div()
+                                                .w(cell.width * digits as f32)
+                                                .flex()
+                                                .justify_end()
+                                                .child(number(row.old)),
+                                        )
+                                    })
+                                    .child(
+                                        div().w(cell.width * digits as f32).flex().justify_end().child(number(row.new)),
+                                    )
+                                    .child(div().w(cell.width).child(marker)),
+                            )
                             .into_any_element()
                     })
                     .collect::<Vec<AnyElement>>()
             }),
         )
         .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
+        .with_width_from_item(Some(widest))
         .track_scroll(self.scroll.clone())
         .size_full();
         div()
@@ -969,8 +998,9 @@ impl Render for Editor {
             .font_family(settings::get(cx).font.clone())
             .text_size(font_size)
             .line_height(cell.height)
-            .on_mouse_up(MouseButton::Left, cx.listener(|editor, _, _, _| editor.selecting = false))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(|editor, _, _, _| editor.selecting = false))
+            .on_mouse_up(MouseButton::Left, cx.listener(|editor, _, _, _| editor.end_drag()))
+            .on_mouse_up_out(MouseButton::Left, cx.listener(|editor, _, _, _| editor.end_drag()))
+            .on_mouse_move(cx.listener(Self::drag_scrollbar))
             .relative()
             .on_action(cx.listener(|editor, _: &commands::Find, window, cx| editor.open_find(false, window, cx)))
             .on_action(cx.listener(|editor, _: &commands::Replace, window, cx| editor.open_find(true, window, cx)))
@@ -1118,6 +1148,8 @@ impl Render for Editor {
             .on_action(cx.listener(|editor, _: &commands::Undo, _, cx| editor.history(true, cx)))
             .on_action(cx.listener(|editor, _: &commands::Redo, _, cx| editor.history(false, cx)))
             .child(list)
+            .children(self.scrollbar(Axis::Vertical, &theme, cx))
+            .children(self.scrollbar(Axis::Horizontal, &theme, cx))
             .children(self.find_bar(cx))
             .child(
                 canvas(|_, _, _| {}, {
@@ -1134,6 +1166,76 @@ impl Render for Editor {
 }
 
 impl Editor {
+    fn end_drag(&mut self) {
+        self.selecting = false;
+        self.scroll_drag = None;
+    }
+
+    fn scroll_extent(&self, axis: Axis) -> Option<(Pixels, Pixels, Pixels)> {
+        let state = self.scroll.0.borrow();
+        let size = state.last_item_size?;
+        let offset = state.base_handle.offset();
+        let (view, content, offset) = match axis {
+            Axis::Vertical => (size.item.height, size.contents.height, offset.y),
+            Axis::Horizontal => (size.item.width, size.contents.width, offset.x),
+        };
+        (content > view).then_some((view, content, offset))
+    }
+
+    fn thumb(&self, axis: Axis) -> Option<(Pixels, Pixels)> {
+        let (view, content, offset) = self.scroll_extent(axis)?;
+        let length = (view * (view / content)).max(px(24.0)).min(view);
+        let start = (view - length) * (-offset / (content - view)).clamp(0.0, 1.0);
+        Some((start, length))
+    }
+
+    fn scrollbar(&self, axis: Axis, theme: &Theme, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
+        let (start, length) = self.thumb(axis)?;
+        let dragging = self.scroll_drag.is_some_and(|(dragged, ..)| dragged == axis);
+        let thumb = div()
+            .id(if axis == Axis::Vertical { "scrollbar-vertical" } else { "scrollbar-horizontal" })
+            .absolute()
+            .occlude()
+            .bg(if dragging { theme.faint } else { theme.border })
+            .hover(|style| style.bg(theme.faint))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |editor, event: &gpui::MouseDownEvent, _, cx| {
+                    let Some((_, _, offset)) = editor.scroll_extent(axis) else { return };
+                    let mouse = if axis == Axis::Vertical { event.position.y } else { event.position.x };
+                    editor.scroll_drag = Some((axis, mouse, offset));
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            );
+        Some(match axis {
+            Axis::Vertical => thumb.top(start).right_0().w(px(SCROLLBAR)).h(length),
+            Axis::Horizontal => thumb.left(start).bottom(px(SCROLLBAR / 2.0)).h(px(SCROLLBAR)).w(length),
+        })
+    }
+
+    fn drag_scrollbar(&mut self, event: &gpui::MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let Some((axis, from, start)) = self.scroll_drag else { return };
+        if event.pressed_button != Some(MouseButton::Left) {
+            self.scroll_drag = None;
+            return;
+        }
+        let (Some((view, content, _)), Some((_, length))) = (self.scroll_extent(axis), self.thumb(axis)) else {
+            return;
+        };
+        let mouse = if axis == Axis::Vertical { event.position.y } else { event.position.x };
+        let travel = (view - length).max(px(1.0));
+        let moved = (content - view) * ((mouse - from) / travel);
+        let value = (start - moved).clamp(view - content, px(0.0));
+        let handle = &self.scroll.0.borrow().base_handle;
+        let offset = handle.offset();
+        handle.set_offset(match axis {
+            Axis::Vertical => point(offset.x, value),
+            Axis::Horizontal => point(value, offset.y),
+        });
+        cx.notify();
+    }
+
     fn delete_with(&mut self, target: impl Fn(&Editor, Pos) -> Pos, cx: &mut Context<Self>) {
         if !self.is_editable() || self.rows.is_empty() {
             return;

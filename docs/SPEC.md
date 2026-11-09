@@ -207,6 +207,7 @@ Tabs for Files, Changes and History (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing
 - Opens in the viewport over the project's tabs. A tab strip lists the project's open files (`⌂` goes back to the overview, `×` or middle-click closes). Open files and the active file are remembered per project. Opening a file inserts its tab after the active one.
 - A path bar under the tab strip: breadcrumbs of the relative path, and buttons for previous/next change, Open in Default App, Open With…, Reveal. The file's data is on the status chips.
 - Changed files show the whole file with added lines on a green background and removed lines on a red background, old and new line numbers in the gutter. `F7` / `⇧F7` jump between changes; the first open of a changed file jumps to its first change.
+- Long lines do not wrap: the text scrolls horizontally while the gutter stays in place. Vertical and horizontal scrollbars appear when the file overflows and can be dragged.
 - Syntax highlighting with tree-sitter grammars for common languages; other files are plain text.
 - Images (PNG, JPEG, GIF, WebP, BMP, SVG, ICO) are shown fit to the viewport, never upscaled, on a checkerboard, with pixel and file size. Binary files show their size and an Open in Default App button.
 - **Editing**: working tree files are editable in place, diffs included. Removed lines cannot be typed into. `⌘S` saves; the tab shows `●` while unsaved. Undo/redo per file. `enter` keeps the indentation. Closing an unsaved tab asks Save / Don't Save / Cancel; quitting and closing a workspace with unsaved files ask first.
