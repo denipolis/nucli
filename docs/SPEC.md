@@ -110,6 +110,7 @@ An agent profile is `{name, executable, arguments, config_dir, env, theme}` in `
 
 ### Conversations
 
+- Resuming a conversation that a running tab of the window already runs selects that tab instead of opening a second one. This applies to every resume entry point: pickers, palette, project overview and History.
 - New Claude and pi tabs get a fresh `--session-id <uuid>`; resuming passes `--resume <id>` (Claude), `--session-id <id>` (pi) or `resume <id>` (Codex). The id of a new Codex tab is taken from the newest Codex session file for the project when the tab is saved.
 - History is read from the agents' own files, never written: Claude `<config>/projects/<encoded cwd>/*.jsonl`, Codex `<config>/sessions/**/*.jsonl`, pi `<config>/sessions/--<cwd>--/*.jsonl`. Titles: Claude's custom title, else its AI title, else the first user prompt; Codex and pi the first user prompt.
 - Titles, ids and folders are cached by path and modification time in the cache folder, so only new files are read.

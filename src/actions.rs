@@ -41,6 +41,19 @@ pub fn launch(
     window: &mut Window,
     cx: &mut Context<WorkspaceView>,
 ) {
+    if let Launcher::Resume(conversation) = &launcher
+        && let Some(id) = view.state(cx).and_then(|state| {
+            state.ordered_tabs().into_iter().find(|id| {
+                view.store(cx).session(id).is_some_and(|session| {
+                    let session = session.read(cx);
+                    session.is_running() && session.conversation.as_deref() == Some(conversation.id.as_str())
+                })
+            })
+        })
+    {
+        view.select_tab(&id, window, cx);
+        return;
+    }
     let workspace = view.workspace.clone();
     let project = project.to_path_buf();
     let id = store::store(cx).update(cx, |store, cx| store.open_tab(&workspace, &project, launcher, None, cx));
