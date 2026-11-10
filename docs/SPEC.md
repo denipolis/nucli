@@ -157,10 +157,13 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 ## Splits
 
 - `⌘D` / `⇧⌘D` open a new tab (the last used agent or shell) to the right of / below the focused pane. `⌥⌘W` closes the split; the tab keeps running in the sidebar.
-- Dropping a sidebar tab on the viewport or a pane: the outer quarter of each edge splits on that side, the center replaces the pane.
+- Only tabs of the same project split together. A tab without a project that joins a project's split moves into that project. Panel terminals do not split.
+- Dragging a tab over a pane (from the sidebar or a pane header) previews the resulting layout: the new pane is filled and labeled with its title and the action (`split right`, `swap`, `replace`, plus `· moves to <project>` for a tab without a project), the other panes are outlined. The outer quarter of each edge splits that pane on that side; the center replaces the pane, or swaps the two panes when both are in the split. A band along the outer edge of the whole split places the tab beside all panes at once (`bottom, full width`), so `w1 | w2` over `w3` is one drag. Over a tab of another project the pane turns red and the drop does nothing.
+- In a split every pane has a one-line header: glyph, title, status and `×`. The focused pane's header is an inverted block. Dragging a header moves the pane; `×` removes it from the split and the tab keeps running.
 - `⌥⌘←→↑↓` move focus. Clicking a pane focuses it. Unfocused panes are dimmed.
-- Tabs in a split form a group, marked in the sidebar with a joined bar. Selecting a tab of the group focuses its pane; selecting another tab shows that tab alone and keeps the group, which comes back when one of its tabs is selected.
-- Context menu of a grouped tab: Remove from Split, Unsplit All.
+- Tabs in a split form a group. The sidebar keeps a group's tabs next to each other in layout order and joins them with a bracket, in the accent color while the group is shown. Selecting a tab of the group focuses its pane; selecting another tab shows that tab alone and keeps the group, which comes back when one of its tabs is selected.
+- Hovering a tab row in the sidebar shows a split button (adds the tab next to the focused pane, along the pane's longer side) or, on a grouped tab, an unsplit button. `⌘`-click on a row does the same. Dragging a grouped tab within its group reorders the panes; dragging it out of the group removes it from the split.
+- Context menu of a tab: Split with Shown Tab, Remove from Split, Unsplit All.
 - Splits are saved with the workspace.
 
 ## Sidebar
@@ -174,7 +177,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 - **Workspace popup** at the bottom: all workspaces (closed ones marked), New, Rename, Delete.
 - **`+` button**: New Shell, New Agent, New Tab…, New Tab Without Project…, New Terminal, Open Project….
 - Clicking empty space deselects: empty viewport with key hints and "or drop a folder here".
-- Context menus: project (New Terminal, New Tab…, Rename, Color, Move to Workspace, Reveal, Close Project), tab (Rename, Color, Remove from Split, Unsplit All, Move Out of Project, Close Tab), empty space (Open Project, Rename Workspace, New Workspace, Delete Workspace).
+- Context menus: project (New Terminal, New Tab…, Rename, Color, Move to Workspace, Reveal, Close Project), tab (Rename, Color, Split with Shown Tab, Remove from Split, Unsplit All, Move Out of Project, Close Tab), empty space (Open Project, Rename Workspace, New Workspace, Delete Workspace).
 
 ## Panel
 
@@ -205,7 +208,8 @@ Tabs for Files, Changes and History (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing
 
 ## File view
 
-- Opens in the viewport over the project's tabs. A tab strip lists the project's open files (`⌂` goes back to the overview, `×` or middle-click closes). Open files and the active file are remembered per project. Opening a file inserts its tab after the active one.
+- Opens in the viewport over the project's tabs. A tab strip lists the open files (`⌂` goes back to the overview, `×` or middle-click closes). Open files, split groups and the active file are remembered per project. Opening a file inserts its tab after the active one.
+- **Splits**: the file view splits like the terminals, into groups that each have a tab strip and path bar. Dragging a file tab onto an edge quarter of a group opens it in a new group on that side, onto the band along the outer edge of the whole view places it beside all groups, onto a group's middle or a tab strip moves it into that group; a preview shows the resulting layout while dragging. `⌘D` / `⇧⌘D` move the active file into a new group to the right / below, `⌥⌘W` merges the focused group into its neighbor, `⌥⌘←→↑↓` move focus. A file is open in one group at a time; opening it again focuses it there. Closing a group's last tab removes the group. The focused group's active tab is an inverted block, the others are muted.
 - A path bar under the tab strip: breadcrumbs of the relative path, and buttons for previous/next change, Open in Default App, Open With…, Reveal. The file's data is on the status chips.
 - Changed files show the whole file with added lines on a green background and removed lines on a red background, old and new line numbers in the gutter. `F7` / `⇧F7` jump between changes; the first open of a changed file jumps to its first change.
 - Long lines do not wrap: the text scrolls horizontally while the gutter stays in place. Vertical and horizontal scrollbars appear when the file overflows and can be dragged.
@@ -247,17 +251,19 @@ In the file view the same row shows data only: line and column, language with it
 
 The row is hidden for projects and settings. An invalid settings or keybindings file shows its error in red on this row, also in those views.
 
+By default the row follows the focused pane or file group. With `status_chips` set to `every_pane` (Settings, Appearance, Status chips) every pane of a split and every file group has its own row, and the error gets a row of its own.
+
 ## Settings
 
 - `⌘,` shows the settings page in the viewport, with vertical tabs by category. The last category is remembered. Every change applies at once and is written to the same files. `esc` or selecting a tab or file closes it.
   - **General**: reopening tabs, notifications, link to `settings.json`.
-  - **Appearance**: theme cards, Import… and Open folder for custom themes, system, light or dark mode, interface size.
+  - **Appearance**: theme cards, Import… and Open folder for custom themes, system, light or dark mode, status chips under the focused pane or every pane, interface size.
   - **Terminal**: font, font size, line height, ligatures, cursor. The font is a combobox: Maple Mono NF first, then every installed font by name, each row with a sample in that font; typing filters, arrows and `enter` pick, `esc` or clicking outside closes.
   - **Agents**: name, executable, arguments and config folder of each profile, add, remove, detect. An agent's `env` and `theme` are only in the file.
   - **Shells**: name and path, add, remove, detect.
   - **Keybindings**: every command with its key, a filter, and a link to `keybindings.json`. Click a key and press the new one (`esc` cancels); a changed key has a reset button; a key used twice in the same context turns red. "Open Keybindings" opens this category.
 - "Open Settings File" and "Open Keybindings File" open the JSON files in the file view. Both reload when saved, from Nucli or any editor. Invalid JSON keeps the previous settings and shows the error on the status row.
-- `settings.json` keys: `theme`, `appearance` (`system`, `light`, `dark`), `font`, `font_size`, `ui_font_size`, `line_height`, `cursor` (`block`, `bar`, `underline`), `cursor_blink`, `ligatures`, `restore_tabs`, `notifications`, `agents`, `shells`. Commands that change settings (theme, font size, detection, notifications) rewrite the file with all keys.
+- `settings.json` keys: `theme`, `appearance` (`system`, `light`, `dark`), `font`, `font_size`, `ui_font_size`, `line_height`, `cursor` (`block`, `bar`, `underline`), `cursor_blink`, `ligatures`, `restore_tabs`, `notifications`, `status_chips` (`focused`, `every_pane`), `agents`, `shells`. Commands that change settings (theme, font size, detection, notifications) rewrite the file with all keys.
 - `keybindings.json` maps a key to a command name, e.g. `{"cmd-t": "new_shell", "cmd-shift-d": null}`; `null` removes a default. The palette shows every command's name and current key.
 - **Themes**: Nucli (dark and light pairs following the system), Nucli Amber and Nucli Phosphor (monochrome dark), and Vitesse Dark, Dark Soft, Black, Light, Light Soft. A theme sets every UI color, the 16 terminal colors and the syntax colors. An automatic theme follows the system appearance; `appearance` can force its light or dark side.
 - **Custom themes**: every `*.json` file in the `themes` folder next to `settings.json` is a theme `{name, base, dark, background, foreground, accent, selection, ansi, syntax}`. Every key is optional. `name` defaults to the file name without `.json`; it is also the id that `theme` and an agent's `theme` refer to. `base` is a built-in single theme id (e.g. `vitesse-dark`, not the `vitesse` pair) whose colors fill every missing key; without it the base is Nucli Dark, or Nucli Light when `dark` is `false`. Colors are `#rrggbb`. `ansi` lists the 16 terminal colors; `syntax` lists 8 colors in this order: keyword, string, number, comment, type, function, constant, attribute. The other UI colors are derived from these, as for the built-in themes. Custom themes appear after the built-in ones in Select Theme, the settings page and onboarding, and reload live when a file is added, changed or removed. A broken file is skipped and its error shows on the status row. **Import Theme…** (command palette and the Appearance page) validates the chosen JSON files, copies them into the folder (same name overwrites) and selects the last one; **Open Themes Folder** shows the folder in the file manager.
@@ -267,7 +273,7 @@ The row is hidden for projects and settings. An invalid settings or keybindings 
 
 - When `restore_tabs` is on, quitting, also when the app is asked to terminate on Linux and macOS, saves every tab: kind, profile or shell, name, color, conversation id, folder, and the last 5000 lines of terminal output.
 - On launch tabs reopen without stealing focus, then each window selects its saved tab. Agents resume their conversation (a Claude conversation whose file is gone starts fresh). Shells start in their last folder and show the previous output dimmed above a `── restored ──` line.
-- Per project: open files, active file, active tab, recent files, last used launcher. Per window: selection, splits, sidebar and panel state, size and position.
+- Per project: open files and their split groups, active file, active tab, recent files, last used launcher. Per window: selection, splits, sidebar and panel state, size and position.
 
 ## Files and folders
 

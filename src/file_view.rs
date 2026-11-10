@@ -12,15 +12,22 @@ use crate::editor::{Content, Editor};
 use crate::icons;
 use crate::menu::{self, Item};
 use crate::persist::Selected;
-use crate::store;
+use crate::splits::{Direction, Rect, Zone};
+use crate::splits_view::DropTarget;
+use crate::store::{self, FilePlace};
 use crate::ui;
 use crate::window::WorkspaceView;
 
 #[derive(Default)]
 pub struct Files {
     pub open: HashMap<String, Entity<Editor>>,
-    pub tabs: gpui::ScrollHandle,
-    pub revealed_tab: Option<String>,
+    pub strips: HashMap<String, (gpui::ScrollHandle, Option<String>)>,
+}
+
+#[derive(Clone)]
+pub struct DraggedFile {
+    pub file: String,
+    pub title: String,
 }
 
 const COMMIT_MARK: &str = "@@";
@@ -72,7 +79,7 @@ pub fn set_active_language(view: &WorkspaceView, language: Option<&'static str>,
     let workspace = view.workspace.clone();
     store::store(cx).update(cx, |store, cx| {
         if let Some(project) = store.workspace_mut(&workspace).and_then(|state| state.current_project_mut())
-            && let Some(file) = project.active_file.clone()
+            && let Some(file) = project.active_file().cloned()
         {
             match language {
                 Some(language) => project.languages.insert(file, language.to_string()),
@@ -85,7 +92,7 @@ pub fn set_active_language(view: &WorkspaceView, language: Option<&'static str>,
 
 pub fn active_editor(view: &WorkspaceView, cx: &App) -> Option<Entity<Editor>> {
     let project = view.state(cx)?.current_project()?;
-    let file = project.active_file.as_ref()?;
+    let file = project.active_file()?;
     view.files.open.get(&key(&project.path, file)).cloned()
 }
 
@@ -93,7 +100,7 @@ pub fn focus_active(view: &mut WorkspaceView, window: &mut Window, cx: &mut Cont
     let Some((path, file)) = view
         .state(cx)
         .and_then(|state| state.current_project())
-        .and_then(|project| project.active_file.clone().map(|file| (project.path.clone(), file)))
+        .and_then(|project| project.active_file().cloned().map(|file| (project.path.clone(), file)))
     else {
         return;
     };
@@ -117,12 +124,7 @@ pub fn open_file(
     store::store(cx).update(cx, |store, cx| {
         let Some(state) = store.workspace_mut(&workspace) else { return };
         let Some(target) = state.project_mut(&path) else { return };
-        if !target.open_files.contains(&name) {
-            let index =
-                target.active_file.as_ref().and_then(|active| target.open_files.iter().position(|file| file == active));
-            target.open_files.insert(index.map_or(target.open_files.len(), |index| index + 1), name.clone());
-        }
-        target.active_file = Some(name.clone());
+        target.show_file(&name);
         target.file_shown = true;
         if !name.contains(COMMIT_MARK) {
             target.recent_files.retain(|file| *file != name);
@@ -185,15 +187,9 @@ fn remove_tab(
     let (path, name) = (project.to_path_buf(), file.to_string());
     view.files.open.remove(&key(project, file));
     store::store(cx).update(cx, |store, cx| {
-        if let Some(target) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path))
-            && let Some(index) = target.open_files.iter().position(|open| *open == name)
-        {
-            target.open_files.remove(index);
-            if target.active_file.as_deref() == Some(name.as_str()) {
-                target.active_file =
-                    target.open_files.get(index).or_else(|| target.open_files.get(index.wrapping_sub(1))).cloned();
-                target.file_shown = target.file_shown && target.active_file.is_some();
-            }
+        if let Some(target) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path)) {
+            target.close_file(&name);
+            target.file_shown = target.file_shown && target.active_file().is_some();
         }
         store.changed(cx);
     });
@@ -244,7 +240,7 @@ pub fn close_active(view: &mut WorkspaceView, window: &mut Window, cx: &mut Cont
     let Some((path, file)) = view
         .state(cx)
         .and_then(|state| state.current_project())
-        .and_then(|project| project.active_file.clone().map(|file| (project.path.clone(), file)))
+        .and_then(|project| project.active_file().cloned().map(|file| (project.path.clone(), file)))
     else {
         return;
     };
@@ -277,11 +273,10 @@ pub struct FileStatus {
     pub commit: Option<String>,
 }
 
-pub fn file_status(view: &WorkspaceView, cx: &App) -> Option<FileStatus> {
-    let editor = active_editor(view, cx)?;
+pub fn file_status(editor: &Entity<Editor>, cx: &App) -> FileStatus {
     let editor = editor.read(cx);
     let text = editor.content == Content::Text;
-    Some(FileStatus {
+    FileStatus {
         position: text.then(|| editor.position_label()),
         language: text.then(|| editor.language_label()),
         icon_file: match editor.language {
@@ -293,7 +288,7 @@ pub fn file_status(view: &WorkspaceView, cx: &App) -> Option<FileStatus> {
         added: editor.added,
         removed: editor.removed,
         commit: editor.commit.clone(),
-    })
+    }
 }
 
 pub fn any_dirty(view: &WorkspaceView, cx: &App) -> bool {
@@ -362,64 +357,86 @@ pub fn open_with_menu(view: &WorkspaceView, file: PathBuf, cx: &App) -> Vec<Item
     items
 }
 
+#[allow(clippy::too_many_arguments)]
 fn tab_strip(
     view: &mut WorkspaceView,
     project: &Path,
+    group: &str,
     files: &[String],
     active: Option<&str>,
+    (focused, home): (bool, bool),
     cx: &mut Context<WorkspaceView>,
-) -> impl IntoElement {
+) -> AnyElement {
     let theme = ui::theme(cx);
-    if view.files.revealed_tab.as_deref() != active {
+    let (handle, revealed) = view.files.strips.entry(group.to_string()).or_default();
+    if revealed.as_deref() != active {
         if let Some(index) = active.and_then(|active| files.iter().position(|file| file == active)) {
-            view.files.tabs.scroll_to_item(index + 1);
+            handle.scroll_to_item(index + usize::from(home));
         }
-        view.files.revealed_tab = active.map(String::from);
+        *revealed = active.map(String::from);
     }
+    let handle = handle.clone();
+    let (drop_project, drop_group, hover) = (project.to_path_buf(), group.to_string(), theme.hover);
     let mut strip = div()
         .id("file-tabs")
         .flex()
         .flex_none()
         .items_center()
-        .track_scroll(&view.files.tabs)
+        .min_h(px((crate::settings::get(cx).ui_font_size() * 1.5).round()))
+        .track_scroll(&handle)
         .overflow_x_scroll()
         .border_b_1()
         .border_color(theme.border)
         .bg(theme.surface)
-        .child(
-            div()
-                .id("file-home")
-                .flex_none()
-                .px(px(8.0))
-                .text_color(theme.muted)
-                .hover(|style| style.text_color(theme.accent))
-                .child(icons::HOME)
-                .on_click(cx.listener(|view, _, window, cx| {
-                    let workspace = view.workspace.clone();
-                    let path = view.current_project_path(cx).unwrap_or_default();
-                    store::store(cx).update(cx, |store, cx| {
-                        if let Some(target) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path))
-                        {
-                            target.file_shown = false;
-                        }
-                        store.changed(cx);
-                    });
-                    view.focus_current(window, cx);
-                })),
-        );
+        .drag_over::<DraggedFile>(move |style, _, _, _| style.bg(hover))
+        .on_drop(cx.listener(move |view, drag: &DraggedFile, window, cx| {
+            move_file(view, &drop_project, &drag.file, &drop_group, FilePlace::Zone(Zone::Center), window, cx);
+        }))
+        .when(home, |this| {
+            this.child(
+                div()
+                    .id("file-home")
+                    .flex_none()
+                    .px(px(8.0))
+                    .text_color(theme.muted)
+                    .hover(|style| style.text_color(theme.accent))
+                    .child(icons::HOME)
+                    .on_click(cx.listener(|view, _, window, cx| {
+                        let workspace = view.workspace.clone();
+                        let path = view.current_project_path(cx).unwrap_or_default();
+                        store::store(cx).update(cx, |store, cx| {
+                            if let Some(target) =
+                                store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path))
+                            {
+                                target.file_shown = false;
+                            }
+                            store.changed(cx);
+                        });
+                        view.focus_current(window, cx);
+                    })),
+            )
+        });
     for (index, file) in files.iter().enumerate() {
         let (path, commit) = spec_parts(file);
         let name = path.rsplit(['/', '\\']).next().unwrap_or(path).to_string();
         let (glyph, color) = icons::file(&name);
         let selected = active == Some(file.as_str());
+        let (fill, text) = match (selected, focused) {
+            (true, true) => (Some(theme.accent), theme.on_accent),
+            (true, false) => (Some(theme.selection), theme.text),
+            _ => (None, theme.muted),
+        };
         let dirty = view.files.open.get(&key(project, file)).is_some_and(|editor| editor.read(cx).dirty);
         let (select_project, select_file) = (project.to_path_buf(), file.clone());
         let (close_project, close_file) = (project.to_path_buf(), file.clone());
         let (middle_project, middle_file) = (project.to_path_buf(), file.clone());
+        let (drop_project, drop_file, tab_group) = (project.to_path_buf(), file.clone(), group.to_string());
         let label = match commit {
             Some(commit) => format!("{name} @ {}", &commit[..commit.len().min(7)]),
             None => name,
         };
+        let dragged = DraggedFile { file: file.clone(), title: label.clone() };
+        let accent = theme.accent;
         strip = strip.child(
             div()
                 .id(("file-tab", index))
@@ -430,14 +447,19 @@ fn tab_strip(
                 .px(px(8.0))
                 .border_l_1()
                 .border_color(theme.border)
-                .when(selected, |this| this.bg(theme.accent).text_color(theme.on_accent))
-                .when(!selected, |this| this.text_color(theme.muted).hover(|style| style.bg(theme.hover)))
-                .child(div().text_color(if selected { theme.on_accent } else { color.color(theme.dark) }).child(glyph))
+                .text_color(text)
+                .when_some(fill, |this, fill| this.bg(fill))
+                .when(fill.is_none(), |this| this.hover(|style| style.bg(theme.hover)))
+                .child(
+                    div()
+                        .text_color(if selected && focused { theme.on_accent } else { color.color(theme.dark) })
+                        .child(glyph),
+                )
                 .child(SharedString::from(label))
                 .child(
                     div()
                         .id(("file-close", index))
-                        .text_color(if selected { theme.on_accent } else { theme.faint })
+                        .text_color(if selected && focused { theme.on_accent } else { theme.faint })
                         .child(if dirty { icons::DOT } else { icons::CLOSE })
                         .on_click(cx.listener(move |view, _, window, cx| {
                             close_tab(view, &close_project, &close_file, window, cx);
@@ -452,10 +474,18 @@ fn tab_strip(
                     cx.listener(move |view, _, window, cx| {
                         close_tab(view, &middle_project, &middle_file, window, cx);
                     }),
-                ),
+                )
+                .on_drag(dragged, |drag: &DraggedFile, _, _, cx| {
+                    cx.new(|_| crate::sidebar::DragPreview(drag.title.clone()))
+                })
+                .drag_over::<DraggedFile>(move |style, _, _, _| style.border_l_2().border_color(accent))
+                .on_drop(cx.listener(move |view, drag: &DraggedFile, window, cx| {
+                    let place = FilePlace::Before(drop_file.clone());
+                    move_file(view, &drop_project, &drag.file, &tab_group, place, window, cx);
+                })),
         );
     }
-    strip
+    strip.into_any_element()
 }
 
 fn path_bar(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> impl IntoElement {
@@ -574,17 +604,12 @@ pub fn human_size(bytes: u64) -> String {
     }
 }
 
-pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<WorkspaceView>) -> AnyElement {
+fn body(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
-    let Some(project) = view.state(cx).and_then(|state| state.current_project()).cloned() else {
-        return div().into_any_element();
-    };
-    let Some(active) = project.active_file.clone() else { return div().into_any_element() };
-    let editor = editor_for(view, &project.path, &active, cx);
     let content = editor.read(cx).content.clone();
     let full = editor.read(cx).full.clone();
-    let body: AnyElement = match content {
-        Content::Image => image_view(&editor, cx),
+    match content {
+        Content::Image => image_view(editor, cx),
         Content::Binary(bytes) => div()
             .id("binary")
             .size_full()
@@ -622,20 +647,207 @@ pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<W
             .child("loading…")
             .into_any_element(),
         Content::Text => editor.clone().into_any_element(),
+    }
+}
+
+pub fn move_file(
+    view: &mut WorkspaceView,
+    project: &Path,
+    file: &str,
+    group: &str,
+    place: FilePlace,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    view.drop_target = None;
+    let workspace = view.workspace.clone();
+    let (path, file, group) = (project.to_path_buf(), file.to_string(), group.to_string());
+    store::store(cx).update(cx, |store, cx| {
+        if let Some(target) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path)) {
+            target.place_file(&file, &group, place);
+        }
+        store.changed(cx);
+    });
+    focus_active(view, window, cx);
+    cx.notify();
+}
+
+fn change_project(
+    view: &mut WorkspaceView,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+    change: impl FnOnce(&mut crate::store::Project),
+) {
+    let workspace = view.workspace.clone();
+    let path = view.current_project_path(cx).unwrap_or_default();
+    store::store(cx).update(cx, |store, cx| {
+        if let Some(target) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path)) {
+            change(target);
+        }
+        store.changed(cx);
+    });
+    focus_active(view, window, cx);
+}
+
+pub fn split(view: &mut WorkspaceView, direction: Direction, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    change_project(view, window, cx, |project| project.split_active(direction));
+}
+
+pub fn merge_group(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    change_project(view, window, cx, crate::store::Project::merge_group);
+}
+
+pub fn focus_group(
+    view: &mut WorkspaceView,
+    direction: Direction,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    change_project(view, window, cx, |project| project.focus_group(direction));
+}
+
+fn group_view(
+    view: &mut WorkspaceView,
+    project: &crate::store::Project,
+    id: &str,
+    home: bool,
+    cx: &mut Context<WorkspaceView>,
+) -> AnyElement {
+    let Some(group) = project.groups.iter().find(|group| group.id == id) else { return div().into_any_element() };
+    let Some(active) = group.active.clone().or_else(|| group.files.first().cloned()) else {
+        return div().into_any_element();
     };
+    let focused = project.focused_index().is_some_and(|index| project.groups[index].id == id);
+    let editor = editor_for(view, &project.path, &active, cx);
     let is_text = editor.read(cx).content == Content::Text;
     let focus = editor.read(cx).focus.clone();
+    let chips = crate::statusbar::every_pane(cx).then(|| crate::statusbar::file_row(&editor, cx)).flatten();
+    let (drop_project, drop_group, move_group, focus_id) =
+        (project.path.clone(), id.to_string(), id.to_string(), id.to_string());
+    let strip = tab_strip(view, &project.path, id, &group.files, Some(&active), (focused, home), cx);
+    div()
+        .id(SharedString::from(format!("file-group-{id}")))
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w_0()
+        .min_h_0()
+        .size_full()
+        .when(!is_text, |this| this.track_focus(&focus))
+        .capture_any_mouse_down(cx.listener(move |view, _, window, cx| {
+            if !focused {
+                let id = focus_id.clone();
+                change_project(view, window, cx, |project| project.focused_group = Some(id));
+            }
+        }))
+        .child(strip)
+        .child(path_bar(&editor, cx))
+        .child(
+            div()
+                .flex_1()
+                .min_h_0()
+                .child(body(&editor, cx))
+                .on_drag_move::<DraggedFile>(cx.listener(
+                    move |view, event: &gpui::DragMoveEvent<DraggedFile>, _, cx| {
+                        let inside = event.bounds.contains(&event.event.position);
+                        let mine =
+                            matches!(&view.drop_target, Some(DropTarget::Files { group, .. }) if *group == move_group);
+                        if !inside && !mine {
+                            return;
+                        }
+                        let zone =
+                            crate::splits_view::zone_at(event.bounds, view.drop_area.get(), event.event.position);
+                        let next = inside.then(|| DropTarget::Files {
+                            group: move_group.clone(),
+                            file: event.drag(cx).file.clone(),
+                            place: FilePlace::Zone(zone),
+                        });
+                        if view.drop_target != next {
+                            view.drop_target = next;
+                            cx.notify();
+                        }
+                    },
+                ))
+                .on_drop(cx.listener(move |view, drag: &DraggedFile, window, cx| {
+                    let place = match &view.drop_target {
+                        Some(DropTarget::Files { group, place, .. }) if *group == drop_group => place.clone(),
+                        _ => FilePlace::Zone(Zone::Center),
+                    };
+                    move_file(view, &drop_project, &drag.file, &drop_group, place, window, cx);
+                })),
+        )
+        .children(chips)
+        .into_any_element()
+}
+
+fn file_name(file: &str) -> String {
+    let path = spec_parts(file).0;
+    path.rsplit(['/', '\\']).next().unwrap_or(path).to_string()
+}
+
+fn files_preview(project: &crate::store::Project, target: &DropTarget, cx: &App) -> Option<AnyElement> {
+    let DropTarget::Files { group, file, place } = target else { return None };
+    let mut result = project.clone();
+    result.place_file(file, group, place.clone());
+    if result.groups == project.groups && result.file_layout == project.file_layout {
+        return None;
+    }
+    let theme = ui::theme(cx);
+    let unit = Rect { x: 0.0, y: 0.0, w: 1.0, h: 1.0 };
+    let mut rects = Vec::new();
+    match &result.file_layout {
+        Some(layout) => crate::splits::rects(layout, unit, &mut rects),
+        None => rects.extend(result.groups.first().map(|group| (group.id.clone(), unit))),
+    }
+    let focused = result.focused_index().map(|index| result.groups[index].id.clone());
+    let (filled, hint) = match place {
+        FilePlace::Zone(Zone::Center) | FilePlace::Before(_) => (false, "move here"),
+        FilePlace::Zone(zone) => (true, crate::splits_view::zone_hint(*zone)),
+    };
+    let items = rects
+        .into_iter()
+        .filter_map(|(id, rect)| {
+            let group = result.groups.iter().find(|group| group.id == id)?;
+            let name = file_name(group.active.as_ref().or(group.files.first())?);
+            let (glyph, color) = icons::file(&name);
+            let strong = focused.as_deref() == Some(id.as_str());
+            Some(crate::splits_view::Ghost {
+                rect,
+                glyph: (glyph, color.color(theme.dark)),
+                title: name,
+                strong,
+                filled,
+                hint: strong.then(|| hint.to_string()),
+            })
+        })
+        .collect();
+    Some(crate::splits_view::ghosts(items, cx))
+}
+
+pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<WorkspaceView>) -> AnyElement {
+    let theme = ui::theme(cx);
+    let Some(project) = view.state(cx).and_then(|state| state.current_project()).cloned() else {
+        return div().into_any_element();
+    };
+    let order = project.group_order();
+    let first = order.first().cloned().unwrap_or_default();
+    let content = match &project.file_layout {
+        Some(layout) => crate::splits_view::layout_tree(layout, theme.border, &mut |id| {
+            group_view(view, &project, id, id == first, cx)
+        }),
+        None => group_view(view, &project, &first, true, cx),
+    };
+    let preview = view.drop_target.as_ref().and_then(|target| files_preview(&project, target, cx));
     div()
         .id("file-view")
         .key_context("FileView")
-        .when(!is_text, |this| this.track_focus(&focus))
+        .relative()
         .flex()
-        .flex_col()
         .size_full()
         .bg(theme.background)
         .on_action(cx.listener(|view, _: &crate::commands::HideFileView, window, cx| hide(view, window, cx)))
-        .child(tab_strip(view, &project.path, &project.open_files, Some(&active), cx))
-        .child(path_bar(&editor, cx))
-        .child(div().flex_1().min_h_0().child(body))
+        .child(content)
+        .child(crate::splits_view::area_probe(view))
+        .children(preview)
         .into_any_element()
 }

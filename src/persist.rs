@@ -123,14 +123,28 @@ pub struct ProjectFile {
     pub terminals: Vec<SavedTab>,
     pub active_tab: Option<String>,
     pub terminal_shown: bool,
+    #[serde(skip_serializing)]
     pub open_files: Vec<String>,
+    #[serde(skip_serializing)]
     pub active_file: Option<String>,
+    pub file_groups: Vec<FileGroup>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_layout: Option<Layout>,
+    pub focused_group: Option<String>,
     pub file_shown: bool,
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub languages: std::collections::BTreeMap<String, String>,
     pub recent_files: Vec<String>,
     pub last_launcher: Option<String>,
     pub last_agent: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct FileGroup {
+    pub id: String,
+    pub files: Vec<String>,
+    pub active: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

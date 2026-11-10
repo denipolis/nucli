@@ -22,6 +22,14 @@ pub enum CursorShape {
     Underline,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum StatusChips {
+    #[default]
+    Focused,
+    EveryPane,
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 #[serde(default)]
 pub struct Settings {
@@ -36,6 +44,7 @@ pub struct Settings {
     pub ligatures: bool,
     pub restore_tabs: bool,
     pub notifications: bool,
+    pub status_chips: StatusChips,
     pub agents: Vec<AgentProfile>,
     pub shells: Vec<ShellProfile>,
 }
@@ -54,6 +63,7 @@ impl Default for Settings {
             ligatures: true,
             restore_tabs: true,
             notifications: true,
+            status_chips: StatusChips::Focused,
             agents: Vec::new(),
             shells: Vec::new(),
         }

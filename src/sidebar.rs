@@ -295,13 +295,58 @@ fn project_row(
         .into_any_element()
 }
 
+#[derive(Clone, Copy)]
+pub struct Link {
+    pub first: bool,
+    pub last: bool,
+    pub active: bool,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum SplitAction {
+    Join,
+    Leave,
+}
+
+const JOIN_TIP: &str = if cfg!(target_os = "macos") {
+    "Split with the shown tab [⌘-click]"
+} else {
+    "Split with the shown tab [ctrl-click]"
+};
+const LEAVE_TIP: &str =
+    if cfg!(target_os = "macos") { "Remove from split [⌘-click]" } else { "Remove from split [ctrl-click]" };
+
+fn gutter(link: Option<Link>, tick: bool, loose: bool, theme: &crate::theme::Theme) -> gpui::Div {
+    let width = if loose { 10.0 } else { 12.0 };
+    let x = px(width - 8.0);
+    let gutter = div().relative().flex_none().w(px(width));
+    let Some(link) = link else { return gutter };
+    let color = if link.active { theme.accent } else { theme.faint };
+    let half: gpui::Length = gpui::relative(0.5).into();
+    let edge: gpui::Length = px(0.0).into();
+    gutter
+        .child(
+            div()
+                .absolute()
+                .left(x)
+                .w(px(2.0))
+                .bg(color)
+                .top(if link.first && tick { half } else { edge })
+                .bottom(if link.last && tick { half } else { edge }),
+        )
+        .when(tick, |this| {
+            this.child(div().absolute().left(x).top(gpui::relative(0.5)).mt(px(-1.0)).w(px(8.0)).h(px(2.0)).bg(color))
+        })
+}
+
+#[allow(clippy::too_many_arguments)]
 fn tab_row(
     view: &WorkspaceView,
     project: &Project,
     info: TabInfo,
     number: usize,
     selected: bool,
-    grouped: bool,
+    link: Option<Link>,
     cx: &mut Context<WorkspaceView>,
 ) -> AnyElement {
     let theme = ui::theme(cx);
@@ -317,19 +362,26 @@ fn tab_row(
     } else {
         theme.faint
     };
+    let action = if link.is_some() {
+        Some(SplitAction::Leave)
+    } else {
+        crate::splits_view::can_join(view, &id, cx).then_some(SplitAction::Join)
+    };
     let (click_id, menu_id, drop_id, drop_project) = (id.clone(), id.clone(), id.clone(), project.path.clone());
+    let action_id = id.clone();
     let dragged = DraggedTab { id: id.clone(), title: info.title.clone() };
     let accent = theme.accent;
-    let mut row = div()
-        .id(SharedString::from(format!("tab-{id}")))
+    let group = SharedString::from(format!("tab-row-{id}"));
+    let inner = div()
         .flex()
+        .flex_1()
+        .min_w_0()
         .items_center()
         .gap(px(6.0))
-        .pl(px(if info.loose { 0.0 } else { 10.0 }))
+        .pl(px(6.0))
         .pr(px(8.0))
         .when(selected, |this| this.bg(theme.accent))
-        .when(!selected, |this| this.hover(|style| style.bg(theme.hover)))
-        .child(div().w(px(2.0)).h(px(14.0)).when(grouped, |this| this.bg(theme.accent)))
+        .when(!selected, |this| this.group_hover(group.clone(), |style| style.bg(theme.hover)))
         .child(
             div()
                 .w(px(14.0))
@@ -362,8 +414,39 @@ fn tab_row(
                 .clone()
                 .map(|(glyph, color)| div().text_color(if selected { theme.on_accent } else { color }).child(glyph)),
         )
+        .children(action.map(|action| {
+            let (glyph, tip) = match action {
+                SplitAction::Join => (icons::SPLIT, JOIN_TIP),
+                SplitAction::Leave => (icons::UNSPLIT, LEAVE_TIP),
+            };
+            div()
+                .id(SharedString::from(format!("tab-split-{id}")))
+                .flex_none()
+                .text_color(if selected { theme.on_accent } else { theme.muted })
+                .invisible()
+                .group_hover(group.clone(), |style| style.visible())
+                .hover(|style| style.text_color(if selected { theme.on_accent } else { theme.accent }))
+                .child(glyph)
+                .tooltip(ui::tooltip(tip))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(cx.listener(move |view, _, window, cx| {
+                    match action {
+                        SplitAction::Join => crate::splits_view::toggle(view, &action_id, window, cx),
+                        SplitAction::Leave => crate::splits_view::detach(view, &action_id, window, cx),
+                    }
+                    cx.stop_propagation();
+                }))
+        }));
+    let mut row = div()
+        .id(SharedString::from(format!("tab-{id}")))
+        .group(group)
+        .flex()
+        .child(gutter(link, true, info.loose, &theme))
+        .child(inner)
         .on_click(cx.listener(move |view, event: &gpui::ClickEvent, window, cx| {
-            if event.click_count() == 2 {
+            if event.modifiers().secondary() {
+                crate::splits_view::toggle(view, &click_id, window, cx);
+            } else if event.click_count() == 2 {
                 crate::actions::begin_rename(view, Rename::Tab(click_id.clone()), window, cx);
             } else {
                 view.select_tab(&click_id, window, cx);
@@ -424,35 +507,45 @@ fn projects(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
         if collapsed {
             continue;
         }
-        for id in tabs {
-            let Some((_, session)) = sessions.iter().find(|(tab, _)| tab == id) else { continue };
-            let number = order.iter().position(|tab| tab == id).map(|index| index + 1).unwrap_or(0);
-            let selected_group =
-                state.selected_tab().and_then(|selected| crate::splits::group(&state.layouts, selected));
-            let grouped = crate::splits::group(&state.layouts, id).is_some();
-            let selected = state.selected_tab() == Some(id.as_str())
-                || (selected_group.is_some()
-                    && selected_group == crate::splits::group(&state.layouts, id)
-                    && state.selected_tab() == Some(id.as_str()));
+        let selected_group = state.selected_tab().and_then(|selected| crate::splits::group(&state.layouts, selected));
+        let group_of = |id: Option<&&String>| id.and_then(|id| crate::splits::group(&state.layouts, id));
+        for (index, id) in tabs.iter().enumerate() {
+            let Some((_, session)) = sessions.iter().find(|(tab, _)| tab == *id) else { continue };
+            let number = order.iter().position(|tab| tab == *id).map(|index| index + 1).unwrap_or(0);
+            let group = group_of(Some(id));
+            let link = group.map(|group| Link {
+                first: group_of(index.checked_sub(1).and_then(|index| tabs.get(index))) != Some(group),
+                last: group_of(tabs.get(index + 1)) != Some(group),
+                active: selected_group == Some(group) && !state.file_shown(),
+            });
+            let selected = state.selected_tab() == Some(id.as_str());
             let theme = ui::theme(cx);
             let mut info = TabInfo::new(session.read(cx), &theme, tick);
             info.loose = loose;
             let subagents = info.subagents.clone();
-            rows.push(tab_row(view, project, info, number, selected, grouped, cx));
+            rows.push(tab_row(view, project, info, number, selected, link, cx));
+            let through = link.filter(|link| !link.last);
             for subagent in subagents {
-                let parent = id.clone();
+                let parent = (*id).clone();
                 rows.push(
                     div()
                         .id(SharedString::from(format!("subagent-{}", subagent.id)))
                         .flex()
-                        .gap(px(6.0))
-                        .pl(px(46.0))
-                        .pr(px(8.0))
-                        .text_color(theme.muted)
-                        .hover(|style| style.bg(theme.hover))
-                        .child("↳")
-                        .child(div().flex_1().truncate().child(subagent.description.clone()))
-                        .child(div().text_color(theme.faint).child(subagent.kind.clone()))
+                        .child(gutter(through, false, loose, &theme))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_1()
+                                .min_w_0()
+                                .gap(px(6.0))
+                                .pl(px(if loose { 36.0 } else { 34.0 }))
+                                .pr(px(8.0))
+                                .text_color(theme.muted)
+                                .hover(|style| style.bg(theme.hover))
+                                .child("↳")
+                                .child(div().flex_1().truncate().child(subagent.description.clone()))
+                                .child(div().text_color(theme.faint).child(subagent.kind.clone())),
+                        )
                         .on_click(cx.listener(move |view, _, window, cx| view.select_tab(&parent, window, cx)))
                         .into_any_element(),
                 );
@@ -507,7 +600,7 @@ fn board(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> 
             let project = state.project(&path).cloned().unwrap_or_default();
             let selected = state.selected_tab() == Some(id.as_str());
             let info = TabInfo::new(session.read(cx), &theme, tick);
-            rows.push(tab_row(view, &project, info, 0, selected, false, cx));
+            rows.push(tab_row(view, &project, info, 0, selected, None, cx));
         }
     }
     if rows.is_empty() {

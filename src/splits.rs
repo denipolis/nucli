@@ -8,6 +8,38 @@ pub enum Direction {
     Down,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Zone {
+    Center,
+    Edge(Direction),
+    Outer(Direction),
+}
+
+const OUTER_BAND: f32 = 28.0;
+
+pub fn zone(pane: Rect, area: Rect, x: f32, y: f32) -> Zone {
+    let whole = pane.w >= area.w - 2.0 && pane.h >= area.h - 2.0;
+    let outer = [
+        (x - area.x, Direction::Left),
+        (area.x + area.w - x, Direction::Right),
+        (y - area.y, Direction::Up),
+        (area.y + area.h - y, Direction::Down),
+    ]
+    .into_iter()
+    .filter(|(distance, _)| !whole && *distance < OUTER_BAND)
+    .min_by(|a, b| a.0.total_cmp(&b.0))
+    .map(|(_, direction)| direction);
+    match (outer, edge((x - pane.x) / pane.w, (y - pane.y) / pane.h)) {
+        (Some(direction), _) => Zone::Outer(direction),
+        (None, Some(direction)) => Zone::Edge(direction),
+        (None, None) => Zone::Center,
+    }
+}
+
+fn axis(direction: Direction) -> (bool, bool) {
+    (matches!(direction, Direction::Left | Direction::Right), matches!(direction, Direction::Left | Direction::Up))
+}
+
 pub fn tabs(layout: &Layout) -> Vec<String> {
     match layout {
         Layout::Pane { tab } => vec![tab.clone()],
@@ -118,6 +150,86 @@ pub fn split(layouts: &mut Vec<Layout>, target: &str, new: &str, row: bool, befo
     }
 }
 
+fn exchange(layout: &mut Layout, a: &str, b: &str) {
+    match layout {
+        Layout::Pane { tab } if tab == a => *tab = b.to_string(),
+        Layout::Pane { tab } if tab == b => *tab = a.to_string(),
+        Layout::Pane { .. } => {}
+        Layout::Row { children } | Layout::Column { children } => {
+            children.iter_mut().for_each(|child| exchange(child, a, b));
+        }
+    }
+}
+
+pub fn wrap(layouts: &mut Vec<Layout>, target: &str, new: &str, direction: Direction) {
+    remove(layouts, new);
+    let (row, before) = axis(direction);
+    let pane = Layout::Pane { tab: new.to_string() };
+    let around = move |layout: Layout| match layout {
+        Layout::Row { mut children } if row => {
+            children.insert(if before { 0 } else { children.len() }, pane);
+            Layout::Row { children }
+        }
+        Layout::Column { mut children } if !row => {
+            children.insert(if before { 0 } else { children.len() }, pane);
+            Layout::Column { children }
+        }
+        other => {
+            let children = if before { vec![pane, other] } else { vec![other, pane] };
+            if row { Layout::Row { children } } else { Layout::Column { children } }
+        }
+    };
+    match group(layouts, target) {
+        Some(index) => {
+            let layout = layouts.remove(index);
+            layouts.insert(index, around(layout));
+        }
+        None => layouts.push(around(Layout::Pane { tab: target.to_string() })),
+    }
+}
+
+pub fn arrange(layouts: &mut Vec<Layout>, target: &str, new: &str, zone: Zone) {
+    match zone {
+        Zone::Edge(direction) => {
+            let (row, before) = axis(direction);
+            split(layouts, target, new, row, before);
+        }
+        Zone::Outer(direction) => wrap(layouts, target, new, direction),
+        Zone::Center => match (group(layouts, target), group(layouts, new)) {
+            (Some(a), Some(b)) if a == b => exchange(&mut layouts[a], target, new),
+            _ => replace(layouts, target, new),
+        },
+    }
+}
+
+pub fn preview(layouts: &[Layout], target: &str, new: &str, zone: Zone) -> Layout {
+    let mut layouts = layouts.to_vec();
+    arrange(&mut layouts, target, new, zone);
+    match group(&layouts, new) {
+        Some(index) => layouts.swap_remove(index),
+        None => Layout::Pane { tab: new.to_string() },
+    }
+}
+
+pub fn permute(layouts: &mut [Layout], order: &[String]) {
+    fn assign(layout: &mut Layout, order: &mut std::slice::Iter<String>) {
+        match layout {
+            Layout::Pane { tab } => {
+                if let Some(next) = order.next() {
+                    *tab = next.clone();
+                }
+            }
+            Layout::Row { children } | Layout::Column { children } => {
+                children.iter_mut().for_each(|child| assign(child, order));
+            }
+        }
+    }
+    let Some(index) = order.first().and_then(|first| group(layouts, first)) else { return };
+    if tabs(&layouts[index]).len() == order.len() {
+        assign(&mut layouts[index], &mut order.iter());
+    }
+}
+
 pub fn unsplit(layouts: &mut Vec<Layout>, id: &str) {
     if let Some(index) = group(layouts, id) {
         layouts.remove(index);
@@ -212,5 +324,47 @@ mod tests {
         assert_eq!(edge(0.5, 0.05), Some(Direction::Up));
         assert_eq!(edge(0.5, 0.95), Some(Direction::Down));
         assert_eq!(edge(0.5, 0.5), None);
+    }
+
+    #[test]
+    fn arranges_and_permutes() {
+        let mut layouts = Vec::new();
+        split(&mut layouts, "a", "b", true, false);
+        split(&mut layouts, "b", "c", false, false);
+        arrange(&mut layouts, "a", "c", Zone::Center);
+        assert_eq!(tabs(&layouts[0]), vec!["c", "b", "a"]);
+        permute(&mut layouts, &["a".into(), "c".into(), "b".into()]);
+        assert_eq!(tabs(&layouts[0]), vec!["a", "c", "b"]);
+        assert_eq!(tabs(&preview(&layouts, "a", "d", Zone::Edge(Direction::Left))), vec!["d", "a", "c", "b"]);
+        assert_eq!(tabs(&preview(&layouts, "a", "d", Zone::Center)), vec!["d", "c", "b"]);
+        assert_eq!(layouts.len(), 1);
+        arrange(&mut layouts, "a", "b", Zone::Edge(Direction::Down));
+        assert_eq!(tabs(&layouts[0]), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn wraps_the_whole_group() {
+        let mut layouts = Vec::new();
+        split(&mut layouts, "a", "b", true, false);
+        split(&mut layouts, "b", "c", true, false);
+        arrange(&mut layouts, "a", "c", Zone::Outer(Direction::Down));
+        assert_eq!(
+            layouts,
+            vec![Layout::Column {
+                children: vec![
+                    Layout::Row { children: vec![Layout::Pane { tab: "a".into() }, Layout::Pane { tab: "b".into() }] },
+                    Layout::Pane { tab: "c".into() },
+                ]
+            }]
+        );
+        arrange(&mut layouts, "b", "d", Zone::Outer(Direction::Down));
+        assert_eq!(tabs(&layouts[0]), vec!["a", "b", "c", "d"]);
+        assert!(matches!(&layouts[0], Layout::Column { children } if children.len() == 3));
+        let area = Rect { x: 0.0, y: 0.0, w: 1000.0, h: 600.0 };
+        let pane = Rect { x: 0.0, y: 0.0, w: 500.0, h: 600.0 };
+        assert_eq!(zone(pane, area, 250.0, 590.0), Zone::Outer(Direction::Down));
+        assert_eq!(zone(pane, area, 250.0, 520.0), Zone::Edge(Direction::Down));
+        assert_eq!(zone(pane, area, 250.0, 300.0), Zone::Center);
+        assert_eq!(zone(area, area, 990.0, 300.0), Zone::Edge(Direction::Right));
     }
 }

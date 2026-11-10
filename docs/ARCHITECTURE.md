@@ -43,7 +43,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `font_picker.rs` | Font combobox for terminals and the file view, used by the settings page and onboarding. Focus returns to whatever had it when the list closes. |
 | `fuzzy.rs` | Fuzzy scorer with match positions. |
 | `switcher.rs` | Tab switcher overlay. |
-| `splits.rs`, `splits_view.rs` | Layout tree and panes. |
+| `splits.rs`, `splits_view.rs` | Layout tree, panes with their headers, drop rules and the drop preview. |
 | `menu.rs` | Context menu overlay. |
 | `prompt.rs` | Confirmation dialogs, installed with `set_prompt_builder`. |
 | `text_input.rs` | Single line input with IME. |
@@ -67,6 +67,12 @@ Background work reports itself with `store::begin_progress` and `store::finish_p
 Saving is debounced (`Store::schedule_save`). Terminal output is written only on quit and when a workspace closes (`Store::snapshot(true, _)`); `persist::prune_scrollback` removes files nothing refers to, because closed workspaces keep theirs.
 
 Tabs without a project live in `Workspace::scratch`, a `Project` with an empty path that the sidebar lists without a row of its own. `Project::cwd` turns it into the home folder, and the panel and quick open skip it.
+
+`Store::changed` calls `Workspace::normalize_groups`, which keeps the tabs of each split group next to each other in the project's tab list, in layout order. Every path that edits layouts or tab order relies on it, so the sidebar bracket never spans unrelated rows.
+
+A drag shows its preview through `WorkspaceView::drop_target`: panes and file columns set it from `on_drag_move` and read it on drop. GPUI has no drag-cancel event, so `WorkspaceView::render` clears it whenever no drag is active.
+
+The file view's split groups live in `Project::groups` and `Project::file_layout`, the same `Layout` tree as terminal splits with group ids as panes, so `splits.rs` serves both. A file belongs to one group, because an `Editor` entity can only be drawn once per frame. `state.json` from before groups stored `open_files` and `active_file`, which load into a single group; a layout that does not match its groups is flattened into one group on load.
 
 ## Commands and keys
 

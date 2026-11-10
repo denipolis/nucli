@@ -8,7 +8,7 @@ use crate::agents::{self, AgentProfile, ShellProfile};
 use crate::commands::{self, COMMANDS, Keys};
 use crate::icons;
 use crate::persist::{Selected, SettingsSection};
-use crate::settings::{self, Appearance, CursorShape, Settings};
+use crate::settings::{self, Appearance, CursorShape, Settings, StatusChips};
 use crate::store;
 use crate::text_input::{InputEvent, TextInput};
 use crate::theme::{CustomTheme, Theme};
@@ -456,6 +456,18 @@ pub fn appearance(current: &Settings, custom: &[CustomTheme], system_dark: bool,
                     &modes,
                     current.appearance,
                     |settings, value| settings.appearance = value,
+                    theme,
+                ),
+                theme,
+            ))
+            .child(row(
+                "Status chips",
+                "Under the focused pane only, or under every pane of a split",
+                segments(
+                    "status-chips",
+                    &[("Focused", StatusChips::Focused), ("Every pane", StatusChips::EveryPane)],
+                    current.status_chips,
+                    |settings, value| settings.status_chips = value,
                     theme,
                 ),
                 theme,

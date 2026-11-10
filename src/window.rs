@@ -40,6 +40,8 @@ pub struct WorkspaceView {
     pub files: crate::file_view::Files,
     pub resizing: Option<crate::resize::Drag>,
     pub pane_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
+    pub drop_target: Option<crate::splits_view::DropTarget>,
+    pub drop_area: Rc<std::cell::Cell<Bounds<Pixels>>>,
     pub dragging_titlebar: bool,
     pub shown_tab: Option<String>,
     pub settings: Option<crate::settings_view::SettingsPage>,
@@ -197,6 +199,8 @@ impl WorkspaceView {
             files: Default::default(),
             resizing: None,
             pane_bounds: Default::default(),
+            drop_target: None,
+            drop_area: Default::default(),
             dragging_titlebar: false,
             shown_tab: None,
             settings: None,
@@ -347,8 +351,8 @@ impl WorkspaceView {
         }
         match &state.selected {
             Some(Selected::Tab(id)) => match crate::splits::group(&state.layouts, id) {
-                Some(index) => crate::splits_view::render(self, &state.layouts[index], id, cx),
-                None if self.store(cx).session(id).is_some() => crate::splits_view::single(self, id, cx),
+                Some(index) => crate::splits_view::render(self, Some(&state.layouts[index]), id, cx),
+                None if self.store(cx).session(id).is_some() => crate::splits_view::render(self, None, id, cx),
                 None => crate::overview::empty(self, cx),
             },
             Some(Selected::Project(path)) => crate::overview::project(self, path, cx),
@@ -367,6 +371,9 @@ impl Render for WorkspaceView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.menu.is_none() {
             self.title_menu = None;
+        }
+        if !cx.has_active_drag() {
+            self.drop_target = None;
         }
         let theme = ui::theme(cx);
         let ui_size = settings::get(cx).ui_font_size();

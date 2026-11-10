@@ -315,7 +315,7 @@ pub fn show_project(view: &mut WorkspaceView, path: &Path, window: &mut Window, 
     let workspace = view.workspace.clone();
     store::store(cx).update(cx, |store, cx| {
         if let Some(project) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(path)) {
-            project.file_shown = project.active_file.is_some();
+            project.file_shown = project.active_file().is_some();
         }
         store.changed(cx);
     });
@@ -546,6 +546,7 @@ pub fn move_tab(
     store::store(cx).update(cx, |store, cx| {
         let Some(source) = store.workspaces.iter().position(|state| state.project_of(&id).is_some()) else { return };
         let Some(source_project) = store.workspaces[source].project_of_mut(&id) else { return };
+        let source_path = source_project.path.clone();
         let panel = source_project.terminals.contains(&id);
         source_project.tabs.retain(|tab| *tab != id);
         source_project.terminals.retain(|tab| *tab != id);
@@ -572,12 +573,29 @@ pub fn move_tab(
             target.tabs.insert(index, id.clone());
         }
         let cwd = target.cwd();
+        let order = target.tabs.clone();
         if let Some(session) = store.sessions.get(&id) {
             session.update(cx, |session, _| session.project = cwd);
+        }
+        if let Some(state) = store.workspace_mut(&workspace) {
+            regroup(&mut state.layouts, &id, &order, source_path == project);
         }
         store.changed(cx);
     });
     view.focus_current(window, cx);
+}
+
+fn regroup(layouts: &mut Vec<crate::persist::Layout>, id: &str, order: &[String], same_project: bool) {
+    let Some(index) = crate::splits::group(layouts, id) else { return };
+    let members = crate::splits::tabs(&layouts[index]);
+    let ordered: Vec<String> = order.iter().filter(|tab| members.contains(tab)).cloned().collect();
+    let start = order.iter().position(|tab| members.contains(tab)).unwrap_or(0);
+    let together = order.get(start..start + ordered.len()).is_some_and(|span| span == ordered.as_slice());
+    if same_project && together && ordered.len() == members.len() {
+        crate::splits::permute(layouts, &ordered);
+    } else {
+        crate::splits::remove(layouts, id);
+    }
 }
 
 pub fn move_project(view: &mut WorkspaceView, from: &Path, to: &Path, cx: &mut Context<WorkspaceView>) {
@@ -758,6 +776,13 @@ pub fn tab_menu(view: &WorkspaceView, id: &str, cx: &App) -> Vec<Item> {
                 store::store(cx).update(cx, |store, cx| store.changed(cx));
             }),
         });
+    }
+    if crate::splits_view::can_join(view, id, cx) {
+        let id = id.to_string();
+        items.push(Item::Separator);
+        items.push(menu::action("Split with Shown Tab", move |view, window, cx| {
+            crate::splits_view::toggle(view, &id, window, cx)
+        }));
     }
     if grouped {
         items.push(Item::Separator);
@@ -1231,11 +1256,7 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         }))
         .on_action(cx.listener(|view, _: &SplitRight, window, cx| crate::splits_view::split(view, true, window, cx)))
         .on_action(cx.listener(|view, _: &SplitDown, window, cx| crate::splits_view::split(view, false, window, cx)))
-        .on_action(cx.listener(|view, _: &CloseSplit, window, cx| {
-            if let Some(id) = view.state(cx).and_then(|state| state.selected_tab()).map(String::from) {
-                crate::splits_view::detach(view, &id, window, cx);
-            }
-        }))
+        .on_action(cx.listener(|view, _: &CloseSplit, window, cx| crate::splits_view::close_split(view, window, cx)))
         .on_action(cx.listener(|view, _: &FocusLeft, window, cx| {
             crate::splits_view::focus(view, crate::splits::Direction::Left, window, cx)
         }))

@@ -21,8 +21,8 @@ On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ct
 | Close file tab, else tab | `close` | `cmd-w` | `ctrl-shift-w` |
 | Close project | `close_project` | `cmd-shift-w` | `ctrl-alt-shift-w` |
 | Rename tab | `rename_tab` | | |
-| Split right / down | `split_right` / `split_down` | `cmd-d` / `cmd-shift-d` | `ctrl-shift-d` / `ctrl-alt-shift-d` |
-| Close split | `close_split` | `cmd-alt-w` | `ctrl-alt-w` |
+| Split right / down (file view: active file into a new group) | `split_right` / `split_down` | `cmd-d` / `cmd-shift-d` | `ctrl-shift-d` / `ctrl-alt-shift-d` |
+| Close split (file view: merge the group) | `close_split` | `cmd-alt-w` | `ctrl-alt-w` |
 | Focus split left / right / up / down | `focus_left` … | `cmd-alt-left` … | `ctrl-alt-shift-left` … |
 | Terminal panel: show and focus, hide when focused | `toggle_terminal` | ``ctrl-` `` | ``ctrl-` `` |
 | New terminal in the panel | `new_terminal` | ``ctrl-shift-` `` | ``ctrl-shift-` `` |

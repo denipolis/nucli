@@ -31,9 +31,7 @@ pub fn open(view: &mut WorkspaceView, delta: i32, _window: &mut Window, cx: &mut
             entries.push(Selected::Tab(id));
         }
     }
-    for project in
-        state.projects.iter().filter(|project| project.active_file.is_some() && !project.open_files.is_empty())
-    {
+    for project in state.projects.iter().filter(|project| project.active_file().is_some()) {
         entries.push(Selected::Project(project.path.clone()));
     }
     if entries.is_empty() {
@@ -99,7 +97,7 @@ pub fn render(view: &WorkspaceView, switcher: &Switcher, cx: &mut Context<Worksp
             }
             Selected::Project(path) => {
                 let project = state.and_then(|state| state.project(path));
-                let file = project.and_then(|project| project.active_file.clone()).unwrap_or_default();
+                let file = project.and_then(|project| project.active_file().cloned()).unwrap_or_default();
                 let name = project.map(|project| project.display_name()).unwrap_or_default();
                 (icons::FILE, None, file, name, false)
             }

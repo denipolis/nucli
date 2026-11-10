@@ -42,6 +42,8 @@ pub const COMMAND: &str = "\u{eb63}";
 pub const TAG: &str = "\u{ea66}";
 pub const CLOUD: &str = "\u{ebaa}";
 pub const THEME: &str = "\u{eb5c}";
+pub const SPLIT: &str = "\u{eb56}";
+pub const UNSPLIT: &str = "\u{f0337}";
 
 pub const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 

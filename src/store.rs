@@ -7,9 +7,10 @@ use gpui::{App, AppContext, Context, Entity, Global, Task, WindowHandle};
 use crate::agents::{AgentProfile, ShellProfile};
 use crate::history::Conversation;
 use crate::paths;
-use crate::persist::{Layout, ProjectFile, SavedTab, Selected, StateFile, Ui, WindowState, WorkspaceFile};
+use crate::persist::{FileGroup, Layout, ProjectFile, SavedTab, Selected, StateFile, Ui, WindowState, WorkspaceFile};
 use crate::session::{self, Kind, Session, SessionEvent, Spec};
 use crate::settings;
+use crate::splits::{self, Direction, Zone};
 use crate::theme::ItemColor;
 use crate::window::WorkspaceView;
 
@@ -19,6 +20,16 @@ impl Global for StoreHandle {}
 
 pub fn store(cx: &App) -> Entity<Store> {
     cx.global::<StoreHandle>().0.clone()
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum FilePlace {
+    Before(String),
+    Zone(Zone),
+}
+
+fn file_group(files: Vec<String>, active: Option<String>) -> FileGroup {
+    FileGroup { id: uuid::Uuid::new_v4().to_string(), files, active }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -32,8 +43,9 @@ pub struct Project {
     pub active_tab: Option<String>,
     pub active_terminal: Option<String>,
     pub terminal_shown: bool,
-    pub open_files: Vec<String>,
-    pub active_file: Option<String>,
+    pub groups: Vec<FileGroup>,
+    pub file_layout: Option<Layout>,
+    pub focused_group: Option<String>,
     pub file_shown: bool,
     pub recent_files: Vec<String>,
     pub last_launcher: Option<String>,
@@ -69,16 +81,185 @@ impl Project {
         })
     }
 
+    pub fn focused_index(&self) -> Option<usize> {
+        self.focused_group
+            .as_ref()
+            .and_then(|id| self.groups.iter().position(|group| group.id == *id))
+            .or((!self.groups.is_empty()).then_some(0))
+    }
+
+    pub fn active_file(&self) -> Option<&String> {
+        self.groups.get(self.focused_index()?)?.active.as_ref()
+    }
+
+    pub fn group_of(&self, file: &str) -> Option<usize> {
+        self.groups.iter().position(|group| group.files.iter().any(|open| open == file))
+    }
+
+    pub fn group_order(&self) -> Vec<String> {
+        match &self.file_layout {
+            Some(layout) => splits::tabs(layout),
+            None => self.groups.iter().map(|group| group.id.clone()).collect(),
+        }
+    }
+
+    fn change_layout(&mut self, change: impl FnOnce(&mut Vec<Layout>)) {
+        let mut layouts: Vec<Layout> = self.file_layout.take().into_iter().collect();
+        change(&mut layouts);
+        self.file_layout = layouts.pop();
+    }
+
+    pub fn show_file(&mut self, file: &str) {
+        let index = match self.group_of(file) {
+            Some(index) => index,
+            None => {
+                if self.groups.is_empty() {
+                    self.groups.push(file_group(Vec::new(), None));
+                }
+                let index = self.focused_index().unwrap_or(0);
+                let group = &mut self.groups[index];
+                let at = group
+                    .active
+                    .as_ref()
+                    .and_then(|active| group.files.iter().position(|open| open == active))
+                    .map_or(group.files.len(), |index| index + 1);
+                group.files.insert(at, file.to_string());
+                index
+            }
+        };
+        self.groups[index].active = Some(file.to_string());
+        self.focused_group = Some(self.groups[index].id.clone());
+    }
+
+    fn remove_group(&mut self, index: usize) {
+        let order = self.group_order();
+        let id = self.groups.remove(index).id;
+        self.change_layout(|layouts| splits::remove(layouts, &id));
+        if self.focused_group.as_deref() == Some(id.as_str()) {
+            let position = order.iter().position(|group| *group == id).unwrap_or(0);
+            let next = order[..position].last().or(order.get(position + 1)).cloned();
+            self.focused_group = next.or_else(|| self.groups.first().map(|group| group.id.clone()));
+        }
+    }
+
+    pub fn close_file(&mut self, file: &str) {
+        let Some(index) = self.group_of(file) else { return };
+        let group = &mut self.groups[index];
+        let Some(position) = group.files.iter().position(|open| open == file) else { return };
+        group.files.remove(position);
+        if group.active.as_deref() == Some(file) {
+            group.active = group.files.get(position).or_else(|| group.files.get(position.wrapping_sub(1))).cloned();
+        }
+        if group.files.is_empty() {
+            self.remove_group(index);
+        }
+    }
+
+    pub fn place_file(&mut self, file: &str, target: &str, place: FilePlace) {
+        let Some(source) = self.group_of(file) else { return };
+        let alone = self.groups[source].files.len() == 1;
+        let same = self.groups[source].id == target;
+        let unchanged = match &place {
+            FilePlace::Before(before) => before == file,
+            FilePlace::Zone(Zone::Center) => same,
+            FilePlace::Zone(Zone::Edge(_)) => same && alone,
+            FilePlace::Zone(Zone::Outer(_)) => alone && self.groups.len() == 1,
+        };
+        if unchanged || !self.groups.iter().any(|group| group.id == target) {
+            return;
+        }
+        self.close_file(file);
+        let file = file.to_string();
+        let direction = match place {
+            FilePlace::Zone(Zone::Edge(direction)) => Some((direction, false)),
+            FilePlace::Zone(Zone::Outer(direction)) => Some((direction, true)),
+            _ => None,
+        };
+        let Some((direction, outer)) = direction else {
+            let Some(group) = self.groups.iter_mut().find(|group| group.id == target) else { return };
+            let position = match place {
+                FilePlace::Before(before) => group.files.iter().position(|open| *open == before),
+                FilePlace::Zone(_) => None,
+            };
+            group.files.insert(position.unwrap_or(group.files.len()), file.clone());
+            group.active = Some(file);
+            self.focused_group = Some(target.to_string());
+            return;
+        };
+        let anchor =
+            self.groups.iter().find(|group| group.id == target).or(self.groups.first()).map(|group| group.id.clone());
+        let group = file_group(vec![file.clone()], Some(file));
+        let id = group.id.clone();
+        self.groups.push(group);
+        if let Some(anchor) = anchor {
+            self.change_layout(|layouts| {
+                if outer {
+                    splits::wrap(layouts, &anchor, &id, direction);
+                } else {
+                    splits::arrange(layouts, &anchor, &id, Zone::Edge(direction));
+                }
+            });
+        }
+        self.focused_group = Some(id);
+    }
+
+    pub fn split_active(&mut self, direction: Direction) {
+        let Some(index) = self.focused_index() else { return };
+        let target = self.groups[index].id.clone();
+        if let Some(file) = self.groups[index].active.clone() {
+            self.place_file(&file, &target, FilePlace::Zone(Zone::Edge(direction)));
+        }
+    }
+
+    pub fn merge_group(&mut self) {
+        let Some(index) = self.focused_index().filter(|_| self.groups.len() > 1) else { return };
+        let files = std::mem::take(&mut self.groups[index].files);
+        let active = self.groups[index].active.take();
+        self.remove_group(index);
+        let Some(target) = self.focused_index() else { return };
+        self.groups[target].files.extend(files);
+        if active.is_some() {
+            self.groups[target].active = active;
+        }
+    }
+
+    pub fn focus_group(&mut self, direction: Direction) {
+        let (Some(layout), Some(current)) = (&self.file_layout, &self.focused_group) else { return };
+        if let Some(next) = splits::neighbor(layout, current, direction) {
+            self.focused_group = Some(next);
+        }
+    }
+
+    fn repair_files(&mut self) {
+        self.groups.retain(|group| !group.files.is_empty());
+        let mut ids: Vec<String> = self.groups.iter().map(|group| group.id.clone()).collect();
+        let mut order = self.file_layout.as_ref().map(splits::tabs).unwrap_or_else(|| ids.clone());
+        ids.sort();
+        order.sort();
+        if ids != order || (self.file_layout.is_none() && self.groups.len() > 1) {
+            let files: Vec<String> = self.groups.iter().flat_map(|group| group.files.clone()).collect();
+            let active = self.active_file().cloned().or_else(|| files.first().cloned());
+            self.groups = if files.is_empty() { Vec::new() } else { vec![file_group(files, active)] };
+            self.file_layout = None;
+        }
+        self.focused_group = self.focused_index().map(|index| self.groups[index].id.clone());
+    }
+
     fn from_file(file: ProjectFile) -> Project {
-        Project {
+        let mut project = Project {
             path: file.path,
             name: file.name,
             color: file.color,
             collapsed: file.collapsed,
             active_tab: file.active_tab,
             terminal_shown: file.terminal_shown,
-            open_files: file.open_files,
-            active_file: file.active_file,
+            groups: if file.file_groups.is_empty() && !file.open_files.is_empty() {
+                vec![file_group(file.open_files, file.active_file)]
+            } else {
+                file.file_groups
+            },
+            file_layout: file.file_layout,
+            focused_group: file.focused_group,
             file_shown: file.file_shown,
             languages: file.languages,
             recent_files: file.recent_files,
@@ -87,7 +268,9 @@ impl Project {
             saved: file.tabs,
             saved_terminals: file.terminals,
             ..Default::default()
-        }
+        };
+        project.repair_files();
+        project
     }
 }
 
@@ -174,7 +357,7 @@ impl Workspace {
 
     pub fn file_shown(&self) -> bool {
         matches!(self.selected, Some(Selected::Project(_)))
-            && self.current_project().is_some_and(|project| project.file_shown && project.active_file.is_some())
+            && self.current_project().is_some_and(|project| project.file_shown && project.active_file().is_some())
     }
 
     pub fn visible_tabs(&self) -> Vec<String> {
@@ -192,6 +375,21 @@ impl Workspace {
             tabs.push(terminal.clone());
         }
         tabs
+    }
+
+    pub fn normalize_groups(&mut self) {
+        let groups: Vec<Vec<String>> = self.layouts.iter().map(crate::splits::tabs).collect();
+        for project in self.projects.iter_mut().chain(std::iter::once(&mut self.scratch)) {
+            for members in &groups {
+                let Some(first) = project.tabs.iter().position(|tab| members.contains(tab)) else { continue };
+                let ordered: Vec<String> = members.iter().filter(|tab| project.tabs.contains(tab)).cloned().collect();
+                if project.tabs.get(first..first + ordered.len()) == Some(ordered.as_slice()) {
+                    continue;
+                }
+                project.tabs.retain(|tab| !members.contains(tab));
+                project.tabs.splice(first..first, ordered);
+            }
+        }
     }
 
     pub fn shows(&self, id: &str) -> bool {
@@ -304,6 +502,7 @@ impl Store {
     }
 
     pub fn changed(&mut self, cx: &mut Context<Self>) {
+        self.workspaces.iter_mut().for_each(Workspace::normalize_groups);
         cx.notify();
         self.schedule_save(cx);
     }
@@ -563,13 +762,15 @@ impl Store {
             terminals: saved(&project.terminals, &project.saved_terminals),
             active_tab: project.active_tab.clone(),
             terminal_shown: project.terminal_shown,
-            open_files: project.open_files.clone(),
-            active_file: project.active_file.clone(),
+            file_groups: project.groups.clone(),
+            file_layout: project.file_layout.clone(),
+            focused_group: project.focused_group.clone(),
             file_shown: project.file_shown,
             languages: project.languages.clone(),
             recent_files: project.recent_files.clone(),
             last_launcher: project.last_launcher.clone(),
             last_agent: project.last_agent.clone(),
+            ..Default::default()
         };
         let state = StateFile {
             workspaces: self
@@ -798,4 +999,66 @@ pub fn init(cx: &mut App) -> Entity<Store> {
     let entity = cx.new(|_| Store::load());
     cx.set_global(StoreHandle(entity.clone()));
     entity
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn files(project: &Project) -> Vec<Vec<&str>> {
+        project
+            .group_order()
+            .iter()
+            .filter_map(|id| project.groups.iter().find(|group| group.id == *id))
+            .map(|group| group.files.iter().map(String::as_str).collect())
+            .collect()
+    }
+
+    fn group(project: &Project, file: &str) -> String {
+        project.groups[project.group_of(file).unwrap()].id.clone()
+    }
+
+    #[test]
+    fn places_files_in_groups() {
+        let mut project = Project::default();
+        project.show_file("a");
+        project.show_file("b");
+        project.show_file("c");
+        assert_eq!(files(&project), vec![vec!["a", "b", "c"]]);
+        project.place_file("c", &group(&project, "a"), FilePlace::Zone(Zone::Edge(Direction::Right)));
+        assert_eq!(files(&project), vec![vec!["a", "b"], vec!["c"]]);
+        assert_eq!(project.active_file().map(String::as_str), Some("c"));
+        project.place_file("c", &group(&project, "c"), FilePlace::Zone(Zone::Edge(Direction::Left)));
+        assert_eq!(files(&project), vec![vec!["a", "b"], vec!["c"]]);
+        project.place_file("b", &group(&project, "c"), FilePlace::Zone(Zone::Edge(Direction::Down)));
+        assert_eq!(files(&project), vec![vec!["a"], vec!["c"], vec!["b"]]);
+        project.place_file("a", &group(&project, "c"), FilePlace::Zone(Zone::Outer(Direction::Down)));
+        assert_eq!(files(&project), vec![vec!["c"], vec!["b"], vec!["a"]]);
+        assert!(matches!(&project.file_layout, Some(Layout::Column { children }) if children.len() == 3));
+        project.place_file("a", &group(&project, "c"), FilePlace::Before("c".into()));
+        assert_eq!(files(&project), vec![vec!["a", "c"], vec!["b"]]);
+        project.focused_group = Some(group(&project, "b"));
+        project.merge_group();
+        assert_eq!(files(&project), vec![vec!["a", "c", "b"]]);
+        assert!(project.file_layout.is_none());
+        project.split_active(Direction::Down);
+        assert_eq!(files(&project), vec![vec!["a", "c"], vec!["b"]]);
+        project.focus_group(Direction::Up);
+        assert_eq!(project.active_file().map(String::as_str), Some("c"));
+        for file in ["a", "b", "c"] {
+            project.close_file(file);
+        }
+        assert!(project.groups.is_empty());
+        assert!(project.file_layout.is_none());
+        assert_eq!(project.active_file(), None);
+    }
+
+    #[test]
+    fn keeps_groups_together() {
+        let mut workspace = Workspace::new("test");
+        workspace.scratch.tabs = ["a", "x", "b", "y", "c"].map(String::from).to_vec();
+        crate::splits::split(&mut workspace.layouts, "c", "a", true, false);
+        workspace.normalize_groups();
+        assert_eq!(workspace.scratch.tabs, ["c", "a", "x", "b", "y"].map(String::from).to_vec());
+    }
 }
