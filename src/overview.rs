@@ -50,7 +50,7 @@ fn row(
         .py(px(3.0))
         .hover(|style| style.bg(theme.hover))
         .child(div().w(px(16.0)).text_color(color).child(glyph))
-        .child(div().flex_none().max_w(px(380.0)).truncate().child(title.into()))
+        .child(div().min_w_0().truncate().child(title.into()))
         .child(div().flex_1().min_w_0().truncate().text_color(theme.faint).child(subtitle.into()))
         .child(div().text_color(theme.faint).child(detail.into()))
         .on_click(cx.listener(move |view, _, window, cx| run(view, window, cx)))

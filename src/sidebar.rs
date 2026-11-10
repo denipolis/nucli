@@ -400,9 +400,11 @@ fn tab_row(
                 .min_w_0()
                 .gap(px(6.0))
                 .overflow_hidden()
-                .child(div().flex_none().max_w(px(180.0)).truncate().text_color(title_color).child(info.title.clone()))
+                .child(div().min_w_0().truncate().text_color(title_color).child(info.title.clone()))
                 .child(
                     div()
+                        .flex_1()
+                        .min_w_0()
                         .truncate()
                         .text_color(if selected { theme.on_accent } else { theme.faint })
                         .child(info.subtitle.clone()),

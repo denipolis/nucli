@@ -311,7 +311,7 @@ impl ChangesPanel {
             .pr(px(8.0))
             .hover(|style| style.bg(theme.hover))
             .child(div().flex_none().text_color(color.color(theme.dark)).child(glyph))
-            .child(div().flex_none().max_w(px(160.0)).truncate().child(name))
+            .child(div().min_w_0().truncate().child(name))
             .child(div().flex_1().min_w_0().truncate().text_color(theme.faint).child(folder))
             .child(
                 div()

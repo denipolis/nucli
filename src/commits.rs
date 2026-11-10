@@ -476,7 +476,7 @@ impl Render for CommitsPanel {
                                 .children(through.map(|row| lanes_through(row, line, theme.dark)))
                                 .child(div().flex_none().w(px(8.0)))
                                 .child(div().flex_none().text_color(color.color(theme.dark)).child(glyph))
-                                .child(div().flex_none().max_w(px(150.0)).truncate().child(name))
+                                .child(div().min_w_0().truncate().child(name))
                                 .child(div().flex_1().min_w_0().truncate().text_color(theme.faint).child(folder))
                                 .child(div().flex_none().text_color(letter).child(change.status.to_string()))
                                 .on_click(cx.listener(move |panel, _, _, cx| {
