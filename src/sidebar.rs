@@ -339,6 +339,12 @@ fn gutter(link: Option<Link>, tick: bool, loose: bool, theme: &crate::theme::The
         })
 }
 
+pub const TINT: f32 = 0.14;
+
+pub fn stripe(color: Hsla) -> gpui::Div {
+    div().absolute().left_0().top_0().bottom_0().w(px(2.0)).bg(color)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn tab_row(
     view: &WorkspaceView,
@@ -351,7 +357,8 @@ fn tab_row(
 ) -> AnyElement {
     let theme = ui::theme(cx);
     let id = info.id.clone();
-    let glyph_color = info.color.or(info.glyph.1).or(project.color).map(|color| color.color(theme.dark));
+    let glyph_color = info.glyph.1.or(project.color).map(|color| color.color(theme.dark));
+    let tint = info.color.map(|color| color.color(theme.dark));
     let renaming = rename_field(view, |target| matches!(target, Rename::Tab(tab) if *tab == id));
     let title_color = if selected {
         theme.on_accent
@@ -380,8 +387,13 @@ fn tab_row(
         .gap(px(6.0))
         .pl(px(6.0))
         .pr(px(8.0))
+        .relative()
         .when(selected, |this| this.bg(theme.accent))
-        .when(!selected, |this| this.group_hover(group.clone(), |style| style.bg(theme.hover)))
+        .when(!selected, |this| {
+            this.when_some(tint, |this, tint| this.bg(tint.opacity(TINT)))
+                .group_hover(group.clone(), |style| style.bg(theme.hover))
+        })
+        .when_some(tint, |this, tint| this.child(stripe(tint)))
         .child(
             div()
                 .w(px(14.0))

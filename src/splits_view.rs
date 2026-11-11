@@ -98,8 +98,9 @@ fn header(view: &WorkspaceView, id: &str, focused: bool, cx: &mut Context<Worksp
     let glyph = if focused {
         theme.on_accent
     } else {
-        info.color.or(info.glyph.1).map(|color| color.color(theme.dark)).unwrap_or(theme.muted)
+        info.glyph.1.map(|color| color.color(theme.dark)).unwrap_or(theme.muted)
     };
+    let tint = info.color.map(|color| color.color(theme.dark));
     let detach_id = id.to_string();
     let dragged = DraggedTab { id: id.to_string(), title: info.title.clone() };
     div()
@@ -113,8 +114,13 @@ fn header(view: &WorkspaceView, id: &str, focused: bool, cx: &mut Context<Worksp
         .border_b_1()
         .border_color(theme.border)
         .cursor(CursorStyle::OpenHand)
+        .relative()
         .when(focused, |this| this.bg(theme.accent))
-        .when(!focused, |this| this.bg(theme.surface).hover(|style| style.bg(theme.hover)))
+        .when(!focused, |this| {
+            this.bg(tint.map_or(theme.surface, |tint| tint.opacity(crate::sidebar::TINT)))
+                .hover(|style| style.bg(theme.hover))
+        })
+        .when_some(tint, |this, tint| this.child(crate::sidebar::stripe(tint)))
         .text_color(text)
         .child(div().flex_none().text_color(glyph).child(info.glyph.0))
         .child(div().flex_1().min_w_0().truncate().child(info.title.clone()))

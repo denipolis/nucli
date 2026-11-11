@@ -144,7 +144,7 @@ fn dropdown(
         let (glyph, color) =
             crate::sidebar::status_glyph(data, &theme, tick).unwrap_or((icons::CHECK.into(), theme.green));
         let (agent, agent_color) = crate::sidebar::tab_glyph(data);
-        let agent_color = data.color.or(agent_color).map(|color| color.color(theme.dark)).unwrap_or(theme.muted);
+        let agent_color = agent_color.map(|color| color.color(theme.dark)).unwrap_or(theme.muted);
         let notice = data.notice.as_ref().filter(|_| data.attention);
         let text = match (status, notice) {
             (Status::Working, _) if data.subagents.is_empty() => "working".to_string(),

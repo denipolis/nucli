@@ -76,7 +76,7 @@ A tab is an agent or a shell living in a project. Agents and shells look the sam
 - With nothing selected, the tab opens without a project.
 - `⌘1`…`⌘9`: tab by position in this window's sidebar. The sidebar shows the number before each tab (`1 claude`).
 - `⇧⌘]` / `⇧⌘[`: next / previous tab in sidebar order. `⌃Tab` / `⌃⇧Tab` open the tab switcher.
-- Rename (double-click, context menu, palette "Rename Tab"; empty restores the automatic title, which follows the terminal title) and Color.
+- Rename (double-click, context menu, palette "Rename Tab"; empty restores the automatic title, which follows the terminal title) and Color (12 theme colors or none; marks the tab's sidebar row and split header with a stripe on the left edge and a light wash of the color, and tints its title in the terminal panel).
 - `⌘W`: closes the shown file tab if a file is shown, else the current tab. A running agent asks first, unless it printed nothing for 2 hours or "don't ask again for 1 hour" was checked. `⌘W` never closes a project.
 - After closing, the next tab of the same project is selected (previous when it was the last), then the project overview.
 - A process that exits with code 0 closes its tab. Any other code keeps the tab, marks it red and prints `[process exited with code N]`.
