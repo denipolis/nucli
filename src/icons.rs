@@ -49,7 +49,7 @@ pub const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦"
 
 pub fn agent(command: &str) -> (&'static str, ItemColor) {
     match command {
-        "claude" => ("\u{f06c4}", ItemColor::Orange),
+        "claude" => (AGENT, ItemColor::Orange),
         "codex" => ("\u{f02d9}", ItemColor::Mint),
         "gemini" => ("\u{f0ae2}", ItemColor::Blue),
         "opencode" => ("\u{eac4}", ItemColor::Gray),
