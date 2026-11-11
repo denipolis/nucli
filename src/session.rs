@@ -76,7 +76,7 @@ impl EventEmitter<SessionEvent> for Session {}
 fn agent_title(title: &str) -> &str {
     title
         .trim_start_matches(|c: char| {
-            c.is_whitespace() || matches!(c, '✳' | '✶' | '✻' | '✽' | '✢' | '*' | '·' | '\u{2800}'..='\u{28FF}')
+            c.is_whitespace() || matches!(c, '✳' | '✶' | '✻' | '✽' | '✢' | '*' | '·' | '\u{25D0}'..='\u{25D3}' | '\u{2800}'..='\u{28FF}')
         })
         .trim_end()
 }
@@ -376,6 +376,7 @@ mod tests {
     fn strips_status_from_agent_titles() {
         assert_eq!(agent_title("✳ hey there"), "hey there");
         assert_eq!(agent_title("⠂ working * hard "), "working * hard");
+        assert_eq!(agent_title("◐ thinking"), "thinking");
         assert_eq!(agent_title("✳"), "");
         assert_eq!(agent_title("plain"), "plain");
     }
