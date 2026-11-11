@@ -248,9 +248,7 @@ impl Element for TerminalElement {
                 .iter()
                 .find(|(start, end, _)| *start <= indexed.point && indexed.point <= *end)
                 .map(|(_, _, active)| *active);
-            let hovered = hover
-                .as_ref()
-                .is_some_and(|link| link.line == indexed.point.line.0 && (link.start..=link.end).contains(&column));
+            let hovered = hover.as_ref().is_some_and(|link| link.start <= indexed.point && indexed.point <= link.end);
             if let Some(active) = matched {
                 frame.rects.push((cell_bounds, if active { theme.orange } else { theme.yellow }));
                 fg = Rgb { r: 0, g: 0, b: 0 };
@@ -549,24 +547,6 @@ impl Session {
         let (point, _) = grid_point(self, position)?;
         let term = self.terminal.term.lock();
         let grid = term.grid();
-        let row = &grid[point.line];
-        if let Some(link) = row[point.column].hyperlink() {
-            let same = |column: usize| row[Column(column)].hyperlink().is_some_and(|other| other.id() == link.id());
-            let mut start = point.column.0;
-            while start > 0 && same(start - 1) {
-                start -= 1;
-            }
-            let mut end = point.column.0;
-            while end + 1 < grid.columns() && same(end + 1) {
-                end += 1;
-            }
-            let uri = link.uri().to_string();
-            let target = match uri.strip_prefix("file://") {
-                Some(path) => links::classify(path, self.working_dir(), &self.project),
-                None => Some(Target::Url(uri)),
-            }?;
-            return Some(Link { line: point.line.0, start, end, target });
-        }
         let columns = grid.columns();
         let wraps = |line: i32| grid[Line(line)][Column(columns - 1)].flags.contains(Flags::WRAPLINE);
         let top = -(grid.history_size() as i32);
@@ -579,21 +559,33 @@ impl Session {
         while last < bottom && wraps(last) {
             last += 1;
         }
-        let text: Vec<char> = (first..=last)
-            .flat_map(|line| (0..columns).map(move |column| (line, column)))
-            .map(|(line, column)| grid[Line(line)][Column(column)].c)
+        let cells: Vec<GridPoint> = (first..=last)
+            .flat_map(|line| (0..columns).map(move |column| GridPoint::new(Line(line), Column(column))))
             .collect();
-        let offset = (point.line.0 - first) as usize * columns;
-        let (start, end, token) = links::token_at(&text, offset + point.column.0)?;
+        let index = (point.line.0 - first) as usize * columns + point.column.0;
+        if let Some(link) = grid[point].hyperlink() {
+            let same = |index: usize| grid[cells[index]].hyperlink().is_some_and(|other| other.id() == link.id());
+            let mut start = index;
+            while start > 0 && same(start - 1) {
+                start -= 1;
+            }
+            let mut end = index;
+            while end + 1 < cells.len() && same(end + 1) {
+                end += 1;
+            }
+            let uri = link.uri().to_string();
+            drop(term);
+            let target = match uri.strip_prefix("file://") {
+                Some(path) => links::classify(path, self.working_dir(), &self.project),
+                None => Some(Target::Url(uri)),
+            }?;
+            return Some(Link { start: cells[start], end: cells[end], target });
+        }
+        let text: Vec<char> = cells.iter().map(|&cell| grid[cell].c).collect();
+        let (start, end, token) = links::token_at(&text, index)?;
         drop(term);
         let target = links::classify(&token, self.working_dir(), &self.project)?;
-        let (row_start, row_end) = (offset, offset + columns - 1);
-        Some(Link {
-            line: point.line.0,
-            start: start.max(row_start) - row_start,
-            end: end.min(row_end) - row_start,
-            target,
-        })
+        Some(Link { start: cells[start], end: cells[end], target })
     }
 
     fn update_hover(&mut self, position: Point<Pixels>, modifiers: &gpui::Modifiers, cx: &mut Context<Self>) {

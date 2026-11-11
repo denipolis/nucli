@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use alacritty_terminal::index::Point;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Target {
     Url(String),
@@ -8,9 +10,8 @@ pub enum Target {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Link {
-    pub line: i32,
-    pub start: usize,
-    pub end: usize,
+    pub start: Point,
+    pub end: Point,
     pub target: Target,
 }
 
