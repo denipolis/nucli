@@ -140,7 +140,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 - Selection with the mouse (double-click words, triple-click lines), `⌘C` copies, `⌘V` pastes (bracketed when the program asks). `⌘A` selects all output.
 - `⌘K` clears the screen and scrollback.
 - `⌘F` opens a find bar over the terminal: matches are highlighted, `enter` / `⌘G` next, `⇧⌘G` previous, `esc` closes.
-- `⌘`-click opens URLs in the browser and file paths (`path`, `path:line`, `path:line:col`, relative to the shell's folder or the project) in the file view at that line. `⌘`-hover underlines them, across every row a wrapped link spans.
+- `⌘`-click opens URLs in the browser and file paths (`path`, `path:line`, `path:line:col`, relative to the shell's folder or the project) in the file view at that line. `⌘`-hover underlines them, across every row a wrapped link spans, and shows a preview of an image file on the side of the link with more room, scaled down to fit the window and never enlarged.
 - Dropping files on a terminal types their shell-quoted paths; dropped text is typed as is.
 - macOS keys: `⌘←` / `⌘→` line start / end, `⌘⌫` delete line, `⌥←` / `⌥→` word back / forward, `⌥⌫` delete word, `⌥` is Meta.
 - Box and block characters are drawn by Nucli so they join seamlessly at any line height. Rounded box corners are drawn square.

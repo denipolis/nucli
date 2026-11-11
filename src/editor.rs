@@ -157,14 +157,18 @@ pub struct Loaded {
 
 const IMAGES: [&str; 8] = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "ico"];
 
+pub fn is_image(path: &Path) -> bool {
+    let extension = path.extension().map(|ext| ext.to_string_lossy().to_lowercase()).unwrap_or_default();
+    IMAGES.contains(&extension.as_str())
+}
+
 pub fn load(project: &Path, path: &str, commit: Option<&str>) -> Loaded {
     let full = if Path::new(path).is_absolute() { PathBuf::from(path) } else { project.join(path) };
     let meta = std::fs::metadata(&full).ok();
     let modified = meta.as_ref().and_then(|meta| meta.modified().ok());
-    let extension = full.extension().map(|ext| ext.to_string_lossy().to_lowercase()).unwrap_or_default();
     let empty =
         |content: Content| Loaded { content, rows: Vec::new(), text: String::new(), trailing_newline: false, modified };
-    if commit.is_none() && IMAGES.contains(&extension.as_str()) && full.is_file() {
+    if commit.is_none() && is_image(&full) && full.is_file() {
         return empty(Content::Image);
     }
     let lines = if Path::new(path).is_absolute() { None } else { git::file_diff(project, path, commit) };

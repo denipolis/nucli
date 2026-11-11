@@ -8,12 +8,12 @@ use alacritty_terminal::term::TermMode;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor, Rgb};
 use gpui::{
-    App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId, ElementInputHandler, Entity,
-    EntityInputHandler, ExternalPaths, Font, FontFeatures, FontStyle, FontWeight, GlobalElementId, Hsla,
+    AnyElement, App, Bounds, ClipboardItem, Context, Corner, CursorStyle, Element, ElementId, ElementInputHandler,
+    Entity, EntityInputHandler, ExternalPaths, Font, FontFeatures, FontStyle, FontWeight, GlobalElementId, Hsla,
     InspectorElementId, InteractiveElement, IntoElement, KeyDownEvent, LayoutId, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, Rgba, ScrollDelta, ScrollWheelEvent,
     ShapedLine, SharedString, Size, StrikethroughStyle, Style, Styled, TextRun, UTF16Selection, UnderlineStyle, Window,
-    div, fill, outline, point, px, relative, size,
+    anchored, deferred, div, fill, img, outline, point, px, relative, size,
 };
 
 use crate::commands;
@@ -35,6 +35,7 @@ pub struct ViewState {
     pub mouse_button: Option<u8>,
     pub find: Option<Find>,
     pub hover: Option<Link>,
+    pub preview: Option<Size<Pixels>>,
     pub cursor_hidden: bool,
     pub focused: bool,
     pub observing_focus: bool,
@@ -420,6 +421,23 @@ fn split_run(run: &Run, index: usize, cursor_color: Hsla) -> Vec<Run> {
     parts
 }
 
+const PREVIEW_MARGIN: f32 = 8.0;
+const PREVIEW_FRAME: f32 = 10.0;
+
+fn image_size(link: &Link) -> Option<Size<Pixels>> {
+    let Target::File(path, _) = &link.target else { return None };
+    if !crate::editor::is_image(path) {
+        return None;
+    }
+    let (width, height) = image::image_dimensions(path).ok()?;
+    Some(size(px(width as f32), px(height as f32)))
+}
+
+fn fit(image: Size<Pixels>, room: Size<Pixels>) -> Size<Pixels> {
+    let scale = (room.width / image.width).min(room.height / image.height).clamp(0.0, 1.0);
+    size(image.width * scale, image.height * scale)
+}
+
 fn grid_point(session: &Session, position: Point<Pixels>) -> Option<(GridPoint, Side)> {
     let (origin, cell) = session.view.layout?;
     let size = session.terminal.size;
@@ -591,9 +609,40 @@ impl Session {
     fn update_hover(&mut self, position: Point<Pixels>, modifiers: &gpui::Modifiers, cx: &mut Context<Self>) {
         let hover = if modifiers.secondary() { self.link_at(position) } else { None };
         if hover != self.view.hover {
+            self.view.preview = hover.as_ref().and_then(image_size);
             self.view.hover = hover;
             cx.notify();
         }
+    }
+
+    fn image_preview(&self, window: &Window, theme: &Theme) -> Option<AnyElement> {
+        let link = self.view.hover.as_ref()?;
+        let Target::File(path, _) = &link.target else { return None };
+        let image = self.view.preview?;
+        let (origin, cell) = self.view.layout?;
+        let offset = self.terminal.term.lock().grid().display_offset() as i32;
+        let x = origin.x + cell.width * link.start.column.0 as f32;
+        let below = origin.y + cell.height * (link.end.line.0 + offset + 1) as f32;
+        let above = origin.y + cell.height * (link.start.line.0 + offset) as f32;
+        let viewport = window.viewport_size();
+        let chrome = px(PREVIEW_MARGIN + PREVIEW_FRAME);
+        let width = viewport.width - px(2.0 * PREVIEW_MARGIN + PREVIEW_FRAME);
+        let down = fit(image, size(width, viewport.height - below - chrome));
+        let up = fit(image, size(width, above - chrome));
+        let (corner, y, shown) =
+            if down.height >= up.height { (Corner::TopLeft, below, down) } else { (Corner::BottomLeft, above, up) };
+        if shown.height < px(1.0) {
+            return None;
+        }
+        let frame = div()
+            .p(px(4.0))
+            .bg(theme.elevated)
+            .border_1()
+            .border_color(theme.border)
+            .child(img(path.clone()).w(shown.width).h(shown.height));
+        let anchor =
+            anchored().anchor(corner).position(point(x, y)).snap_to_window_with_margin(px(PREVIEW_MARGIN)).child(frame);
+        Some(deferred(anchor).with_priority(2).into_any_element())
     }
 
     fn mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -744,6 +793,7 @@ impl Render for Session {
             cx.on_blur(&self.focus, window, |session, _, cx| session.focus_changed(false, cx)).detach();
         }
         let bar = self.view.find.as_ref().map(|find| self.find_bar(find, cx));
+        let preview = self.image_preview(window, &theme);
         let pointer = if self.view.hover.is_some() { CursorStyle::PointingHand } else { CursorStyle::IBeam };
         div()
             .relative()
@@ -782,6 +832,7 @@ impl Render for Session {
                     .child(TerminalElement { session: cx.entity(), focused }),
             )
             .children(bar)
+            .children(preview)
     }
 }
 
