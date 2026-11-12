@@ -32,8 +32,10 @@ Direct dependencies, declared in `Cargo.toml`. Exact versions of everything, tra
 | [core-graphics](https://github.com/servo/core-foundation-rs) | MIT OR Apache-2.0 | macOS only: window capture in the development build's control file |
 | [block](https://github.com/SSheldon/rust-block) | MIT | macOS only: completion handlers of the system notification API |
 | [embed-resource](https://github.com/nabijaczleweli/rust-embed-resource) | MIT | Windows only, build time: the executable icon |
-| [objc](https://github.com/SSheldon/rust-objc) | MIT | macOS only: the Dock badge |
+| [objc](https://github.com/SSheldon/rust-objc) | MIT | macOS only: the Dock badge, dragging files out of the window |
 | [plist](https://github.com/ebarnard/rust-plist) | MIT | macOS only: reading Nucli 1 preferences when onboarding offers to import them |
+| [windows](https://github.com/microsoft/windows-rs) | MIT OR Apache-2.0 | Windows only: dragging files out of the window to other apps (shell drag and drop) |
+| [x11rb](https://github.com/psychon/x11rb) | MIT OR Apache-2.0 | Linux only: dragging files out of the window to other apps on X11 (XDND) |
 | [libc](https://github.com/rust-lang/libc) | MIT OR Apache-2.0 | Linux and macOS only: saving terminal output when the app is asked to terminate |
 | [serde](https://github.com/serde-rs/serde), [serde_json](https://github.com/serde-rs/json) | MIT OR Apache-2.0 | Settings and state files |
 

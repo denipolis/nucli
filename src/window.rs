@@ -511,7 +511,7 @@ fn drag_out(
     window: &mut Window,
     cx: &mut App,
 ) {
-    if !bounds.contains(&position) && crate::drag_out::start(path) {
+    if !bounds.contains(&position) && crate::drag_out::start(path, cx) {
         cx.stop_active_drag(window);
     }
 }

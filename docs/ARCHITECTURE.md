@@ -26,7 +26,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `overview.rs` | Project overview and empty viewport. |
 | `panel.rs` | Panel frame and the terminal panel. |
 | `files.rs`, `changes.rs`, `commits.rs` | Files, Changes and History panel views. |
-| `drag_out.rs` | macOS only: hands a file dragged past the window edge to an `NSDraggingSession`. |
+| `drag_out.rs` | Hands a file dragged past the window edge to the system: `NSDraggingSession` on macOS, `SHDoDragDrop` on Windows, XDND on X11. |
 | `file_ops.rs` | File operations of the Files tree: create, rename, move, duplicate, cut, copy, paste, delete, drag and drop, and its context menu. |
 | `file_view.rs` | File tabs, path bar, images, Open With, close and save prompts. |
 | `editor.rs` | Text view: diff rows, highlighting, editing, undo, IME. |
@@ -119,7 +119,10 @@ Tabs for a commit's version of a file are stored as `path@@hash`.
 - `alacritty_terminal`'s parser holds everything after `CSI ? 2026 h` until the matching end or a 150 ms timeout that only its caller can fire, so the parser runs apart from the blocking pty read.
 - Prompt anchoring moves the cursor, which breaks ConPTY: it owns the screen and tracks the cursor itself, and a resize during startup, which every new tab gets, left the terminal blank for good. So on Windows (`LIFTS_PROMPT`) nothing is sent or rewritten. `TerminalElement` paints the grid lower by the blank rows under the content, and the same offset goes into `view.layout` for the mouse.
 - GPUI runs key bindings before key listeners. Recording a shortcut uses `App::intercept_keystrokes`, which runs first, so the key does not also trigger its command. A plain `on_key_down` would.
-- GPUI drags never leave the window: `on_drag` keeps a value inside the app and GPUI has no OS drag source. `WorkspaceView` watches drags of files with `on_drag_move` on the root, which fires even outside the window, and once the pointer leaves it starts an `NSDraggingSession` from the current `mouseDragged` event and stops the GPUI drag. The pasteboard item carries `public.file-url` and the path as plain text. GPUI reads only `NSFilenamesPboardType` on drop.
+- GPUI drags never leave the window: `on_drag` keeps a value inside the app and GPUI has no OS drag source. `WorkspaceView` watches drags of files with `on_drag_move` on the root, which fires even outside the window because each platform keeps the pointer while a button is held, and once the pointer leaves it hands the file to the system and stops the GPUI drag. Each drag offers the file and the path as plain text.
+  - macOS starts an `NSDraggingSession` from the current `mouseDragged` event, so it must run inside that event. GPUI reads only `NSFilenamesPboardType` on drop.
+  - Windows takes the shell's data object of the file and runs `SHDoDragDrop`, which pumps messages until the drop, so it runs in a spawned task outside any update (see the modal dialog gotcha).
+  - X11 runs the XDND source protocol on a thread with its own connection: it polls the pointer, finds the `XdndAware` window under it, sends enter, position, leave and drop, and answers the selection requests. GPUI keeps the implicit pointer grab, so the cursor shape does not change. Wayland would need GPUI's surface and the button serial, which GPUI does not expose, so nothing happens there.
 - `Window::dispatch_event` returns a private type, so input cannot be simulated with it from outside `gpui`.
 - GPUI does not paint while the macOS screen is locked, and window captures come back black. It also stops presenting while a window is fully covered, so captures of a window behind others show an old frame.
 - On X11 GPUI starts painting only after a window manager reports the window as visible, so a bare Xvfb stays black.
