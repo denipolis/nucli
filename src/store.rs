@@ -685,6 +685,12 @@ impl Store {
             });
         }
         let Some(target) = self.workspace_mut(workspace) else { return };
+        if let Some(Selected::Tab(previous)) = target.selected.clone()
+            && target.selected != selected
+        {
+            target.mru.retain(|tab| *tab != previous);
+            target.mru.insert(0, previous);
+        }
         if let Some(Selected::Tab(id)) = &selected {
             target.mru.retain(|tab| tab != id);
             target.mru.insert(0, id.clone());

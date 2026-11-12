@@ -38,8 +38,11 @@ pub fn open(view: &mut WorkspaceView, delta: i32, _window: &mut Window, cx: &mut
         return;
     }
     let current = state.selected.clone();
-    let start = entries.iter().position(|entry| Some(entry) == current.as_ref()).unwrap_or(0) as i32;
-    let highlighted = (start + delta).rem_euclid(entries.len() as i32) as usize;
+    let highlighted = match entries.iter().position(|entry| Some(entry) == current.as_ref()) {
+        Some(start) => (start as i32 + delta).rem_euclid(entries.len() as i32) as usize,
+        None if delta > 0 => 0,
+        None => entries.len() - 1,
+    };
     view.switcher = Some(Switcher { entries, highlighted });
     cx.notify();
 }
