@@ -1,6 +1,6 @@
 [package]
 name = "nucli"
-version = "2.5.1"
+version = "2.6.0"
 edition = "2024"
 license = "MIT"
 description = "A cross-platform terminal built for AI coding agents"
