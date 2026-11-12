@@ -289,6 +289,7 @@ pub struct Editor {
     tokens: Vec<Vec<(Range<usize>, Token)>>,
     pub cursor: Pos,
     pub anchor: Option<Pos>,
+    revealed: Pos,
     original: String,
     trailing_newline: bool,
     modified: Option<SystemTime>,
@@ -331,6 +332,7 @@ impl Editor {
             tokens: Vec::new(),
             cursor: Pos::default(),
             anchor: None,
+            revealed: Pos::default(),
             original: String::new(),
             trailing_newline: true,
             modified: None,
@@ -799,6 +801,9 @@ impl Render for Editor {
         let widest = widest_row(&self.rows);
         let columns = if two_columns { 2.0 } else { 1.0 };
         let gutter = cell.width * (columns * (digits as f32 + 1.0) + 3.0);
+        if self.cursor != self.revealed {
+            self.reveal_column(gutter, cell.width);
+        }
         let (family, ligatures) = (settings::get(cx).font.clone(), settings::get(cx).ligatures);
         let list = uniform_list(
             "editor-rows",
@@ -915,6 +920,7 @@ impl Render for Editor {
                                     .flex_1()
                                     .min_w_0()
                                     .ml(gutter)
+                                    .pr(cell.width)
                                     .text_size(font_size)
                                     .child(
                                         canvas(
@@ -1194,6 +1200,24 @@ impl Render for Editor {
 }
 
 impl Editor {
+    fn reveal_column(&mut self, gutter: Pixels, cell: Pixels) {
+        let state = self.scroll.0.borrow();
+        let (Some(size), Some(row)) = (state.last_item_size, self.rows.get(self.cursor.row)) else { return };
+        let caret = gutter + cell * text_width(&row.text[..self.cursor.col.min(row.text.len())]);
+        let offset = state.base_handle.offset();
+        let left = -offset.x;
+        let left = if caret < left + gutter {
+            caret - gutter - (size.item.width - gutter) / 2.0
+        } else if caret + cell > left + size.item.width {
+            caret + cell - size.item.width
+        } else {
+            left
+        };
+        let max = (size.contents.width - size.item.width).max(px(0.0));
+        state.base_handle.set_offset(point(-left.clamp(px(0.0), max), offset.y));
+        self.revealed = self.cursor;
+    }
+
     fn end_drag(&mut self) {
         self.selecting = false;
         self.scroll_drag = None;
