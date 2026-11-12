@@ -635,7 +635,7 @@ fn history(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -
             continue;
         }
         let age = relative_age(conversation.modified);
-        let item = conversation.clone();
+        let (item, menu_item) = (conversation.clone(), conversation.clone());
         let (glyph, color) = icons::agent(conversation.kind.command());
         rows.push(
             div()
@@ -662,6 +662,12 @@ fn history(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -
                 .on_click(cx.listener(move |view, _, window, cx| {
                     crate::actions::resume_anywhere(view, item.clone(), window, cx)
                 }))
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |view, event: &gpui::MouseDownEvent, _, cx| {
+                        view.open_menu(event.position, crate::actions::history_menu(&menu_item), cx);
+                    }),
+                )
                 .into_any_element(),
         );
     }
@@ -774,6 +780,12 @@ pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<W
                         .drag_over::<DraggedTab>(move |style, _, _, _| style.bg(selection))
                         .on_drop(cx.listener(|view, drag: &DraggedTab, window, cx| {
                             crate::actions::move_tab(view, &drag.id, std::path::Path::new(""), None, window, cx);
+                        }))
+                        .drag_over::<crate::file_ops::DraggedPath>(move |style, _, _, _| style.bg(selection))
+                        .on_drop(cx.listener(|view, drag: &crate::file_ops::DraggedPath, window, cx| {
+                            if drag.path.is_dir() {
+                                crate::actions::open_folder(view, drag.path.clone(), window, cx);
+                            }
                         })),
                 ),
         )

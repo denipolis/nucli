@@ -3,12 +3,13 @@ use std::path::{Path, PathBuf};
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, AppContext, ClipboardItem, Context, Entity, InteractiveElement, IntoElement, MouseButton,
+    AnyElement, App, AppContext, Context, Entity, ExternalPaths, InteractiveElement, IntoElement, MouseButton,
     ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px, uniform_list,
 };
 
+use crate::actions::in_window;
+use crate::file_ops::DraggedPath;
 use crate::icons;
-use crate::menu::{self, Item};
 use crate::store;
 use crate::ui;
 use crate::window::WorkspaceView;
@@ -230,6 +231,13 @@ impl FilesPanel {
         .detach();
     }
 
+    fn drop(&mut self, sources: Vec<PathBuf>, folder: String, cut: bool, cx: &mut Context<Self>) {
+        let root = self.root.clone();
+        in_window(&self.workspace, cx, move |_, window, cx| {
+            crate::file_ops::transfer(&root, sources, &folder, cut, window, cx)
+        });
+    }
+
     fn toggle(&mut self, path: &str, cx: &mut Context<Self>) {
         let (workspace, root, path) = (self.workspace.clone(), self.root.clone(), path.to_string());
         store::store(cx).update(cx, |store, _| {
@@ -244,19 +252,8 @@ impl FilesPanel {
     }
 }
 
-fn file_menu(root: &Path, row: &TreeRow, view: &WorkspaceView, cx: &App) -> Vec<Item> {
-    let full = root.join(&row.path);
-    let mut items = crate::file_view::open_with_menu(view, full.clone(), cx);
-    items.push(Item::Separator);
-    let (reveal, copy, relative) = (full.clone(), full, row.path.clone());
-    items.push(menu::action(crate::actions::reveal_label(), move |_, _, cx| cx.reveal_path(&reveal)));
-    items.push(menu::action("Copy Path", move |_, _, cx| {
-        cx.write_to_clipboard(ClipboardItem::new_string(copy.to_string_lossy().into_owned()))
-    }));
-    items.push(menu::action("Copy Relative Path", move |_, _, cx| {
-        cx.write_to_clipboard(ClipboardItem::new_string(relative.clone()))
-    }));
-    items
+fn parent(path: &str) -> String {
+    path.rsplit_once('/').map(|(parent, _)| parent.to_string()).unwrap_or_default()
 }
 
 impl Render for FilesPanel {
@@ -291,6 +288,11 @@ impl Render for FilesPanel {
                             _ => None,
                         };
                         let (click, menu_row) = (row.clone(), row.clone());
+                        let folder = if row.is_dir { row.path.clone() } else { parent(&row.path) };
+                        let (drop_folder, external_folder) = (folder.clone(), folder);
+                        let dragged = DraggedPath { path: panel.root.join(&row.path), title: row.name.clone() };
+                        let selection = theme.selection;
+                        let target = row.is_dir;
                         div()
                             .id(("file-row", index))
                             .h(line)
@@ -302,6 +304,10 @@ impl Render for FilesPanel {
                             .pr(px(8.0))
                             .text_color(text)
                             .hover(|style| style.bg(theme.hover))
+                            .when(target, |this| {
+                                this.drag_over::<DraggedPath>(move |style, _, _, _| style.bg(selection))
+                                    .drag_over::<ExternalPaths>(move |style, _, _, _| style.bg(selection))
+                            })
                             .child(
                                 div()
                                     .flex_none()
@@ -312,36 +318,34 @@ impl Render for FilesPanel {
                             .when_some(right, |this, (label, color)| {
                                 this.child(div().flex_none().text_color(color).child(label))
                             })
-                            .on_click(cx.listener(move |panel, _, window, cx| {
+                            .on_drag(dragged, |drag: &DraggedPath, _, _, cx| {
+                                cx.new(|_| crate::sidebar::DragPreview(drag.title.clone()))
+                            })
+                            .on_drop(cx.listener(move |panel, drag: &DraggedPath, window, cx| {
+                                let cut = !window.modifiers().alt;
+                                panel.drop(vec![drag.path.clone()], drop_folder.clone(), cut, cx);
+                            }))
+                            .on_drop(cx.listener(move |panel, paths: &ExternalPaths, _, cx| {
+                                panel.drop(paths.paths().to_vec(), external_folder.clone(), false, cx);
+                            }))
+                            .on_click(cx.listener(move |panel, _, _, cx| {
                                 if click.is_dir {
                                     panel.toggle(&click.path, cx);
                                 } else {
-                                    let (root, path, workspace) =
-                                        (panel.root.clone(), click.path.clone(), panel.workspace.clone());
-                                    let handle = store::store(cx).read(cx).windows.get(&workspace).copied();
-                                    let _ = window;
-                                    cx.defer(move |cx| {
-                                        if let Some(handle) = handle {
-                                            let _ = handle.update(cx, |view, window, cx| {
-                                                crate::file_view::open_file(view, &root, &path, None, window, cx)
-                                            });
-                                        }
+                                    let (root, path) = (panel.root.clone(), click.path.clone());
+                                    in_window(&panel.workspace, cx, move |view, window, cx| {
+                                        crate::file_view::open_file(view, &root, &path, None, window, cx)
                                     });
                                 }
                             }))
                             .on_mouse_down(
                                 MouseButton::Right,
                                 cx.listener(move |panel, event: &gpui::MouseDownEvent, _, cx| {
-                                    let (root, row, workspace, position) =
-                                        (panel.root.clone(), menu_row.clone(), panel.workspace.clone(), event.position);
-                                    let handle = store::store(cx).read(cx).windows.get(&workspace).copied();
-                                    cx.defer(move |cx| {
-                                        if let Some(handle) = handle {
-                                            let _ = handle.update(cx, |view, _, cx| {
-                                                let items = file_menu(&root, &row, view, cx);
-                                                view.open_menu(position, items, cx);
-                                            });
-                                        }
+                                    let (root, row, position) = (panel.root.clone(), menu_row.clone(), event.position);
+                                    cx.stop_propagation();
+                                    in_window(&panel.workspace, cx, move |view, _, cx| {
+                                        let items = crate::file_ops::menu(&root, &row.path, row.is_dir, view, cx);
+                                        view.open_menu(position, items, cx);
                                     });
                                 }),
                             )
@@ -351,6 +355,22 @@ impl Render for FilesPanel {
             }),
         )
         .size_full()
+        .on_drop(cx.listener(|panel, drag: &DraggedPath, window, cx| {
+            panel.drop(vec![drag.path.clone()], String::new(), !window.modifiers().alt, cx);
+        }))
+        .on_drop(cx.listener(|panel, paths: &ExternalPaths, _, cx| {
+            panel.drop(paths.paths().to_vec(), String::new(), false, cx);
+        }))
+        .on_mouse_down(
+            MouseButton::Right,
+            cx.listener(|panel, event: &gpui::MouseDownEvent, _, cx| {
+                let (root, position) = (panel.root.clone(), event.position);
+                in_window(&panel.workspace, cx, move |view, _, cx| {
+                    let items = crate::file_ops::menu(&root, "", true, view, cx);
+                    view.open_menu(position, items, cx);
+                });
+            }),
+        )
     }
 }
 

@@ -101,12 +101,10 @@ fn session_chips(
             .hover(|style| style.bg(theme.hover))
             .child(div().min_w_0().truncate().child(paths::display(&folder)))
             .on_click(cx.listener(move |view, event: &gpui::ClickEvent, _, cx| {
-                let (reveal, copy) = (reveal.clone(), copy.clone());
+                let reveal = reveal.clone();
                 let items = vec![
                     crate::menu::action(crate::actions::reveal_label(), move |_, _, cx| cx.reveal_path(&reveal)),
-                    crate::menu::action("Copy Path", move |_, _, cx| {
-                        cx.write_to_clipboard(gpui::ClipboardItem::new_string(copy.to_string_lossy().into_owned()))
-                    }),
+                    crate::menu::copy("Copy Path", copy.to_string_lossy()),
                 ];
                 view.open_menu(event.position(), items, cx);
             }))

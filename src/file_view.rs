@@ -8,7 +8,7 @@ use gpui::{
     Window, canvas, div, fill, img, point, px, size,
 };
 
-use crate::editor::{Content, Editor};
+use crate::editor::{Content, Editor, EditorEvent};
 use crate::icons;
 use crate::menu::{self, Item};
 use crate::persist::Selected;
@@ -69,6 +69,13 @@ pub fn editor_for(
         .and_then(|name| crate::highlight::known_language(name));
     let editor = cx.new(|cx| Editor::new(root, path, commit, language, cx));
     cx.observe(&editor, |_, _, cx| cx.notify()).detach();
+    cx.subscribe(&editor, |view, editor, event: &EditorEvent, cx| match event {
+        EditorEvent::Menu(position) => {
+            let items = editor_menu(view, &editor, cx);
+            view.open_menu(*position, items, cx);
+        }
+    })
+    .detach();
     view.files.open.insert(id, editor.clone());
     editor
 }
@@ -236,6 +243,99 @@ pub fn close_tab(
     .detach();
 }
 
+fn under(file: &str, path: &str) -> bool {
+    file.strip_prefix(path).is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+}
+
+pub fn path_moved(
+    view: &mut WorkspaceView,
+    project: &Path,
+    from: &str,
+    to: Option<&str>,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    let files: Vec<String> = view
+        .state(cx)
+        .and_then(|state| state.project(project))
+        .map(|state| {
+            state.groups.iter().flat_map(|group| group.files.iter()).filter(|file| under(file, from)).cloned().collect()
+        })
+        .unwrap_or_default();
+    let Some(to) = to else {
+        for file in &files {
+            remove_tab(view, project, file, window, cx);
+        }
+        return;
+    };
+    let renamed: Vec<(String, String)> =
+        files.into_iter().map(|file| (format!("{to}{}", &file[from.len()..]), file)).collect();
+    for (new, old) in &renamed {
+        if let Some(editor) = view.files.open.remove(&key(project, old)) {
+            editor.update(cx, |editor, _| {
+                editor.full = project.join(new);
+                editor.path = new.clone();
+            });
+            view.files.open.insert(key(project, new), editor);
+        }
+    }
+    let (workspace, path) = (view.workspace.clone(), project.to_path_buf());
+    store::store(cx).update(cx, |store, cx| {
+        if let Some(target) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path)) {
+            for (new, old) in &renamed {
+                target.rename_file(old, new);
+            }
+        }
+        store.changed(cx);
+    });
+}
+
+fn close_tabs(
+    view: &mut WorkspaceView,
+    project: &Path,
+    files: Vec<String>,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    let (dirty, clean): (Vec<String>, Vec<String>) = files
+        .into_iter()
+        .partition(|file| view.files.open.get(&key(project, file)).is_some_and(|editor| editor.read(cx).dirty));
+    for file in &clean {
+        remove_tab(view, project, file, window, cx);
+    }
+    if let [file] = dirty.as_slice() {
+        close_tab(view, project, file, window, cx);
+    }
+    if dirty.len() < 2 {
+        return;
+    }
+    let answer = window.prompt(
+        PromptLevel::Warning,
+        &format!("Save changes to {} files?", dirty.len()),
+        Some("Your changes are lost if you don't save them."),
+        &["Save All", "Don't Save", "Cancel"],
+        cx,
+    );
+    let project = project.to_path_buf();
+    cx.spawn_in(window, async move |this, cx| {
+        let Ok(choice) = answer.await else { return };
+        if choice == 2 {
+            return;
+        }
+        let _ = this.update_in(cx, |view, window, cx| {
+            for file in &dirty {
+                if choice == 0
+                    && let Some(editor) = view.files.open.get(&key(&project, file)).cloned()
+                {
+                    editor.update(cx, |editor, cx| editor.save_file(cx));
+                }
+                remove_tab(view, &project, file, window, cx);
+            }
+        });
+    })
+    .detach();
+}
+
 pub fn close_active(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     let Some((path, file)) = view
         .state(cx)
@@ -357,6 +457,84 @@ pub fn open_with_menu(view: &WorkspaceView, file: PathBuf, cx: &App) -> Vec<Item
     items
 }
 
+pub fn path_menu(full: &Path, relative: &str) -> Vec<Item> {
+    let reveal = full.to_path_buf();
+    vec![
+        menu::action(crate::actions::reveal_label(), move |_, _, cx| cx.reveal_path(&reveal)),
+        menu::copy("Copy Path", full.to_string_lossy()),
+        menu::copy("Copy Relative Path", relative),
+    ]
+}
+
+pub fn file_menu(view: &WorkspaceView, full: &Path, relative: &str, cx: &App) -> Vec<Item> {
+    let mut items = open_with_menu(view, full.to_path_buf(), cx);
+    items.push(Item::Separator);
+    items.extend(path_menu(full, relative));
+    items
+}
+
+fn editor_menu(view: &WorkspaceView, editor: &Entity<Editor>, cx: &App) -> Vec<Item> {
+    let data = editor.read(cx);
+    let (editable, selected) = (data.is_editable(), data.selection().is_some());
+    let mut items = Vec::new();
+    if editable && selected {
+        items.push(menu::command("Cut", "cut", cx));
+    }
+    if selected {
+        items.push(menu::command("Copy", "copy", cx));
+    }
+    if editable {
+        items.push(menu::command("Paste", "paste", cx));
+    }
+    items.push(menu::command("Select All", "select_all", cx));
+    items.push(Item::Separator);
+    items.push(menu::command("Find", "find", cx));
+    if editable {
+        items.push(menu::command("Replace", "replace", cx));
+    }
+    if data.added + data.removed > 0 {
+        items.push(menu::command("Next Change", "next_change", cx));
+        items.push(menu::command("Previous Change", "previous_change", cx));
+    }
+    if data.dirty {
+        items.push(Item::Separator);
+        items.push(menu::command("Save", "save", cx));
+    }
+    items.push(Item::Separator);
+    items.extend(file_menu(view, &data.full, &data.path, cx));
+    items
+}
+
+fn tab_menu(view: &WorkspaceView, project: &Path, files: &[String], index: usize, cx: &App) -> Vec<Item> {
+    let file = files[index].clone();
+    let path = spec_parts(&file).0.to_string();
+    let full = if Path::new(&path).is_absolute() { PathBuf::from(&path) } else { project.join(&path) };
+    let closer = |label: &'static str, files: Vec<String>| {
+        let project = project.to_path_buf();
+        menu::action(label, move |view, window, cx| close_tabs(view, &project, files.clone(), window, cx))
+    };
+    let others: Vec<String> = files.iter().filter(|other| **other != file).cloned().collect();
+    let mut items = vec![closer("Close", vec![file.clone()])];
+    if !others.is_empty() {
+        items.push(closer("Close Others", others));
+    }
+    if index + 1 < files.len() {
+        items.push(closer("Close to the Right", files[index + 1..].to_vec()));
+    }
+    items.push(closer("Close All", files.to_vec()));
+    items.push(Item::Separator);
+    for (label, direction) in [("Split Right", Direction::Right), ("Split Down", Direction::Down)] {
+        let (project, file) = (project.to_path_buf(), file.clone());
+        items.push(menu::action(label, move |view, window, cx| {
+            open_file(view, &project, &file, None, window, cx);
+            split(view, direction, window, cx);
+        }));
+    }
+    items.push(Item::Separator);
+    items.extend(file_menu(view, &full, &path, cx));
+    items
+}
+
 #[allow(clippy::too_many_arguments)]
 fn tab_strip(
     view: &mut WorkspaceView,
@@ -430,6 +608,7 @@ fn tab_strip(
         let (select_project, select_file) = (project.to_path_buf(), file.clone());
         let (close_project, close_file) = (project.to_path_buf(), file.clone());
         let (middle_project, middle_file) = (project.to_path_buf(), file.clone());
+        let (menu_project, menu_files) = (project.to_path_buf(), files.to_vec());
         let (drop_project, drop_file, tab_group) = (project.to_path_buf(), file.clone(), group.to_string());
         let label = match commit {
             Some(commit) => format!("{name} @ {}", &commit[..commit.len().min(7)]),
@@ -473,6 +652,13 @@ fn tab_strip(
                     MouseButton::Middle,
                     cx.listener(move |view, _, window, cx| {
                         close_tab(view, &middle_project, &middle_file, window, cx);
+                    }),
+                )
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |view, event: &gpui::MouseDownEvent, _, cx| {
+                        let items = tab_menu(view, &menu_project, &menu_files, index, cx);
+                        view.open_menu(event.position, items, cx);
                     }),
                 )
                 .on_drag(dragged, |drag: &DraggedFile, _, _, cx| {
@@ -706,6 +892,26 @@ pub fn focus_group(
     change_project(view, window, cx, |project| project.focus_group(direction));
 }
 
+fn open_dropped(
+    view: &mut WorkspaceView,
+    project: &Path,
+    group: &str,
+    paths: &[PathBuf],
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    let group = group.to_string();
+    change_project(view, window, cx, |project| project.focused_group = Some(group));
+    for path in paths {
+        if path.is_dir() {
+            crate::actions::open_folder(view, path.clone(), window, cx);
+            continue;
+        }
+        let file = crate::file_ops::relative(project, path).unwrap_or_else(|| path.to_string_lossy().into_owned());
+        open_file(view, project, &file, None, window, cx);
+    }
+}
+
 fn group_view(
     view: &mut WorkspaceView,
     project: &crate::store::Project,
@@ -724,6 +930,8 @@ fn group_view(
     let chips = crate::statusbar::every_pane(cx).then(|| crate::statusbar::file_row(&editor, cx)).flatten();
     let (drop_project, drop_group, move_group, focus_id) =
         (project.path.clone(), id.to_string(), id.to_string(), id.to_string());
+    let (open_project, open_group, external_project, external_group) =
+        (project.path.clone(), id.to_string(), project.path.clone(), id.to_string());
     let strip = tab_strip(view, &project.path, id, &group.files, Some(&active), (focused, home), cx);
     div()
         .id(SharedString::from(format!("file-group-{id}")))
@@ -739,6 +947,12 @@ fn group_view(
                 let id = focus_id.clone();
                 change_project(view, window, cx, |project| project.focused_group = Some(id));
             }
+        }))
+        .on_drop(cx.listener(move |view, drag: &crate::file_ops::DraggedPath, window, cx| {
+            open_dropped(view, &open_project, &open_group, std::slice::from_ref(&drag.path), window, cx)
+        }))
+        .on_drop(cx.listener(move |view, paths: &gpui::ExternalPaths, window, cx| {
+            open_dropped(view, &external_project, &external_group, paths.paths(), window, cx)
         }))
         .child(strip)
         .child(path_bar(&editor, cx))

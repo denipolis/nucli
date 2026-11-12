@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, PromptLevel, Render,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, AppContext, Context, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, PromptLevel,
+    Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
 use crate::git::{self, Change, Status};
@@ -127,16 +127,7 @@ impl ChangesPanel {
                 store::finish_progress(progress, cx);
                 match result {
                     Ok(()) => done(panel, cx),
-                    Err(error) => {
-                        let handle = store::store(cx).read(cx).windows.get(&workspace).copied();
-                        cx.defer(move |cx| {
-                            if let Some(handle) = handle {
-                                let _ = handle.update(cx, |_, window, cx| {
-                                    drop(window.prompt(PromptLevel::Warning, "git failed", Some(&error), &["OK"], cx));
-                                });
-                            }
-                        });
-                    }
+                    Err(error) => crate::actions::alert(&workspace, "git failed", error, cx),
                 }
                 panel.reload(cx);
             });
@@ -284,6 +275,7 @@ impl ChangesPanel {
         let group = SharedString::from(format!("change-{id}"));
         let (open_change, discard_change, toggle_change) = (change.clone(), change.clone(), change.clone());
         let staged = change.staged;
+        let menu_change = change.clone();
         let workspace = self.workspace.clone();
         let root = self.root.clone();
         let show = move |change: &Change, cx: &mut Context<Self>| {
@@ -301,8 +293,12 @@ impl ChangesPanel {
             });
         };
         let hover_group = group.clone();
+        let dragged = crate::file_ops::DraggedPath { path: self.root.join(&change.path), title: name.clone() };
         div()
             .id(SharedString::from(format!("change-row-{id}")))
+            .on_drag(dragged, |drag: &crate::file_ops::DraggedPath, _, _, cx| {
+                cx.new(|_| crate::sidebar::DragPreview(drag.title.clone()))
+            })
             .group(group)
             .flex()
             .items_center()
@@ -342,8 +338,55 @@ impl ChangesPanel {
             )
             .child(div().flex_none().w(px(10.0)).text_color(letter_color).child(change.status.to_string()))
             .on_click(cx.listener(move |_, _, _, cx| show(&open_change, cx)))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |panel, event: &gpui::MouseDownEvent, _, cx| {
+                    let (entity, root, change, position) =
+                        (cx.entity(), panel.root.clone(), menu_change.clone(), event.position);
+                    crate::actions::in_window(&panel.workspace, cx, move |view, _, cx| {
+                        let items = change_menu(view, entity, &root, change, cx);
+                        view.open_menu(position, items, cx);
+                    });
+                }),
+            )
             .into_any_element()
     }
+}
+
+fn change_menu(
+    view: &WorkspaceView,
+    panel: Entity<ChangesPanel>,
+    root: &Path,
+    change: Change,
+    cx: &gpui::App,
+) -> Vec<crate::menu::Item> {
+    use crate::menu::{self, Item};
+    let full = root.join(&change.path);
+    let deleted = change.status == 'D';
+    let mut items = Vec::new();
+    if !(deleted && !change.staged) {
+        let (root, path) = (root.to_path_buf(), change.path.clone());
+        items.push(menu::action("Open Changes", move |view, window, cx| {
+            crate::file_view::open_file(view, &root, &path, None, window, cx)
+        }));
+    }
+    let batch = |label: &'static str, kind: Batch| {
+        let (panel, change) = (panel.clone(), change.clone());
+        menu::action(label, move |_, _, cx| panel.update(cx, |panel, cx| panel.batch(kind, vec![change.clone()], cx)))
+    };
+    if change.staged {
+        items.push(batch("Unstage", Batch::Unstage));
+    } else {
+        items.push(batch("Stage", Batch::Stage));
+        items.push(batch("Discard Changes", Batch::Discard));
+    }
+    items.push(Item::Separator);
+    if deleted {
+        items.extend(crate::file_view::path_menu(&full, &change.path));
+    } else {
+        items.extend(crate::file_view::file_menu(view, &full, &change.path, cx));
+    }
+    items
 }
 
 fn discard(root: &Path, changes: &[Change]) -> Result<(), String> {

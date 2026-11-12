@@ -101,7 +101,7 @@ fn header(view: &WorkspaceView, id: &str, focused: bool, cx: &mut Context<Worksp
         info.glyph.1.map(|color| color.color(theme.dark)).unwrap_or(theme.muted)
     };
     let tint = info.color.map(|color| color.color(theme.dark));
-    let detach_id = id.to_string();
+    let (detach_id, menu_id) = (id.to_string(), id.to_string());
     let dragged = DraggedTab { id: id.to_string(), title: info.title.clone() };
     div()
         .id(SharedString::from(format!("pane-header-{id}")))
@@ -145,12 +145,19 @@ fn header(view: &WorkspaceView, id: &str, focused: bool, cx: &mut Context<Worksp
                 })),
         )
         .on_drag(dragged, |drag: &DraggedTab, _, _, cx| cx.new(|_| DragPreview(drag.title.clone())))
+        .on_mouse_down(
+            gpui::MouseButton::Right,
+            cx.listener(move |view, event: &gpui::MouseDownEvent, _, cx| {
+                let items = crate::actions::tab_menu(view, &menu_id, cx);
+                view.open_menu(event.position, items, cx);
+            }),
+        )
         .into_any_element()
 }
 
 fn pane(view: &WorkspaceView, id: &str, focused: &str, split: bool, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let Some(session) = view.store(cx).session(id).cloned() else { return div().into_any_element() };
-    let target = id.to_string();
+    let (target, menu_target) = (id.to_string(), id.to_string());
     let (drop_target, move_target) = (id.to_string(), id.to_string());
     let (bounds_map, bounds_id) = (view.pane_bounds.clone(), id.to_string());
     let chips = crate::statusbar::every_pane(cx).then(|| crate::statusbar::session_row(view, &session, cx));
@@ -166,6 +173,14 @@ fn pane(view: &WorkspaceView, id: &str, focused: &str, split: bool, cx: &mut Con
             cx.listener(move |view, _, window, cx| {
                 if view.state(cx).and_then(|state| state.selected_tab()) != Some(target.as_str()) {
                     view.select_tab(&target, window, cx);
+                }
+            }),
+        )
+        .on_mouse_down(
+            gpui::MouseButton::Right,
+            cx.listener(move |view, _, window, cx| {
+                if view.state(cx).and_then(|state| state.selected_tab()) != Some(menu_target.as_str()) {
+                    view.select_tab(&menu_target, window, cx);
                 }
             }),
         )

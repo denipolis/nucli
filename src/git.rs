@@ -52,7 +52,7 @@ pub struct DiffLine {
 pub struct Commit {
     pub hash: String,
     pub parents: Vec<String>,
-    pub refs: Vec<String>,
+    pub refs: Vec<GitRef>,
     pub author: String,
     pub time: i64,
     pub subject: String,
@@ -344,12 +344,36 @@ pub fn commit(dir: &Path, message: &str) -> Result<(), String> {
     run_checked(dir, &["commit", "-m", message]).map(drop)
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum GitRef {
+    Head,
+    Current(String),
+    Branch(String),
+    Remote(String),
+    Tag(String),
+}
+
+fn parse_ref(name: &str) -> GitRef {
+    let local = |name: &str| name.strip_prefix("refs/heads/").unwrap_or(name).to_string();
+    if let Some(current) = name.strip_prefix("HEAD -> ") {
+        GitRef::Current(local(current))
+    } else if name == "HEAD" {
+        GitRef::Head
+    } else if let Some(tag) = name.strip_prefix("tag: ") {
+        GitRef::Tag(tag.strip_prefix("refs/tags/").unwrap_or(tag).to_string())
+    } else if let Some(remote) = name.strip_prefix("refs/remotes/") {
+        GitRef::Remote(remote.to_string())
+    } else {
+        GitRef::Branch(local(name))
+    }
+}
+
 fn parse_commit(line: &str) -> Option<Commit> {
     let mut fields = line.splitn(6, '\x1f');
     Some(Commit {
         hash: fields.next()?.to_string(),
         parents: fields.next()?.split_whitespace().map(String::from).collect(),
-        refs: fields.next()?.split(", ").filter(|name| !name.is_empty()).map(String::from).collect(),
+        refs: fields.next()?.split(", ").filter(|name| !name.is_empty()).map(parse_ref).collect(),
         author: fields.next()?.to_string(),
         time: fields.next()?.parse().unwrap_or(0),
         subject: fields.next()?.to_string(),
@@ -359,7 +383,19 @@ fn parse_commit(line: &str) -> Option<Commit> {
 pub fn log(dir: &Path, limit: usize) -> Option<Vec<Commit>> {
     let limit = limit.to_string();
     let format = "--format=%H%x1f%P%x1f%D%x1f%an%x1f%at%x1f%s";
-    let args = ["log", "--branches", "--remotes", "--tags", "HEAD", "--topo-order", "-n", limit.as_str(), format, "--"];
+    let args = [
+        "log",
+        "--branches",
+        "--remotes",
+        "--tags",
+        "HEAD",
+        "--topo-order",
+        "--decorate=full",
+        "-n",
+        limit.as_str(),
+        format,
+        "--",
+    ];
     match run(dir, &args) {
         Some(output) => Some(output.lines().filter_map(parse_commit).collect()),
         None => is_repo(dir).then(Vec::new),
@@ -389,7 +425,7 @@ pub fn graph(commits: &[Commit]) -> Vec<GraphRow> {
     for commit in commits {
         let found = waiting(&lanes, &commit.hash);
         let column = found.unwrap_or_else(|| free_lane(&mut lanes));
-        let has_branch = commit.refs.iter().any(|reference| !reference.starts_with("tag: "));
+        let has_branch = commit.refs.iter().any(|reference| !matches!(reference, GitRef::Tag(_)));
         let color = match found {
             Some(_) if has_branch => next_color(&mut colors),
             Some(index) => lanes[index].map_or(0, |(_, color)| color),
@@ -633,18 +669,27 @@ mod tests {
     #[test]
     fn parses_log_line() {
         let commit =
-            parse_commit("abc\x1fp1 p2\x1fHEAD -> main, origin/main, tag: v1\x1fAnn\x1f1700000000\x1fFix: a, b")
+            parse_commit("abc\x1fp1 p2\x1fHEAD -> refs/heads/main, refs/remotes/origin/main, tag: refs/tags/v1, refs/heads/feat/x, HEAD\x1fAnn\x1f1700000000\x1fFix: a, b")
                 .unwrap();
         assert_eq!(commit.parents, vec!["p1", "p2"]);
-        assert_eq!(commit.refs, vec!["HEAD -> main", "origin/main", "tag: v1"]);
+        assert_eq!(
+            commit.refs,
+            vec![
+                GitRef::Current("main".into()),
+                GitRef::Remote("origin/main".into()),
+                GitRef::Tag("v1".into()),
+                GitRef::Branch("feat/x".into()),
+                GitRef::Head
+            ]
+        );
         assert_eq!((commit.time, commit.subject.as_str()), (1700000000, "Fix: a, b"));
-        assert_eq!(parse_commit("abc\x1f\x1f\x1fAnn\x1f1\x1fs").unwrap().refs, Vec::<String>::new());
+        assert_eq!(parse_commit("abc\x1f\x1f\x1fAnn\x1f1\x1fs").unwrap().refs, Vec::<GitRef>::new());
     }
 
     #[test]
     fn graph_changes_color_at_a_branch() {
         let mut base = node("b", &["a"]);
-        base.refs = vec!["origin/main".to_string()];
+        base.refs = vec![GitRef::Remote("origin/main".into())];
         let rows = graph(&[node("c", &["b"]), base, node("a", &[])]);
         assert_eq!(rows[0].color, 0);
         assert_eq!(rows[1].color, 1);
@@ -734,7 +779,7 @@ mod tests {
         commit(&root, "second").unwrap();
         let commits = log(&root, 10).unwrap();
         assert_eq!(commits.len(), 2);
-        assert_eq!(commits[0].refs, vec!["HEAD -> main"]);
+        assert_eq!(commits[0].refs, vec![GitRef::Current("main".into())]);
         let statuses: Vec<_> =
             commit_changes(&sub, &commits[0].hash).unwrap().iter().map(|c| (c.path.clone(), c.status)).collect();
         assert_eq!(statuses, vec![("[n].txt".to_string(), 'A'), ("a.txt".to_string(), 'M')]);

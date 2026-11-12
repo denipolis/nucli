@@ -26,6 +26,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `overview.rs` | Project overview and empty viewport. |
 | `panel.rs` | Panel frame and the terminal panel. |
 | `files.rs`, `changes.rs`, `commits.rs` | Files, Changes and History panel views. |
+| `file_ops.rs` | File operations of the Files tree: create, rename, move, duplicate, cut, copy, paste, delete, drag and drop, and its context menu. |
 | `file_view.rs` | File tabs, path bar, images, Open With, close and save prompts. |
 | `editor.rs` | Text view: diff rows, highlighting, editing, undo, IME. |
 | `editor/find_bar.rs` | Find and replace bar of the text view: fields, toggles, hits and edits. |

@@ -31,6 +31,7 @@ pub enum SessionEvent {
     Exited(Option<u32>),
     Attention(String),
     OpenPath(PathBuf, Option<usize>),
+    Menu(gpui::Point<gpui::Pixels>, Option<crate::terminal::links::Target>),
 }
 
 pub struct Spec {

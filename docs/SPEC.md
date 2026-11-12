@@ -48,7 +48,7 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 
 - A project is a folder. Open one with `⌘O`, by dropping a folder on the window, from a History entry, by opening a tab in a new folder (`⌥⇧⌘T`), by dropping it on the Dock icon on macOS, or from the command line with `nucli <folder>`.
 - Projects list in the sidebar in a user-defined order (drag to reorder). Each row shows the folder glyph, the name and the uncommitted diff against `HEAD` as green `+N` and red `-M` (hidden when clean or not a git repository). The numbers update live. A collapsed project also shows the status of its hidden tabs: waiting first, then working, then done.
-- Rename (double-click or context menu; empty restores the folder name), Color (12 theme colors or none; tints the folder glyph and the rows of its tabs), Move to Workspace (another workspace or a new one), Reveal in File Manager, Close Project (`⇧⌘W`, ends its tabs after confirming running agents).
+- Rename (double-click or context menu; empty restores the folder name), Color (12 theme colors or none; tints the folder glyph and the rows of its tabs), Move to Workspace (another workspace or a new one), Reveal in File Manager, Copy Path, Close Project (`⇧⌘W`, ends its tabs after confirming running agents).
 - Collapsing a project hides its tabs; the state is remembered.
 - Clicking a project shows its active file when one is open, otherwise its overview. `⌂` in the file view's tab strip goes to the overview.
 - **Without a project**: a project is optional. Clicking the empty space of the sidebar deselects, and with nothing selected new tabs and panel terminals open in the home folder. Those tabs list below the projects with no header, in line with the project rows. They have no Files, Changes or quick open, and the title bar shows `~` in place of a project name.
@@ -140,8 +140,9 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 - Selection with the mouse (double-click words, triple-click lines), `⌘C` copies, `⌘V` pastes (bracketed when the program asks). `⌘A` selects all output.
 - `⌘K` clears the screen and scrollback.
 - `⌘F` opens a find bar over the terminal: matches are highlighted, `enter` / `⌘G` next, `⇧⌘G` previous, `esc` closes.
+- Context menu (right-click; `⇧`-right-click when the program reports the mouse): Copy Link and Open Link over a URL, or Copy Path, Reveal and Open File over a file path, then Copy (with a selection), Paste, Select All, Find, Clear, Split Right and Split Down (tabs, not panel terminals), followed by the tab's own menu. Right-clicking keeps the selection and focuses the pane.
 - `⌘`-click opens URLs in the browser and file paths (`path`, `path:line`, `path:line:col`, relative to the shell's folder or the project) in the file view at that line. `⌘`-hover underlines them, across every row a wrapped link spans, and shows a preview of an image file on the side of the link with more room, scaled down to fit the window and never enlarged.
-- Dropping files on a terminal types their shell-quoted paths; dropped text is typed as is.
+- Dropping files on a terminal types their shell-quoted paths, also rows from Files and Changes and file tabs; dropped text is typed as is.
 - macOS keys: `⌘←` / `⌘→` line start / end, `⌘⌫` delete line, `⌥←` / `⌥→` word back / forward, `⌥⌫` delete word, `⌥` is Meta.
 - Box and block characters are drawn by Nucli so they join seamlessly at any line height. Rounded box corners are drawn square.
 - Scrollback: 10000 lines. The scroll position sticks while new output arrives unless at the bottom.
@@ -159,7 +160,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 - `⌘D` / `⇧⌘D` open a new tab (the last used agent or shell) to the right of / below the focused pane. `⌥⌘W` closes the split; the tab keeps running in the sidebar.
 - Only tabs of the same project split together. A tab without a project that joins a project's split moves into that project. Panel terminals do not split.
 - Dragging a tab over a pane (from the sidebar or a pane header) previews the resulting layout: the new pane is filled and labeled with its title and the action (`split right`, `swap`, `replace`, plus `· moves to <project>` for a tab without a project), the other panes are outlined. The outer quarter of each edge splits that pane on that side; the center replaces the pane, or swaps the two panes when both are in the split. A band along the outer edge of the whole split places the tab beside all panes at once (`bottom, full width`), so `w1 | w2` over `w3` is one drag. Over a tab of another project the pane turns red and the drop does nothing.
-- In a split every pane has a one-line header: glyph, title, status and `×`. The focused pane's header is an inverted block. Dragging a header moves the pane; `×` removes it from the split and the tab keeps running.
+- In a split every pane has a one-line header: glyph, title, status and `×`. The focused pane's header is an inverted block. Dragging a header moves the pane; `×` removes it from the split and the tab keeps running. Right-clicking a header opens the tab's context menu.
 - `⌥⌘←→↑↓` move focus. Clicking a pane focuses it. Unfocused panes are dimmed.
 - Tabs in a split form a group. The sidebar keeps a group's tabs next to each other in layout order and joins them with a bracket, in the accent color while the group is shown. Selecting a tab of the group focuses its pane; selecting another tab shows that tab alone and keeps the group, which comes back when one of its tabs is selected.
 - Hovering a tab row in the sidebar shows a split button (adds the tab next to the focused pane, along the pane's longer side) or, on a grouped tab, an unsplit button. `⌘`-click on a row does the same. Dragging a grouped tab within its group reorders the panes; dragging it out of the group removes it from the split.
@@ -177,7 +178,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 - **Workspace popup** at the bottom: all workspaces (closed ones marked), New, Rename, Delete.
 - **`+` button**: New Shell, New Agent, New Tab…, New Tab Without Project…, New Terminal, Open Project….
 - Clicking empty space deselects: empty viewport with key hints and "or drop a folder here".
-- Context menus: project (New Terminal, New Tab…, Rename, Color, Move to Workspace, Reveal, Close Project), tab (Rename, Color, Split with Shown Tab, Remove from Split, Unsplit All, Move Out of Project, Close Tab), empty space (Open Project, Rename Workspace, New Workspace, Delete Workspace).
+- Context menus: project (New Terminal, New Tab…, Rename, Color, Move to Workspace, Reveal, Copy Path, Close Project), tab (Rename, Color, Split with Shown Tab, Remove from Split, Unsplit All, Move Out of Project, Close Tab), conversation in History (Resume, Copy Title, Copy Conversation ID, Copy Path, Reveal), empty space (Open Project, Rename Workspace, New Workspace, Delete Workspace).
 
 ## Panel
 
@@ -186,7 +187,8 @@ Tabs for Files, Changes and History (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing
 ### Files
 
 - Lazy file tree of the project. Folders first, then files, by name. Git status letters on the right (`M` modified, `A` added, `D` deleted, `U` untracked); folders get a dot (green when everything inside is new, orange when mixed). Ignored files are dimmed. Expanded folders are remembered per project.
-- Clicking a file opens it in the file view. Context menu: Open in Default App, Open With…, Reveal in File Manager, Copy Path, Copy Relative Path.
+- Clicking a file opens it in the file view. Context menu: New File…, New Folder… (a name with `/` creates the folders on the way), Open as Project (folders), Open in Default App, Open With…, Reveal in File Manager, Copy Path, Copy Relative Path, Cut, Copy, Paste, Duplicate (`name copy.ext`), Rename…, Move… (a path relative to the project), Delete (to the trash, confirmed). Empty space: New File…, New Folder…, Paste, Reveal, Copy Path. New files open in the file view; renamed and moved files keep their open tabs, unsaved edits included; deleted files close theirs. A name that is taken gets ` copy`, ` copy 2`, … when pasting.
+- Drag and drop: dragging a row onto a folder (or onto a file, meaning its folder, or onto empty space, meaning the project root) moves it there, `⌥` copies. Files dropped from the file manager are copied into the folder under the pointer. A row dropped on a terminal, the commit message or any other text field types its path; on the file view it opens; a folder dropped on the sidebar opens as a project.
 - Updates live.
 
 ### Changes
@@ -197,6 +199,7 @@ Tabs for Files, Changes and History (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing
 - Sections STAGED and CHANGES with counts, collapsible. Rows: glyph, name, folder, status letter. Hover shows: open, discard (unstaged only, confirmed; tracked files are restored, new files go to the trash), stage `+` / unstage `-`. Section headers stage, unstage or discard all.
 - At most 500 rows per section plus "N more files not shown".
 - Clicking a row opens the file with its diff.
+- Context menu of a row: Open Changes, Stage or Unstage, Discard Changes (unstaged), Open in Default App, Open With…, Reveal in File Manager, Copy Path, Copy Relative Path. Rows can be dragged like Files rows.
 - "Working tree clean" when there is nothing.
 
 ### History (commits)
@@ -204,7 +207,8 @@ Tabs for Files, Changes and History (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing
 - `git log` of branches, remotes, tags and `HEAD` in topological order (first 500), with a lane graph, ref labels, subject and relative date. A lane changes color at each commit a branch points to, and that commit's branch labels use the same color, so a branch reads as one color. Lanes continue through expanded files. A row shows at most two ref labels and `+N` for the rest; they shrink before the subject disappears.
 - Hovering a commit shows a card with everything about it: author and co-authors in the accent color, relative and full date, every ref, the whole message with its links and addresses highlighted, changed files with insertions in green and deletions in red, and the full hash.
 - Clicking a commit expands its changed files (against the first parent). Clicking a file opens the commit's diff of it, read-only.
-- Context menu: Copy Hash, Copy Message.
+- Context menu of a commit: Switch to each local branch on it, Check Out each remote branch on it (tracking), Check Out Detached, Create Branch… (and switch to it), Create Tag…, Cherry-Pick, Revert (merges against their first parent), Reset Current Branch to Here (Soft, Mixed, Hard after confirming), Delete Branch… and Delete Tag… for its refs (confirmed), Copy Hash, Copy Short Hash, Copy Message. A failing git command shows its message.
+- Context menu of a file in an expanded commit: Open Changes, Open Current Version, Restore This Version… (confirmed), Open in Default App, Open With…, Reveal in File Manager, Copy Path, Copy Relative Path.
 
 ## File view
 
@@ -218,7 +222,10 @@ Tabs for Files, Changes and History (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing
 - **Editing**: working tree files are editable in place, diffs included. Removed lines cannot be typed into. `⌘S` saves; the tab shows `●` while unsaved. Undo/redo per file. `enter` keeps the indentation. Closing an unsaved tab asks Save / Don't Save / Cancel; quitting and closing a workspace with unsaved files ask first.
 - External changes (an agent writing the file) reload the view unless it has unsaved edits; saving then overwrites.
 - `esc` hides the file view (tabs stay); `⌘W` closes the shown file tab.
+- Context menu of a file tab: Close, Close Others, Close to the Right, Close All (one Save All / Don't Save / Cancel prompt for several unsaved files), Split Right, Split Down, Open in Default App, Open With…, Reveal in File Manager, Copy Path, Copy Relative Path.
+- Context menu of the text: Cut and Copy (with a selection), Paste (editable files), Select All, Find, Replace (editable files), Next Change and Previous Change (changed files), Save (unsaved), then the file items of the tab menu. Right-clicking outside the selection moves the cursor there.
 - Open With… asks for an application once and remembers it per file extension; later the menu lists remembered applications first.
+- Dropping files on the file view opens them (folders open as projects).
 - `⌘F` finds in the file and `⌘R` also replaces, in a bar at the top right. Selected text seeds the query. Every match is highlighted, the current one is selected, and the bar counts them (`3 of 12`, `no results`, `invalid`).
   - Toggles, remembered between sessions: match case, whole word, regular expression (with lookaround and backreferences), find in selection. A pattern containing `\n` matches across lines; removed diff lines are never touched by a replace.
   - Replacing: `enter` replaces and moves to the next match, Replace All is one undo step and reports how many it changed. Regular expressions expand `$1`, `$&`, `${name}`, `$$`, `\n`, `\t`, and change case with `\u`, `\l`, `\U`, `\L`, `\E`. Preserve Case keeps the match's casing, also per `-` or `_` part.

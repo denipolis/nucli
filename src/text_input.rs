@@ -130,6 +130,10 @@ impl TextInput {
         cx.notify();
     }
 
+    pub fn insert(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.replace(self.selected.clone(), text, cx);
+    }
+
     pub fn focus(&self, window: &mut Window) {
         window.focus(&self.focus);
     }
@@ -543,6 +547,13 @@ impl Render for TextInput {
             .line_height(px((size * 1.6).round()))
             .w_full()
             .overflow_hidden()
+            .on_drop(cx.listener(|input, drag: &crate::file_ops::DraggedPath, _, cx| {
+                input.insert(&drag.path.to_string_lossy(), cx)
+            }))
+            .on_drop(cx.listener(|input, paths: &gpui::ExternalPaths, _, cx| {
+                let text: Vec<String> = paths.paths().iter().map(|path| path.to_string_lossy().into_owned()).collect();
+                input.insert(&text.join(" "), cx)
+            }))
             .on_action(cx.listener(Self::backspace))
             .on_action(cx.listener(Self::delete))
             .on_action(cx.listener(Self::delete_word))

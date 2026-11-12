@@ -17,6 +17,7 @@ use crate::persist::{PanelTab, Selected, Side, SidebarTab};
 use crate::session::Kind;
 use crate::settings;
 use crate::store::{self, Launcher, Workspace};
+use crate::terminal::links::Target;
 use crate::text_input::{InputEvent, TextInput};
 use crate::window::{Rename, WorkspaceView};
 
@@ -748,6 +749,8 @@ pub fn project_menu(view: &WorkspaceView, path: &Path, cx: &App) -> Vec<Item> {
         let target = target.clone();
         items.push(menu::action(reveal_label(), move |_, _, cx| cx.reveal_path(&target)));
     }
+    items.push(menu::copy("Copy Path", target.to_string_lossy()));
+    items.push(Item::Separator);
     items.push(menu::action("Close Project", move |view, window, cx| close_project(view, &target, window, cx)));
     items
 }
@@ -804,6 +807,78 @@ pub fn tab_menu(view: &WorkspaceView, id: &str, cx: &App) -> Vec<Item> {
     let id = id.to_string();
     items.push(menu::action("Close Tab", move |view, window, cx| close_tab(view, &id, window, cx)));
     items
+}
+
+pub fn terminal_menu(view: &WorkspaceView, id: &str, target: Option<Target>, cx: &App) -> Vec<Item> {
+    let mut items = Vec::new();
+    match target {
+        Some(Target::Url(url)) => {
+            items.push(menu::copy("Copy Link", url.clone()));
+            items.push(menu::action("Open Link", move |_, _, cx| cx.open_url(&url)));
+            items.push(Item::Separator);
+        }
+        Some(Target::File(path, line)) => {
+            items.push(menu::copy("Copy Path", path.to_string_lossy()));
+            let reveal = path.clone();
+            items.push(menu::action(reveal_label(), move |_, _, cx| cx.reveal_path(&reveal)));
+            items.push(menu::action("Open File", move |view, window, cx| view.open_path(&path, line, window, cx)));
+            items.push(Item::Separator);
+        }
+        None => {}
+    }
+    if view.store(cx).session(id).is_some_and(|session| session.read(cx).terminal.selection_text().is_some()) {
+        items.push(menu::command("Copy", "copy", cx));
+    }
+    items.push(menu::command("Paste", "paste", cx));
+    items.push(menu::command("Select All", "select_all", cx));
+    items.push(Item::Separator);
+    items.push(menu::command("Find", "find", cx));
+    items.push(menu::command("Clear", "clear", cx));
+    if view
+        .state(cx)
+        .and_then(|state| state.project_of(id))
+        .is_some_and(|project| project.tabs.iter().any(|tab| tab == id))
+    {
+        items.push(Item::Separator);
+        items.push(menu::command("Split Right", "split_right", cx));
+        items.push(menu::command("Split Down", "split_down", cx));
+    }
+    items.push(Item::Separator);
+    items.extend(tab_menu(view, id, cx));
+    items
+}
+
+pub fn history_menu(conversation: &Conversation) -> Vec<Item> {
+    let (resume, reveal) = (conversation.clone(), conversation.cwd.clone());
+    vec![
+        menu::action("Resume", move |view, window, cx| resume_anywhere(view, resume.clone(), window, cx)),
+        Item::Separator,
+        menu::copy("Copy Title", conversation.title.clone()),
+        menu::copy("Copy Conversation ID", conversation.id.clone()),
+        menu::copy("Copy Path", conversation.cwd.to_string_lossy()),
+        menu::action(reveal_label(), move |_, _, cx| cx.reveal_path(&reveal)),
+    ]
+}
+
+pub fn in_window(
+    workspace: &str,
+    cx: &mut App,
+    run: impl FnOnce(&mut WorkspaceView, &mut Window, &mut Context<WorkspaceView>) + 'static,
+) {
+    let Some(handle) = store::store(cx).read(cx).windows.get(workspace).copied() else { return };
+    cx.defer(move |cx| {
+        let _ = handle.update(cx, run);
+    });
+}
+
+pub fn alert(workspace: &str, title: &str, detail: String, cx: &mut App) {
+    let Some(handle) = store::store(cx).read(cx).windows.get(workspace).copied() else { return };
+    let title = title.to_string();
+    cx.defer(move |cx| {
+        let _ = handle.update(cx, |_, window, cx| {
+            drop(window.prompt(PromptLevel::Warning, &title, Some(&detail), &["OK"], cx));
+        });
+    });
 }
 
 pub fn drop_folders(

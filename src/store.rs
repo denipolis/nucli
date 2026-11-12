@@ -142,6 +142,24 @@ impl Project {
         }
     }
 
+    pub fn rename_file(&mut self, from: &str, to: &str) {
+        for group in &mut self.groups {
+            for file in group.files.iter_mut().chain(group.active.as_mut()) {
+                if file == from {
+                    *file = to.to_string();
+                }
+            }
+        }
+        for file in &mut self.recent_files {
+            if file == from {
+                *file = to.to_string();
+            }
+        }
+        if let Some(language) = self.languages.remove(from) {
+            self.languages.insert(to.to_string(), language);
+        }
+    }
+
     pub fn close_file(&mut self, file: &str) {
         let Some(index) = self.group_of(file) else { return };
         let group = &mut self.groups[index];
@@ -616,6 +634,11 @@ impl Store {
         Some(id)
     }
 
+    fn window_of(&self, id: &str) -> Option<WindowHandle<WorkspaceView>> {
+        let workspace = self.workspace_of(id)?;
+        self.windows.get(&workspace.id).copied()
+    }
+
     fn on_session_event(&mut self, entity: Entity<Session>, event: &SessionEvent, cx: &mut Context<Self>) {
         let id = entity.read(cx).id.clone();
         match event {
@@ -627,12 +650,21 @@ impl Store {
             }
             SessionEvent::Attention(text) => self.mark_attention(&id, Some(text.clone()), cx),
             SessionEvent::OpenPath(path, line) => {
-                if let Some(workspace) = self.workspace_of(&id).map(|workspace| workspace.id.clone())
-                    && let Some(window) = self.windows.get(&workspace).copied()
-                {
+                if let Some(window) = self.window_of(&id) {
                     let (path, line) = (path.clone(), *line);
                     cx.defer(move |cx| {
                         let _ = window.update(cx, |view, window, cx| view.open_path(&path, line, window, cx));
+                    });
+                }
+            }
+            SessionEvent::Menu(position, target) => {
+                if let Some(window) = self.window_of(&id) {
+                    let (position, target) = (*position, target.clone());
+                    cx.defer(move |cx| {
+                        let _ = window.update(cx, |view, _, cx| {
+                            let items = crate::actions::terminal_menu(view, &id, target, cx);
+                            view.open_menu(position, items, cx);
+                        });
                     });
                 }
             }

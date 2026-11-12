@@ -4,15 +4,15 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, AppContext, ClipboardItem, Context, HighlightStyle, Hsla, InteractiveElement, IntoElement, MouseButton,
+    AnyElement, AppContext, Context, Entity, HighlightStyle, Hsla, InteractiveElement, IntoElement, MouseButton,
     ParentElement, PathBuilder, Pixels, Render, SharedString, StatefulInteractiveElement, Styled, StyledText, Window,
     canvas, div, fill, point, px, relative, size, uniform_list,
 };
 
-use crate::git::{self, Change, Commit, CommitDetails, GraphRow};
+use crate::git::{self, Change, Commit, CommitDetails, GitRef, GraphRow};
 use crate::history::relative_age;
 use crate::icons;
-use crate::menu;
+use crate::menu::{self, Item};
 use crate::store;
 use crate::theme::ItemColor;
 use crate::ui;
@@ -178,6 +178,25 @@ impl CommitsPanel {
         .detach();
     }
 
+    fn git(&mut self, text: String, args: Vec<String>, cx: &mut Context<Self>) {
+        let (root, workspace) = (self.root.clone(), self.workspace.clone());
+        let progress = store::begin_progress(text, cx);
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { git::run_checked(&root, &args.iter().map(String::as_str).collect::<Vec<_>>()) })
+                .await;
+            let _ = this.update(cx, |panel, cx| {
+                store::finish_progress(progress, cx);
+                if let Err(error) = result {
+                    crate::actions::alert(&workspace, "git failed", error, cx);
+                }
+                panel.reload(cx);
+            });
+        })
+        .detach();
+    }
+
     fn rows(&self) -> Vec<Row> {
         let mut rows = Vec::with_capacity(self.commits.len());
         for index in 0..self.commits.len() {
@@ -191,6 +210,137 @@ impl CommitsPanel {
         }
         rows
     }
+}
+
+fn git_item(panel: &Entity<CommitsPanel>, label: impl Into<SharedString>, args: &[&str]) -> Item {
+    let (panel, args) = (panel.clone(), args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>());
+    let text = format!("git {}", args.iter().take(2).cloned().collect::<Vec<_>>().join(" "));
+    menu::action(label, move |_, _, cx| panel.update(cx, |panel, cx| panel.git(text.clone(), args.clone(), cx)))
+}
+
+fn confirmed(item: Item, title: String, detail: &'static str, button: &'static str) -> Item {
+    let Item::Action { label, run, .. } = item else { return item };
+    menu::action(label, move |_, window, cx| {
+        let answer = window.prompt(gpui::PromptLevel::Warning, &title, Some(detail), &[button, "Cancel"], cx);
+        let run = run.clone();
+        cx.spawn_in(window, async move |this, cx| {
+            if answer.await == Ok(0) {
+                let _ = this.update_in(cx, |view, window, cx| run(view, window, cx));
+            }
+        })
+        .detach();
+    })
+}
+
+fn named(panel: &Entity<CommitsPanel>, label: &'static str, title: &'static str, args: Vec<String>) -> Item {
+    let panel = panel.clone();
+    menu::action(label, move |view, window, cx| {
+        let (panel, args) = (panel.clone(), args.clone());
+        crate::actions::prompt(view, title, "", window, cx, move |name, _, _, cx| {
+            if name.is_empty() {
+                return;
+            }
+            let args: Vec<String> =
+                args.iter().map(|arg| if arg.is_empty() { name.clone() } else { arg.clone() }).collect();
+            let text = format!("git {} {name}", args[0]);
+            panel.update(cx, |panel, cx| panel.git(text, args, cx));
+        });
+    })
+}
+
+fn commit_menu(panel: &Entity<CommitsPanel>, commit: &Commit) -> Vec<Item> {
+    let hash = commit.hash.as_str();
+    let mut items = Vec::new();
+    for reference in &commit.refs {
+        match reference {
+            GitRef::Branch(branch) => items.push(git_item(panel, format!("Switch to {branch}"), &["switch", branch])),
+            GitRef::Remote(remote) if !remote.ends_with("/HEAD") => {
+                items.push(git_item(panel, format!("Check Out {remote}"), &["switch", "--track", remote]))
+            }
+            _ => {}
+        }
+    }
+    items.push(git_item(panel, "Check Out Detached", &["switch", "--detach", hash]));
+    items.push(named(
+        panel,
+        "Create Branch…",
+        "new branch from this commit",
+        vec!["switch".into(), "-c".into(), String::new(), hash.into()],
+    ));
+    items.push(named(panel, "Create Tag…", "new tag on this commit", vec!["tag".into(), String::new(), hash.into()]));
+    items.push(Item::Separator);
+    let merge: &[&str] = if commit.parents.len() > 1 { &["-m", "1"] } else { &[] };
+    items.push(git_item(panel, "Cherry-Pick", &[&["cherry-pick"], merge, &[hash]].concat()));
+    items.push(git_item(panel, "Revert", &[&["revert", "--no-edit"], merge, &[hash]].concat()));
+    items.push(Item::Header("reset current branch to here".into()));
+    items.push(git_item(panel, "  Soft (keep changes staged)", &["reset", "--soft", hash]));
+    items.push(git_item(panel, "  Mixed (keep changes)", &["reset", "--mixed", hash]));
+    items.push(confirmed(
+        git_item(panel, "  Hard (discard changes)…", &["reset", "--hard", hash]),
+        "Reset hard?".into(),
+        "Uncommitted changes are discarded and later commits leave the branch.",
+        "Reset",
+    ));
+    let deletable: Vec<Item> = commit
+        .refs
+        .iter()
+        .filter_map(|reference| match reference {
+            GitRef::Branch(branch) => Some(confirmed(
+                git_item(panel, format!("Delete Branch {branch}…"), &["branch", "-D", branch]),
+                format!("Delete branch {branch}?"),
+                "Commits only on this branch become unreachable.",
+                "Delete",
+            )),
+            GitRef::Tag(tag) => Some(confirmed(
+                git_item(panel, format!("Delete Tag {tag}…"), &["tag", "-d", tag]),
+                format!("Delete tag {tag}?"),
+                "The tag is removed locally.",
+                "Delete",
+            )),
+            _ => None,
+        })
+        .collect();
+    if !deletable.is_empty() {
+        items.push(Item::Separator);
+        items.extend(deletable);
+    }
+    items.push(Item::Separator);
+    items.push(menu::copy("Copy Hash", hash));
+    items.push(menu::copy("Copy Short Hash", &hash[..hash.len().min(7)]));
+    items.push(menu::copy("Copy Message", commit.subject.clone()));
+    items
+}
+
+fn commit_file_menu(
+    panel: &Entity<CommitsPanel>,
+    root: &Path,
+    hash: &str,
+    change: &Change,
+    view: &WorkspaceView,
+    cx: &gpui::App,
+) -> Vec<Item> {
+    let mut items = Vec::new();
+    let (diff_root, diff) = (root.to_path_buf(), crate::file_view::spec(&change.path, Some(hash)));
+    items.push(menu::action("Open Changes", move |view, window, cx| {
+        crate::file_view::open_file(view, &diff_root, &diff, None, window, cx)
+    }));
+    {
+        let (root, path) = (root.to_path_buf(), change.path.clone());
+        items.push(menu::action("Open Current Version", move |view, window, cx| {
+            crate::file_view::open_file(view, &root, &path, None, window, cx)
+        }));
+    }
+    if change.status != 'D' {
+        items.push(confirmed(
+            git_item(panel, "Restore This Version…", &["checkout", hash, "--", &change.path]),
+            format!("Restore {} from this commit?", change.path),
+            "The file in the working tree is overwritten.",
+            "Restore",
+        ));
+    }
+    items.push(Item::Separator);
+    items.extend(crate::file_view::file_menu(view, &root.join(&change.path), &change.path, cx));
+    items
 }
 
 fn lane_color(index: usize, dark: bool) -> Hsla {
@@ -292,17 +442,12 @@ fn co_authors(message: &str) -> Vec<String> {
         .collect()
 }
 
-fn ref_label(reference: &str, lane: Hsla, theme: &crate::theme::Theme) -> impl IntoElement {
-    let (text, background): (String, Hsla) = if let Some(name) = reference.strip_prefix("HEAD -> ") {
-        (name.to_string(), lane)
-    } else if reference == "HEAD" {
-        ("HEAD".to_string(), theme.accent)
-    } else if let Some(tag) = reference.strip_prefix("tag: ") {
-        (format!("{} {tag}", icons::TAG), theme.yellow)
-    } else if reference.contains('/') {
-        (format!("{} {reference}", icons::CLOUD), lane)
-    } else {
-        (reference.to_string(), lane)
+fn ref_label(reference: &GitRef, lane: Hsla, theme: &crate::theme::Theme) -> impl IntoElement {
+    let (text, background): (String, Hsla) = match reference {
+        GitRef::Current(name) | GitRef::Branch(name) => (name.clone(), lane),
+        GitRef::Head => ("HEAD".to_string(), theme.accent),
+        GitRef::Tag(tag) => (format!("{} {tag}", icons::TAG), theme.yellow),
+        GitRef::Remote(name) => (format!("{} {name}", icons::CLOUD), lane),
     };
     div()
         .flex_shrink()
@@ -463,6 +608,7 @@ impl Render for CommitsPanel {
                                 _ => theme.green,
                             };
                             let path = change.path.clone();
+                            let (menu_hash, menu_change) = (hash.clone(), change.clone());
                             let through = panel.graph.get(commit).cloned();
                             div()
                                 .id(("commit-row", index))
@@ -491,6 +637,18 @@ impl Render for CommitsPanel {
                                         }
                                     });
                                 }))
+                                .on_mouse_down(
+                                    MouseButton::Right,
+                                    cx.listener(move |panel, event: &gpui::MouseDownEvent, _, cx| {
+                                        let (entity, root, position) =
+                                            (cx.entity(), panel.root.clone(), event.position);
+                                        let (hash, change) = (menu_hash.clone(), menu_change.clone());
+                                        crate::actions::in_window(&panel.workspace, cx, move |view, _, cx| {
+                                            let items = commit_file_menu(&entity, &root, &hash, &change, view, cx);
+                                            view.open_menu(position, items, cx);
+                                        });
+                                    }),
+                                )
                                 .into_any_element()
                         }
                         Row::Commit(commit_index) => {
@@ -498,7 +656,7 @@ impl Render for CommitsPanel {
                             let graph = panel.graph.get(commit_index).cloned();
                             let expanded = panel.expanded == Some(commit_index);
                             let time = UNIX_EPOCH + Duration::from_secs(commit.time.max(0) as u64);
-                            let (copy_hash, copy_subject) = (commit.hash.clone(), commit.subject.clone());
+                            let menu_commit = commit.clone();
                             let hidden_refs = commit.refs.len().saturating_sub(2);
                             let lane = graph.as_ref().map_or(theme.accent, |row| lane_color(row.color, theme.dark));
                             let (tooltip_root, tooltip_commit) = (panel.root.clone(), commit.clone());
@@ -564,27 +722,10 @@ impl Render for CommitsPanel {
                                 .on_mouse_down(
                                     MouseButton::Right,
                                     cx.listener(move |panel, event: &gpui::MouseDownEvent, _, cx| {
-                                        let handle = store::store(cx).read(cx).windows.get(&panel.workspace).copied();
-                                        let (hash, subject, position) =
-                                            (copy_hash.clone(), copy_subject.clone(), event.position);
-                                        cx.defer(move |cx| {
-                                            if let Some(handle) = handle {
-                                                let _ = handle.update(cx, |view, _, cx| {
-                                                    let items = vec![
-                                                        menu::action("Copy Hash", move |_, _, cx| {
-                                                            cx.write_to_clipboard(ClipboardItem::new_string(
-                                                                hash.clone(),
-                                                            ))
-                                                        }),
-                                                        menu::action("Copy Message", move |_, _, cx| {
-                                                            cx.write_to_clipboard(ClipboardItem::new_string(
-                                                                subject.clone(),
-                                                            ))
-                                                        }),
-                                                    ];
-                                                    view.open_menu(position, items, cx);
-                                                });
-                                            }
+                                        let (items, position) =
+                                            (commit_menu(&cx.entity(), &menu_commit), event.position);
+                                        crate::actions::in_window(&panel.workspace, cx, move |view, _, cx| {
+                                            view.open_menu(position, items, cx)
                                         });
                                     }),
                                 )

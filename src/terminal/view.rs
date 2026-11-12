@@ -667,6 +667,10 @@ impl Session {
             }
             return;
         }
+        if event.button == MouseButton::Right {
+            cx.emit(SessionEvent::Menu(event.position, self.link_at(event.position).map(|link| link.target)));
+            return;
+        }
         if event.button != MouseButton::Left {
             return;
         }
@@ -774,8 +778,11 @@ impl Session {
     }
 
     fn drop_paths(&mut self, paths: &ExternalPaths, _window: &mut Window, cx: &mut Context<Self>) {
-        let text: Vec<String> =
-            paths.paths().iter().map(|path| crate::agents::quote(&path.to_string_lossy())).collect();
+        self.type_paths(paths.paths(), cx);
+    }
+
+    fn type_paths(&mut self, paths: &[std::path::PathBuf], cx: &mut Context<Self>) {
+        let text: Vec<String> = paths.iter().map(|path| crate::agents::quote(&path.to_string_lossy())).collect();
         if !text.is_empty() {
             let bytes = keys::paste(&format!("{} ", text.join(" ")), self.terminal.mode());
             self.input(&bytes, cx);
@@ -829,6 +836,13 @@ impl Render for Session {
                     .on_mouse_up_out(MouseButton::Left, cx.listener(Self::mouse_up))
                     .on_scroll_wheel(cx.listener(Self::scroll_wheel))
                     .on_drop(cx.listener(Self::drop_paths))
+                    .on_drop(cx.listener(|session, drag: &crate::file_ops::DraggedPath, _, cx| {
+                        session.type_paths(std::slice::from_ref(&drag.path), cx)
+                    }))
+                    .on_drop(cx.listener(|session, drag: &crate::file_view::DraggedFile, _, cx| {
+                        let path = session.project.join(crate::file_view::spec_parts(&drag.file).0);
+                        session.type_paths(&[path], cx)
+                    }))
                     .child(TerminalElement { session: cx.entity(), focused }),
             )
             .children(bar)

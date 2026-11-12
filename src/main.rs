@@ -9,6 +9,7 @@ mod commits;
 #[cfg(debug_assertions)]
 mod devtools;
 mod editor;
+mod file_ops;
 mod file_view;
 mod files;
 mod find;

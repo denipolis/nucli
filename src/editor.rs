@@ -5,10 +5,10 @@ use std::time::{Duration, Instant, SystemTime};
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, Axis, Bounds, ClipboardItem, Context, ElementInputHandler, EntityInputHandler, FocusHandle, Hsla,
-    InteractiveElement, IntoElement, KeyBinding, ListHorizontalSizingBehavior, MouseButton, ParentElement, Pixels,
-    Point, Render, ScrollStrategy, SharedString, Styled, StyledText, TextRun, UTF16Selection, UniformListScrollHandle,
-    Window, actions, canvas, div, point, px, size, uniform_list,
+    AnyElement, App, Axis, Bounds, ClipboardItem, Context, ElementInputHandler, EntityInputHandler, EventEmitter,
+    FocusHandle, Hsla, InteractiveElement, IntoElement, KeyBinding, ListHorizontalSizingBehavior, MouseButton,
+    ParentElement, Pixels, Point, Render, ScrollStrategy, SharedString, Styled, StyledText, TextRun, UTF16Selection,
+    UniformListScrollHandle, Window, actions, canvas, div, point, px, size, uniform_list,
 };
 
 use crate::commands::{self, NextChange, PreviousChange, Save};
@@ -273,6 +273,10 @@ pub struct FindState {
     notice: Option<String>,
 }
 
+pub enum EditorEvent {
+    Menu(Point<Pixels>),
+}
+
 pub struct Editor {
     pub find: Option<FindState>,
     pub project: PathBuf,
@@ -303,6 +307,8 @@ pub struct Editor {
     pub removed: usize,
     pub language: Option<&'static str>,
 }
+
+impl EventEmitter<EditorEvent> for Editor {}
 
 impl Editor {
     pub fn new(
@@ -490,7 +496,7 @@ impl Editor {
         col
     }
 
-    fn selection(&self) -> Option<(Pos, Pos)> {
+    pub fn selection(&self) -> Option<(Pos, Pos)> {
         let anchor = self.anchor?;
         if anchor == self.cursor {
             return None;
@@ -881,6 +887,19 @@ impl Render for Editor {
                                         editor.anchor = Some(pos);
                                     }
                                     editor.selecting = true;
+                                    cx.notify();
+                                }),
+                            )
+                            .on_mouse_down(
+                                MouseButton::Right,
+                                cx.listener(move |editor, event: &gpui::MouseDownEvent, window, cx| {
+                                    window.focus(&editor.focus);
+                                    let pos = editor.pos_at(index, event.position.x, window, cx);
+                                    if !editor.selection().is_some_and(|(start, end)| start <= pos && pos <= end) {
+                                        editor.cursor = pos;
+                                        editor.anchor = None;
+                                    }
+                                    cx.emit(EditorEvent::Menu(event.position));
                                     cx.notify();
                                 }),
                             )

@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, Context, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, Point, SharedString,
-    StatefulInteractiveElement, Styled, Window, anchored, deferred, div, px,
+    AnyElement, App, ClipboardItem, Context, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels,
+    Point, SharedString, StatefulInteractiveElement, Styled, Window, anchored, deferred, div, px,
 };
 
 use crate::theme::ItemColor;
@@ -26,6 +26,11 @@ pub fn action(
     run: impl Fn(&mut WorkspaceView, &mut Window, &mut Context<WorkspaceView>) + 'static,
 ) -> Item {
     Item::Action { label: label.into(), key: String::new(), run: Rc::new(run) }
+}
+
+pub fn copy(label: impl Into<SharedString>, text: impl Into<String>) -> Item {
+    let text = text.into();
+    action(label, move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(text.clone())))
 }
 
 pub fn command(label: impl Into<SharedString>, name: &str, cx: &App) -> Item {
