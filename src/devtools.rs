@@ -180,6 +180,8 @@ fn send_event(line: &str) {
         let code: usize = match *kind {
             "down" => 1,
             "up" => 2,
+            "rdown" => 3,
+            "rup" => 4,
             "move" => 5,
             _ => 6,
         };
@@ -193,6 +195,17 @@ fn send_event(line: &str) {
             eventNumber: 0isize
             clickCount: 1isize
             pressure: 1.0f32];
+        let event: *mut Object = if code == 3 || code == 4 {
+            #[link(name = "CoreGraphics", kind = "framework")]
+            unsafe extern "C" {
+                fn CGEventSetIntegerValueField(event: *mut std::ffi::c_void, field: u32, value: i64);
+            }
+            let native: *mut std::ffi::c_void = msg_send![event, CGEvent];
+            CGEventSetIntegerValueField(native, 3, 1);
+            msg_send![class!(NSEvent), eventWithCGEvent: native]
+        } else {
+            event
+        };
         let _: () = msg_send![window, sendEvent: event];
     }
 }
