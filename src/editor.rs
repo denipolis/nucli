@@ -147,6 +147,15 @@ struct Snapshot {
     anchor: Option<Pos>,
 }
 
+struct SavedHistory {
+    text: String,
+    undo: Vec<Snapshot>,
+    redo: Vec<Snapshot>,
+}
+
+static HISTORIES: std::sync::LazyLock<std::sync::Mutex<HashMap<PathBuf, SavedHistory>>> =
+    std::sync::LazyLock::new(Default::default);
+
 pub struct Loaded {
     pub content: Content,
     pub rows: Vec<Row>,
@@ -404,6 +413,14 @@ impl Editor {
         .detach();
     }
 
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
     pub fn is_editable(&self) -> bool {
         self.commit.is_none() && self.content == Content::Text
     }
@@ -433,14 +450,23 @@ impl Editor {
             return;
         }
         let line = self.logical_line();
+        if loaded.text != self.original {
+            self.undo.clear();
+            self.redo.clear();
+        }
+        if self.first_load && self.commit.is_none() {
+            let saved = HISTORIES.lock().ok().and_then(|mut histories| histories.remove(&self.full));
+            if let Some(saved) = saved.filter(|saved| saved.text == loaded.text) {
+                self.undo = saved.undo;
+                self.redo = saved.redo;
+            }
+        }
         self.content = loaded.content;
         self.rows = loaded.rows;
         self.tokens = tokens;
         self.original = loaded.text;
         self.trailing_newline = loaded.trailing_newline;
         self.modified = loaded.modified;
-        self.undo.clear();
-        self.redo.clear();
         self.added = self.rows.iter().filter(|row| row.kind == LineKind::Added).count();
         self.removed = self.rows.iter().filter(|row| row.kind == LineKind::Removed).count();
         if let Some(target) = self.pending_line.take() {
@@ -1324,6 +1350,22 @@ impl Editor {
         self.anchor = snapshot.anchor;
         self.last_edit = None;
         self.after_edit(cx);
+    }
+}
+
+impl Drop for Editor {
+    fn drop(&mut self) {
+        if self.commit.is_some() || (self.undo.is_empty() && self.redo.is_empty()) {
+            return;
+        }
+        let saved = SavedHistory {
+            text: file_text(&self.rows, self.trailing_newline),
+            undo: std::mem::take(&mut self.undo),
+            redo: std::mem::take(&mut self.redo),
+        };
+        if let Ok(mut histories) = HISTORIES.lock() {
+            histories.insert(self.full.clone(), saved);
+        }
     }
 }
 

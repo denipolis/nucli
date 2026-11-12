@@ -477,6 +477,15 @@ fn editor_menu(view: &WorkspaceView, editor: &Entity<Editor>, cx: &App) -> Vec<I
     let data = editor.read(cx);
     let (editable, selected) = (data.is_editable(), data.selection().is_some());
     let mut items = Vec::new();
+    if editable && data.can_undo() {
+        items.push(menu::command("Undo", "undo", cx));
+    }
+    if editable && data.can_redo() {
+        items.push(menu::command("Redo", "redo", cx));
+    }
+    if !items.is_empty() {
+        items.push(Item::Separator);
+    }
     if editable && selected {
         items.push(menu::command("Cut", "cut", cx));
     }
