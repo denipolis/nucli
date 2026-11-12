@@ -8,6 +8,7 @@ mod commands;
 mod commits;
 #[cfg(debug_assertions)]
 mod devtools;
+mod drag_out;
 mod editor;
 mod file_ops;
 mod file_view;

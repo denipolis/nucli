@@ -418,6 +418,19 @@ impl Render for WorkspaceView {
             .on_drop(cx.listener(|view, paths: &gpui::ExternalPaths, window, cx| {
                 crate::actions::drop_folders(view, paths, window, cx)
             }))
+            .on_drag_move(cx.listener(|_, event: &gpui::DragMoveEvent<crate::file_ops::DraggedPath>, window, cx| {
+                let path = event.drag(cx).path.clone();
+                drag_out(event.bounds, event.event.position, &path, window, cx);
+            }))
+            .on_drag_move(cx.listener(
+                |view, event: &gpui::DragMoveEvent<crate::file_view::DraggedFile>, window, cx| {
+                    let (file, commit) = crate::file_view::spec_parts(&event.drag(cx).file);
+                    if let (Some(project), None) = (view.current_project_path(cx), commit) {
+                        let path = project.join(file);
+                        drag_out(event.bounds, event.event.position, &path, window, cx);
+                    }
+                },
+            ))
             .on_mouse_move(cx.listener(crate::resize::mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(|view, _, _, cx| crate::resize::mouse_up(view, cx)))
             .on_modifiers_changed(cx.listener(crate::switcher::modifiers_changed))
@@ -489,4 +502,16 @@ fn resize_edges() -> Vec<gpui::Stateful<gpui::Div>> {
         edge("resize-left", ResizeEdge::Left, CursorStyle::ResizeLeftRight).top_0().left_0().h_full().w(px(3.0)),
         edge("resize-right", ResizeEdge::Right, CursorStyle::ResizeLeftRight).top_0().right_0().h_full().w(px(3.0)),
     ]
+}
+
+fn drag_out(
+    bounds: gpui::Bounds<Pixels>,
+    position: Point<Pixels>,
+    path: &std::path::Path,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    if !bounds.contains(&position) && crate::drag_out::start(path) {
+        cx.stop_active_drag(window);
+    }
 }
