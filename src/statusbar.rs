@@ -317,7 +317,11 @@ pub fn tokens(count: u64) -> String {
         1000..1000000 => format!("{}k", (count + 500) / 1000),
         _ => {
             let tenths = (count + 50000) / 100000;
-            if tenths.is_multiple_of(10) { format!("{}M", tenths / 10) } else { format!("{}.{}M", tenths / 10, tenths % 10) }
+            if tenths.is_multiple_of(10) {
+                format!("{}M", tenths / 10)
+            } else {
+                format!("{}.{}M", tenths / 10, tenths % 10)
+            }
         }
     }
 }

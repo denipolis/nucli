@@ -260,7 +260,13 @@ fn claude_attachment(attachment: &Value, parsed: &mut Parsed) {
         "nested_memory" => parsed.add_memory(attachment["path"].as_str().unwrap_or_default(), "nested"),
         "skill_listing" => {
             let skills = listing(attachment["content"].as_str().unwrap_or_default());
-            if !skills.is_empty() {
+            if attachment["isInitial"] == false {
+                for skill in skills {
+                    if !parsed.skills.iter().any(|existing| existing.name == skill.name) {
+                        parsed.skills.push(skill);
+                    }
+                }
+            } else if !skills.is_empty() {
                 parsed.skills = skills;
             }
         }
@@ -495,6 +501,13 @@ mod tests {
         let skills: Vec<_> = parsed.skills.iter().map(|skill| skill.name.as_str()).collect();
         assert_eq!(skills, ["summary", "caveman:caveman", "update-config"]);
         assert_eq!(parsed.skills[1].description, "Terse mode");
+        let mut delta = parsed.clone();
+        parse_line(
+            Format::Claude,
+            r#"{"type":"attachment","attachment":{"type":"skill_listing","isInitial":false,"content":"- fresh: New"}}"#,
+            &mut delta,
+        );
+        assert_eq!(delta.skills.len(), 4);
         assert_eq!(parsed.used_skills[0].name, "caveman:caveman");
         assert_eq!(
             parsed.used_skills[0].path.as_deref(),
