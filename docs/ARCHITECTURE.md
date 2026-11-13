@@ -110,6 +110,7 @@ Tabs for a commit's version of a file are stored as `path@@hash`.
 - Agent info runs inside the one second poll for every tab whose foreground process is a known agent. `transcript::read` keeps a byte offset per file and parses only complete new lines, so a long transcript is read once. Folder discovery (`agent_info::scan`) is cached for 10 seconds per agent, config folder and working folder.
 - Transcripts are matched to the process: Claude by the session id in its status file, Codex by the conversation id or the newest rollout of the folder started after the process (only the date folders around the start are listed), pi by the session id or the newest file of the folder, Gemini through `projects.json`. Without a match the info still has the folder discovery and the process start time.
 - What the transcript records wins over discovery: Claude's `instructions`, `nested_memory`, `skill_listing` and MCP deltas, pi's system prompt sections. Codex records no instruction file paths, so they come from its lookup rules. Unknown models get no context window unless the tokens seen pass 200k, then 1M is assumed.
+- No agent writes compaction progress to disk (Claude's `sessions/<pid>.json` stays `busy`, the transcript gets `compact_boundary` only after it ends), so `Session::apply` scans the visible screen for the agent's own spinner line (`Compacting conversation…`, `Compacting context...`, `Auto-compacting...`) and sets `AgentInfo.compacting`.
 
 ## Gotchas
 

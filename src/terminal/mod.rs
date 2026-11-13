@@ -346,6 +346,16 @@ impl Terminal {
         clean_output(lines, last_lines)
     }
 
+    pub fn screen_lines(&self) -> Vec<String> {
+        let term = self.term.lock();
+        (0..term.screen_lines() as i32)
+            .map(|line| {
+                let row = &term.grid()[Line(line)];
+                (0..term.columns()).map(|column| row[Column(column)].c).collect::<String>().trim_end().to_string()
+            })
+            .collect()
+    }
+
     pub fn selection_text(&self) -> Option<String> {
         self.term.lock().selection_to_string().filter(|text| !text.is_empty())
     }
@@ -551,14 +561,7 @@ mod tests {
     }
 
     fn screen(terminal: &Terminal) -> String {
-        let term = terminal.term.lock();
-        let mut text = String::new();
-        for line in 0..term.screen_lines() as i32 {
-            let row = &term.grid()[Line(line)];
-            text.extend((0..term.columns()).map(|column| row[Column(column)].c));
-            text.push('\n');
-        }
-        text
+        terminal.screen_lines().join("\n")
     }
 
     fn wait_for(terminal: &Terminal, text: &str) {

@@ -389,16 +389,24 @@ fn agent_chips(info: Rc<AgentInfo>, root: PathBuf, theme: &Theme, cx: &Context<W
                 .into_any_element(),
         );
     }
-    if let Some(used) = info.tokens.filter(|_| Chip::Context.shown(cx)) {
+    if (info.tokens.is_some() || info.compacting) && Chip::Context.shown(cx) {
         let mut element = clickable(chip("status-context", icons::GAUGE, theme), Chip::Context, theme, cx);
-        match info.window.filter(|window| *window > 0) {
-            Some(window) => {
+        if info.compacting {
+            let spinner = icons::SPINNER[crate::store::store(cx).read(cx).tick_fast % icons::SPINNER.len()];
+            element = element.child(div().text_color(theme.accent).child(format!("{spinner} compacting")));
+        }
+        match (info.tokens, info.window.filter(|window| *window > 0)) {
+            (Some(used), Some(window)) => {
                 let percent = used * 100 / window;
                 element = element
                     .child(div().text_color(level(percent, theme)).child(format!("{percent}%")))
                     .child(div().text_color(theme.muted).child(format!("{}/{}", tokens(used), tokens(window))));
             }
-            None => element = element.child(tokens(used)),
+            (Some(used), None) => element = element.child(tokens(used)),
+            (None, _) => {}
+        }
+        if info.compactions > 0 {
+            element = element.child(div().text_color(theme.muted).child(format!("compacted {}x", info.compactions)));
         }
         chips.push(element.on_click(cx.listener(menu_for(info.clone()))).into_any_element());
     }
@@ -436,6 +444,9 @@ fn agent_menu(info: &AgentInfo) -> Vec<menu::Item> {
             None => format!("context {}", tokens(used)),
         };
         items.push(menu::Item::Header(text.into()));
+    }
+    if info.compacting {
+        items.push(menu::Item::Header("compacting now".into()));
     }
     if info.compactions > 0 {
         let times = if info.compactions == 1 { "once".to_string() } else { format!("{} times", info.compactions) };

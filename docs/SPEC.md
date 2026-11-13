@@ -259,7 +259,7 @@ While a known agent CLI runs in the tab (an agent tab, or one started by hand in
 - **Skills**: `60 skills 2 used`. Click: a combobox above the chip listing every skill, the used ones first under "Used", then "Available", each with its description and source (`user`, `project`, `plugin`, `built-in`). Typing filters, `enter` opens the skill's `SKILL.md` in the file view, `⌘enter` opens it in the default app.
 - **Instruction files**: `3 md`, the CLAUDE.md, AGENTS.md, GEMINI.md and similar files the agent loaded. Click: the same combobox with each file's path and scope (`user`, `project`, `local`, `nested`); `enter` opens the file.
 - **Model**: the model of the last reply.
-- **Context**: `31% 312k/1M`, the tokens of the last request against the model's context window, green under 50%, orange under 80%, red above. Without a known window only the tokens show.
+- **Context**: `31% 312k/1M`, the tokens of the last request against the model's context window, green under 50%, orange under 80%, red above. Without a known window only the tokens show. After the agent compacted the conversation the chip adds `compacted 2x`. While the agent compacts, the chip shows a spinner and `compacting`: Nucli spots the agent's own compaction spinner line on the visible screen (Claude Code's `Compacting conversation…`, pi's `Compacting context...` and `Auto-compacting...`).
 - **MCP servers**: `9 mcp 1 used`. Click: the combobox with the called servers first and their call count; `enter` opens the config file that defines the server.
 - **Session time**: how long the agent process has been running.
 

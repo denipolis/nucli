@@ -24,6 +24,7 @@ pub struct AgentInfo {
     pub transcript: Option<PathBuf>,
     pub conversation: Option<String>,
     pub compactions: usize,
+    pub compacting: bool,
 }
 
 pub struct Request {

@@ -86,6 +86,11 @@ fn capitalized(name: &str) -> String {
     chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
 }
 
+fn compacting(line: &str) -> bool {
+    let text = line.trim_start_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
+    text.starts_with("compacting ") || text.starts_with("auto-compacting") || text.contains("detected, auto-compacting")
+}
+
 impl Store {
     pub fn apply_settings(&mut self, cx: &mut Context<Self>) {
         let sessions: Vec<_> = self.sessions.values().cloned().collect();
@@ -322,13 +327,15 @@ impl Session {
         if !crate::terminal::LIFTS_PROMPT {
             self.terminal.anchor_prompt(self.kind != Kind::Agent && !agent_running);
         }
-        let changed = self.foreground != name || self.subagents != probe.subagents || self.agent_info != probe.info;
+        let compacting = agent_running && self.terminal.screen_lines().iter().any(|line| compacting(line));
+        let info = probe.info.map(|info| crate::agent_info::AgentInfo { compacting, ..info });
+        let changed = self.foreground != name || self.subagents != probe.subagents || self.agent_info != info;
         self.foreground = name.clone();
         self.running_agent = agent_running.then(|| name.clone().unwrap_or_default());
         self.cwd = probe.process.as_ref().and_then(|info| info.cwd.clone()).or(self.cwd.take());
         self.branch = probe.branch;
         self.subagents = probe.subagents;
-        self.agent_info = probe.info;
+        self.agent_info = info;
         let previous = self.activity;
         let now = now_ms();
         if let Some(status) = &probe.claude {
@@ -370,5 +377,20 @@ impl Session {
             }
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compacting;
+
+    #[test]
+    fn spots_compaction_spinners() {
+        assert!(compacting("✻ Compacting conversation… (esc to interrupt)"));
+        assert!(compacting(" ⠋ Compacting context... (esc to cancel)"));
+        assert!(compacting("⠙ Auto-compacting... (esc to cancel)"));
+        assert!(compacting("⠹ Context overflow detected, Auto-compacting... (esc to cancel)"));
+        assert!(!compacting("✻ Conversation compacted (ctrl+o for history)"));
+        assert!(!compacting("We talked about compacting conversations"));
     }
 }
