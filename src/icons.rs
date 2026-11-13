@@ -44,6 +44,7 @@ pub const CLOUD: &str = "\u{ebaa}";
 pub const THEME: &str = "\u{eb5c}";
 pub const SPLIT: &str = "\u{eb56}";
 pub const UNSPLIT: &str = "\u{f0337}";
+pub const GAUGE: &str = "\u{f029a}";
 
 pub const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 

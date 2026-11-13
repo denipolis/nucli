@@ -17,7 +17,7 @@ use crate::window::WorkspaceView;
 
 type Rows = Vec<Vec<Entity<TextInput>>>;
 
-const SECTIONS: [(SettingsSection, &str, &str, &str); 6] = [
+const SECTIONS: [(SettingsSection, &str, &str, &str); 7] = [
     (
         SettingsSection::General,
         icons::SETTINGS,
@@ -28,6 +28,12 @@ const SECTIONS: [(SettingsSection, &str, &str, &str); 6] = [
     (SettingsSection::Terminal, icons::TERMINAL, "Terminal", "Font and cursor of terminals and the file view."),
     (SettingsSection::Agents, icons::AGENT, "Agents", "The agent CLIs you can start in a tab."),
     (SettingsSection::Shells, icons::COMMAND, "Shells", "The shells you can start in a tab."),
+    (
+        SettingsSection::StatusChips,
+        icons::GAUGE,
+        "Status Chips",
+        "The row of chips under a tab or file. Right-click a chip to hide it.",
+    ),
     (SettingsSection::Keybindings, icons::KEYBOARD, "Keybindings", "Click a key, then press the new one."),
 ];
 
@@ -461,18 +467,6 @@ pub fn appearance(current: &Settings, custom: &[CustomTheme], system_dark: bool,
                 theme,
             ))
             .child(row(
-                "Status chips",
-                "Under the focused pane only, or under every pane of a split",
-                segments(
-                    "status-chips",
-                    &[("Focused", StatusChips::Focused), ("Every pane", StatusChips::EveryPane)],
-                    current.status_chips,
-                    |settings, value| settings.status_chips = value,
-                    theme,
-                ),
-                theme,
-            ))
-            .child(row(
                 "Interface size",
                 "Text in the sidebar, panel and menus",
                 stepper(
@@ -724,6 +718,47 @@ fn keybindings(view: &WorkspaceView, theme: &Theme, cx: &mut Context<WorkspaceVi
     ]
 }
 
+fn chips_page(current: &Settings, theme: &Theme, cx: &App) -> Vec<AnyElement> {
+    use crate::statusbar::Chip;
+    let mut pages = vec![
+        group(theme)
+            .child(row(
+                "Placement",
+                "Under the focused pane only, or under every pane of a split",
+                segments(
+                    "status-chips",
+                    &[("Focused", StatusChips::Focused), ("Every pane", StatusChips::EveryPane)],
+                    current.status_chips,
+                    |settings, value| settings.status_chips = value,
+                    theme,
+                ),
+                theme,
+            ))
+            .into_any_element(),
+    ];
+    for name in ["Agent", "Terminal", "File view"] {
+        let mut chips = group(theme).child(
+            div().px(px(12.0)).py(px(4.0)).border_b_1().border_color(theme.border).text_color(theme.faint).child(name),
+        );
+        for chip in Chip::ALL.into_iter().filter(|chip| chip.group() == name) {
+            let on = chip.shown(cx);
+            chips = chips.child(row(
+                chip.title(),
+                chip.hint(),
+                div()
+                    .id(SharedString::from(format!("chip-{}", chip.id())))
+                    .text_color(if on { theme.accent } else { theme.muted })
+                    .hover(|style| style.text_color(theme.text))
+                    .child(if on { "[x]" } else { "[ ]" })
+                    .on_click(move |_, _, cx| chip.toggle(cx)),
+                theme,
+            ));
+        }
+        pages.push(chips.into_any_element());
+    }
+    pages
+}
+
 pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) -> AnyElement {
     sync_fields(view, window, cx);
     let theme = ui::theme(cx);
@@ -772,6 +807,7 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
         }
         (SettingsSection::Agents, Some(page)) => agents_page(page, &current, &theme),
         (SettingsSection::Shells, Some(page)) => shells_page(page, &current, &theme),
+        (SettingsSection::StatusChips, _) => chips_page(&current, &theme, cx),
         (SettingsSection::Keybindings, _) => keybindings(view, &theme, cx),
         _ => Vec::new(),
     };

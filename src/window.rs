@@ -456,30 +456,24 @@ impl Render for WorkspaceView {
             root = root.child(menu::render(menu, cx));
         }
         if let Some(palette) = &self.palette {
-            root = root.child(
-                deferred(
-                    div()
-                        .id("palette-backdrop")
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .size_full()
-                        .flex()
-                        .justify_center()
-                        .pt(px(60.0))
-                        .occlude()
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|view, _, window, cx| view.dismiss_palette(window, cx)),
-                        )
-                        .child(
-                            div()
-                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                .child(palette.clone()),
-                        ),
-                )
-                .with_priority(1),
-            );
+            let content =
+                div().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).child(palette.clone());
+            let backdrop =
+                div().id("palette-backdrop").absolute().top_0().left_0().size_full().occlude().on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|view, _, window, cx| view.dismiss_palette(window, cx)),
+                );
+            let backdrop = match palette.read(cx).anchor {
+                Some(position) => backdrop.child(
+                    gpui::anchored()
+                        .position(position)
+                        .anchor(gpui::Corner::BottomLeft)
+                        .snap_to_window_with_margin(px(8.0))
+                        .child(content),
+                ),
+                None => backdrop.flex().justify_center().pt(px(60.0)).child(content),
+            };
+            root = root.child(deferred(backdrop).with_priority(1));
         }
         if let Some(switcher) = &self.switcher {
             root = root.child(crate::switcher::render(self, switcher, cx));

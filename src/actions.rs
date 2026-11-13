@@ -1318,6 +1318,11 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|view, _: &OpenSettingsFile, window, cx| {
             crate::file_view::open_config(view, crate::paths::settings_file(), window, cx)
         }))
+        .on_action(
+            cx.listener(|view, _: &ConfigureStatusChips, window, cx| {
+                crate::palettes::status_chips(view, 0, window, cx)
+            }),
+        )
         .on_action(cx.listener(|view, _: &OpenKeybindings, window, cx| {
             crate::settings_view::show(view, Some(crate::persist::SettingsSection::Keybindings), window, cx)
         }))

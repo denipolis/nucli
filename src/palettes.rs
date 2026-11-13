@@ -385,3 +385,23 @@ fn run_git(
     })
     .detach();
 }
+
+pub fn status_chips(view: &mut WorkspaceView, selected: usize, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    use crate::statusbar::Chip;
+    let items = Chip::ALL
+        .iter()
+        .enumerate()
+        .map(|(index, chip)| {
+            let chip = *chip;
+            Item::new(chip.title(), move |view, window, cx| {
+                chip.toggle(cx);
+                status_chips(view, index, window, cx);
+            })
+            .subtitle(chip.hint())
+            .detail(if chip.shown(cx) { "[x]" } else { "[ ]" })
+            .section(chip.group())
+        })
+        .collect();
+    let palette = cx.new(|cx| Palette::new("status chips", "toggle a chip", items, selected, cx));
+    view.show_palette(palette, window, cx);
+}

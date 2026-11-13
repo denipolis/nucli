@@ -254,23 +254,45 @@ One row of small framed chips directly under the selected tab, in the terminal's
 - The project's `±files +added -removed` (click: Changes), when there are changes.
 - The foreground program, unless it is the tab's shell.
 
+While a known agent CLI runs in the tab (an agent tab, or one started by hand in a shell), agent chips follow:
+
+- **Skills**: `60 skills 2 used`. Click: a combobox above the chip listing every skill, the used ones first under "Used", then "Available", each with its description and source (`user`, `project`, `plugin`, `built-in`). Typing filters, `enter` opens the skill's `SKILL.md` in the file view, `⌘enter` opens it in the default app.
+- **Instruction files**: `3 md`, the CLAUDE.md, AGENTS.md, GEMINI.md and similar files the agent loaded. Click: the same combobox with each file's path and scope (`user`, `project`, `local`, `nested`); `enter` opens the file.
+- **Model**: the model of the last reply.
+- **Context**: `31% 312k/1M`, the tokens of the last request against the model's context window, green under 50%, orange under 80%, red above. Without a known window only the tokens show.
+- **MCP servers**: `9 mcp 1 used`. Click: the combobox with the called servers first and their call count; `enter` opens the config file that defines the server.
+- **Session time**: how long the agent process has been running.
+
+Clicking the model, context or session chip opens a menu: agent and model, context, compactions, running time, Open Transcript in Default App, Reveal, Copy Transcript Path, Copy Conversation ID.
+
+The agent chips are read from the agent's own files once per second, never by talking to the agent:
+
+- Claude Code: the transcript of the session in `<config>/sessions/<pid>.json` records the instruction files it loaded, its skill list, the skills it used, its MCP servers and the token usage of every reply. Skill files come from `<config>/skills`, `.claude/skills`, `.claude/commands` and the enabled plugins; MCP config from `.claude.json` and `.mcp.json`. The context window comes from Claude Code's cached model list, a `[1m]` model, or 1M once more than 200k tokens were used, else 200k.
+- Codex: the rollout of the session (token counts include the context window); instruction files follow its lookup (`AGENTS.override.md` or `AGENTS.md` in the Codex folder and from the repository root to the working folder), skills `.agents/skills`, MCP servers `config.toml`.
+- pi: the session file's system prompt lists the instruction files and skills; the context window comes from `models.json`.
+- Gemini CLI: the session in `~/.gemini/tmp/<project>/chats`; GEMINI.md files, skills and `settings.json` servers by convention.
+- Qwen Code, opencode, Copilot CLI, Amp, Droid, Cursor Agent, crush and goose: instruction files, skills and MCP servers from the folders each one reads by convention, and the session time.
+
 In the file view the same row shows data only: line and column, language with its file glyph (click: choose another language, Auto Detect goes back, and the choice is remembered per file), `+added -removed` of the file, and the commit for a commit's version.
 
 The row is hidden for projects and settings. An invalid settings or keybindings file shows its error in red on this row, also in those views.
 
-By default the row follows the focused pane or file group. With `status_chips` set to `every_pane` (Settings, Appearance, Status chips) every pane of a split and every file group has its own row, and the error gets a row of its own.
+By default the row follows the focused pane or file group. With `status_chips` set to `every_pane` every pane of a split and every file group has its own row, and the error gets a row of its own.
+
+**Choosing chips**: every chip can be hidden, as in VS Code. Right-click a chip for "Hide <chip>" and the list of all chips with `[x]` / `[ ]`; right-click the empty row for the list alone. The same toggles are on the settings page (Status Chips) and in the palette ("Status Chips…", also in the View menu, `enter` toggles and keeps the list open). Hidden chips are stored as ids in `hidden_chips`: `folder`, `branch`, `changes`, `program`, `skills`, `instructions`, `model`, `context`, `mcp`, `session`, `position`, `language`, `file_changes`, `commit`.
 
 ## Settings
 
 - `⌘,` shows the settings page in the viewport, with vertical tabs by category. The last category is remembered. Every change applies at once and is written to the same files. `esc` or selecting a tab or file closes it.
   - **General**: reopening tabs, notifications, link to `settings.json`.
-  - **Appearance**: theme cards, Import… and Open folder for custom themes, system, light or dark mode, status chips under the focused pane or every pane, interface size.
+  - **Appearance**: theme cards, Import… and Open folder for custom themes, system, light or dark mode, interface size.
   - **Terminal**: font, font size, line height, ligatures, cursor. The font is a combobox: Maple Mono NF first, then every installed font by name, each row with a sample in that font; typing filters, arrows and `enter` pick, `esc` or clicking outside closes.
   - **Agents**: name, executable, arguments and config folder of each profile, add, remove, detect. An agent's `env` and `theme` are only in the file.
   - **Shells**: name and path, add, remove, detect.
+  - **Status Chips**: under the focused pane or every pane, and a `[x]` toggle for every chip, grouped by Agent, Terminal and File view.
   - **Keybindings**: every command with its key, a filter, and a link to `keybindings.json`. Click a key and press the new one (`esc` cancels); a changed key has a reset button; a key used twice in the same context turns red. "Open Keybindings" opens this category.
 - "Open Settings File" and "Open Keybindings File" open the JSON files in the file view. Both reload when saved, from Nucli or any editor. Invalid JSON keeps the previous settings and shows the error on the status row.
-- `settings.json` keys: `theme`, `appearance` (`system`, `light`, `dark`), `font`, `font_size`, `ui_font_size`, `line_height`, `cursor` (`block`, `bar`, `underline`), `cursor_blink`, `ligatures`, `restore_tabs`, `notifications`, `status_chips` (`focused`, `every_pane`), `agents`, `shells`. Commands that change settings (theme, font size, detection, notifications) rewrite the file with all keys.
+- `settings.json` keys: `theme`, `appearance` (`system`, `light`, `dark`), `font`, `font_size`, `ui_font_size`, `line_height`, `cursor` (`block`, `bar`, `underline`), `cursor_blink`, `ligatures`, `restore_tabs`, `notifications`, `status_chips` (`focused`, `every_pane`), `hidden_chips`, `agents`, `shells`. Commands that change settings (theme, font size, detection, notifications) rewrite the file with all keys.
 - `keybindings.json` maps a key to a command name, e.g. `{"cmd-t": "new_shell", "cmd-shift-d": null}`; `null` removes a default. The palette shows every command's name and current key.
 - **Themes**: Nucli (dark and light pairs following the system), Nucli Amber and Nucli Phosphor (monochrome dark), and Vitesse Dark, Dark Soft, Black, Light, Light Soft. A theme sets every UI color, the 16 terminal colors and the syntax colors. An automatic theme follows the system appearance; `appearance` can force its light or dark side.
 - **Custom themes**: every `*.json` file in the `themes` folder next to `settings.json` is a theme `{name, base, dark, background, foreground, accent, selection, ansi, syntax}`. Every key is optional. `name` defaults to the file name without `.json`; it is also the id that `theme` and an agent's `theme` refer to. `base` is a built-in single theme id (e.g. `vitesse-dark`, not the `vitesse` pair) whose colors fill every missing key; without it the base is Nucli Dark, or Nucli Light when `dark` is `false`. Colors are `#rrggbb`. `ansi` lists the 16 terminal colors; `syntax` lists 8 colors in this order: keyword, string, number, comment, type, function, constant, attribute. The other UI colors are derived from these, as for the built-in themes. Custom themes appear after the built-in ones in Select Theme, the settings page and onboarding, and reload live when a file is added, changed or removed. A broken file is skipped and its error shows on the status row. **Import Theme…** (command palette and the Appearance page) validates the chosen JSON files, copies them into the folder (same name overwrites) and selects the last one; **Open Themes Folder** shows the folder in the file manager.
@@ -298,4 +320,4 @@ On macOS, when the `uk.polishch.nucli` defaults exist, onboarding in a release b
 
 ## Privacy
 
-No network calls, no telemetry. Nucli runs local processes (the user's shells, agents and `git`), reads agents' local conversation and status files, and stores only the files listed above.
+No network calls, no telemetry. Nucli runs local processes (the user's shells, agents and `git`), reads agents' local conversation, status and config files, and stores only the files listed above.

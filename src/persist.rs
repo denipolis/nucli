@@ -16,6 +16,7 @@ pub enum SettingsSection {
     Terminal,
     Agents,
     Shells,
+    StatusChips,
     Keybindings,
 }
 

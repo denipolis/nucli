@@ -99,6 +99,7 @@ pub struct Palette {
     selected: usize,
     pub prompt: bool,
     pub digits: bool,
+    pub anchor: Option<gpui::Point<gpui::Pixels>>,
     scroll: UniformListScrollHandle,
     _subscription: Subscription,
 }
@@ -143,6 +144,7 @@ impl Palette {
             selected: 0,
             prompt: false,
             digits: false,
+            anchor: None,
             scroll: UniformListScrollHandle::new(),
             _subscription: subscription,
         };
@@ -153,6 +155,11 @@ impl Palette {
             palette.selected = row;
         }
         palette
+    }
+
+    pub fn anchored(mut self, position: gpui::Point<gpui::Pixels>) -> Self {
+        self.anchor = Some(position);
+        self
     }
 
     pub fn set_items(&mut self, items: Vec<Item>, cx: &mut Context<Self>) {
@@ -358,8 +365,14 @@ impl Render for Palette {
         )
         .track_scroll(self.scroll.clone())
         .h(line * (count.clamp(1, 14) as f32));
-        let mut body =
-            div().w(px(640.0)).bg(theme.elevated).border_1().border_color(theme.accent).flex().flex_col().child(
+        let mut body = div()
+            .w(px(if self.anchor.is_some() { 520.0 } else { 640.0 }))
+            .bg(theme.elevated)
+            .border_1()
+            .border_color(theme.accent)
+            .flex()
+            .flex_col()
+            .child(
                 div()
                     .flex()
                     .items_center()

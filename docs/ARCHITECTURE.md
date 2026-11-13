@@ -43,7 +43,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `agents.rs` | Agent and shell profiles, detection, command lines. |
 | `import.rs` | macOS only: one-time import of Nucli 1 preferences. |
 | `notify.rs` | Desktop notifications and the Dock badge. macOS uses `UNUserNotificationCenter`, which needs an app bundle, so an unbundled debug binary posts none. The older `NSUserNotificationCenter` is refused for a bundle identifier that has already used the new API, as Nucli 1 did. |
-| `palette.rs`, `palettes.rs` | Palette view (query, ranked rows, prompt mode) and its item lists. |
+| `palette.rs`, `palettes.rs` | Palette view (query, ranked rows, prompt mode) and its item lists. A palette with an `anchor` opens above that point instead of at the top, as the status chips' combobox. |
 | `font_picker.rs` | Font combobox for terminals and the file view, used by the settings page and onboarding. Focus returns to whatever had it when the list closes. |
 | `fuzzy.rs` | Fuzzy scorer with match positions. |
 | `switcher.rs` | Tab switcher overlay. |
@@ -53,7 +53,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `text_input.rs` | Single line input with IME. |
 | `resize.rs` | Pane resize handles. |
 | `titlebar.rs` | Title bar: workspace name, menus on Linux and Windows, location, status messages and their list, Windows caption buttons. |
-| `statusbar.rs` | Status chips under the viewport. |
+| `statusbar.rs` | Status chips under the viewport: `Chip` ids and toggles, agent chips, their comboboxes and menus. |
 | `settings_view.rs` | Settings page in the viewport. |
 | `theme.rs`, `ui.rs` | Palettes, custom themes from the `themes` folder, derived UI colors, active theme. |
 | `icons.rs` | Nerd Font codepoints, file type glyphs. |

@@ -45,6 +45,7 @@ pub struct Settings {
     pub restore_tabs: bool,
     pub notifications: bool,
     pub status_chips: StatusChips,
+    pub hidden_chips: Vec<String>,
     pub agents: Vec<AgentProfile>,
     pub shells: Vec<ShellProfile>,
 }
@@ -64,6 +65,7 @@ impl Default for Settings {
             restore_tabs: true,
             notifications: true,
             status_chips: StatusChips::Focused,
+            hidden_chips: Vec::new(),
             agents: Vec::new(),
             shells: Vec::new(),
         }

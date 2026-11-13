@@ -286,7 +286,10 @@ fn claude_attachment(attachment: &Value, parsed: &mut Parsed) {
         "deferred_tools_delta" => {
             for name in names("addedNames") {
                 if let Some(server) = mcp_server(&name) {
-                    parsed.server(server);
+                    match server.strip_prefix("claude_ai_") {
+                        Some(rest) => parsed.server(&format!("claude.ai {}", rest.replace('_', " "))),
+                        None => parsed.server(server),
+                    }
                 }
             }
         }
