@@ -5,7 +5,8 @@ use std::time::Duration;
 
 use gpui::Context;
 
-use crate::agents::{self, AgentKind};
+use crate::agent_info::{self, AgentInfo};
+use crate::agents::{self, AgentKind, AgentProfile};
 use crate::claude::{self, ClaudeProcess, Subagent};
 use crate::process::{self, ProcessInfo};
 use crate::session::{Activity, Kind, Session};
@@ -17,7 +18,8 @@ struct Job {
     id: String,
     pid: u32,
     root: Option<u32>,
-    dirs: Vec<PathBuf>,
+    own: Option<AgentProfile>,
+    conversation: Option<String>,
 }
 
 pub struct Probe {
@@ -25,25 +27,58 @@ pub struct Probe {
     pub claude: Option<ClaudeProcess>,
     pub subagents: Vec<Subagent>,
     pub branch: Option<String>,
+    pub info: Option<AgentInfo>,
 }
 
-fn probe(job: &Job) -> Probe {
+fn config_dirs(agent: &str, own: Option<&AgentProfile>, profiles: &[AgentProfile]) -> Vec<PathBuf> {
+    let Some(kind) = AgentKind::from_executable(agent) else { return Vec::new() };
+    if let Some(dir) = own.filter(|profile| profile.kind() == Some(kind)).and_then(AgentProfile::data_dir) {
+        return vec![dir];
+    }
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    let known = profiles.iter().filter(|profile| profile.kind() == Some(kind)).filter_map(AgentProfile::data_dir);
+    for dir in known.chain(std::iter::once(crate::paths::expand(kind.default_config_dir()))) {
+        if !dirs.contains(&dir) {
+            dirs.push(dir);
+        }
+    }
+    dirs
+}
+
+fn probe(job: &Job, profiles: &[AgentProfile], agents: &HashSet<String>) -> Probe {
     let process = process::inspect(job.pid, job.root);
-    let claude =
-        process.as_ref().filter(|info| info.name == "claude").and_then(|info| claude::process(info.pid, &job.dirs));
+    let name = process.as_ref().map(|info| info.name.clone()).unwrap_or_default();
+    let dirs = config_dirs(&name, job.own.as_ref(), profiles);
+    let claude = process.as_ref().filter(|_| name == "claude").and_then(|info| claude::process(info.pid, &dirs));
     let subagents = claude
         .as_ref()
         .and_then(|status| {
             let cwd = status.cwd.clone()?;
-            job.dirs
-                .iter()
-                .map(|dir| claude::subagents_dir(dir, &cwd, &status.session_id))
-                .find(|folder| folder.is_dir())
+            dirs.iter().map(|dir| claude::subagents_dir(dir, &cwd, &status.session_id)).find(|folder| folder.is_dir())
         })
         .map(|folder| claude::running_subagents(&folder))
         .unwrap_or_default();
     let branch = process.as_ref().and_then(|info| info.cwd.as_deref()).and_then(crate::git::current_branch);
-    Probe { process, claude, subagents, branch }
+    let info = process.as_ref().filter(|_| agents.contains(&name)).map(|info| {
+        let own_kind = job.own.as_ref().and_then(AgentProfile::kind);
+        let conversation = match &claude {
+            Some(status) => Some(status.session_id.clone()),
+            None => {
+                job.conversation.clone().filter(|_| own_kind.is_some() && own_kind == AgentKind::from_executable(&name))
+            }
+        };
+        let cwd =
+            claude.as_ref().and_then(|status| status.cwd.clone()).or_else(|| info.cwd.clone()).unwrap_or_default();
+        agent_info::probe(&agent_info::Request {
+            agent: name.clone(),
+            pid: info.pid,
+            cwd,
+            started: info.started,
+            conversation,
+            dirs: dirs.clone(),
+        })
+    });
+    Probe { process, claude, subagents, branch, info }
 }
 
 fn capitalized(name: &str) -> String {
@@ -160,13 +195,6 @@ impl Store {
             self.refresh_diffstats(projects, cx);
         }
         let profiles = settings::get(cx).agents.clone();
-        let mut claude_dirs: Vec<PathBuf> = profiles
-            .iter()
-            .filter(|profile| profile.kind() == Some(AgentKind::Claude))
-            .filter_map(|profile| profile.data_dir())
-            .collect();
-        claude_dirs.push(crate::paths::expand(AgentKind::Claude.default_config_dir()));
-        claude_dirs.dedup();
         let jobs: Vec<Job> = self
             .sessions
             .values()
@@ -175,21 +203,14 @@ impl Store {
                 if session.exit.is_some() {
                     return None;
                 }
-                let own = session
-                    .profile
-                    .as_ref()
-                    .and_then(|name| profiles.iter().find(|profile| &profile.name == name))
-                    .filter(|profile| profile.kind() == Some(AgentKind::Claude))
-                    .and_then(|profile| profile.data_dir());
-                let dirs = match own {
-                    Some(dir) => vec![dir],
-                    None => claude_dirs.clone(),
-                };
+                let own =
+                    session.profile.as_ref().and_then(|name| profiles.iter().find(|profile| &profile.name == name));
                 Some(Job {
                     id: session.id.clone(),
                     pid: session.terminal.foreground_pid()?,
                     root: session.terminal.pid,
-                    dirs,
+                    own: own.cloned(),
+                    conversation: session.conversation.clone(),
                 })
             })
             .collect();
@@ -201,10 +222,11 @@ impl Store {
             .map(|name| name.to_string())
             .chain(profiles.iter().map(|profile| agents::command_name(&profile.executable)))
             .collect();
+        let known = commands.clone();
         cx.spawn(async move |this, cx| {
             let results: Vec<(String, Probe)> = cx
                 .background_executor()
-                .spawn(async move { jobs.iter().map(|job| (job.id.clone(), probe(job))).collect() })
+                .spawn(async move { jobs.iter().map(|job| (job.id.clone(), probe(job, &profiles, &known))).collect() })
                 .await;
             let _ = this.update(cx, |store, cx| {
                 let mut events = Vec::new();
@@ -300,12 +322,13 @@ impl Session {
         if !crate::terminal::LIFTS_PROMPT {
             self.terminal.anchor_prompt(self.kind != Kind::Agent && !agent_running);
         }
-        let changed = self.foreground != name || self.subagents != probe.subagents;
+        let changed = self.foreground != name || self.subagents != probe.subagents || self.agent_info != probe.info;
         self.foreground = name.clone();
         self.running_agent = agent_running.then(|| name.clone().unwrap_or_default());
         self.cwd = probe.process.as_ref().and_then(|info| info.cwd.clone()).or(self.cwd.take());
         self.branch = probe.branch;
         self.subagents = probe.subagents;
+        self.agent_info = probe.info;
         let previous = self.activity;
         let now = now_ms();
         if let Some(status) = &probe.claude {

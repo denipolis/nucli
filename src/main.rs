@@ -1,6 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod actions;
+mod agent_info;
 mod agents;
 mod changes;
 mod claude;
@@ -49,6 +50,7 @@ mod terminal;
 mod text_input;
 mod theme;
 mod titlebar;
+mod transcript;
 mod ui;
 mod watcher;
 mod window;

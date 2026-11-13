@@ -8,6 +8,7 @@ pub struct ProcessInfo {
     pub pid: u32,
     pub name: String,
     pub cwd: Option<PathBuf>,
+    pub started: Option<std::time::SystemTime>,
 }
 
 static SYSTEM: Mutex<Option<System>> = Mutex::new(None);
@@ -51,6 +52,8 @@ pub fn inspect(pid: u32, root: Option<u32>) -> Option<ProcessInfo> {
         pid: target.as_u32(),
         name: command_name(&command, &process.name().to_string_lossy()),
         cwd: process.cwd().map(Path::to_path_buf),
+        started: (process.start_time() > 0)
+            .then(|| std::time::UNIX_EPOCH + std::time::Duration::from_secs(process.start_time())),
     })
 }
 

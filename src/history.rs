@@ -156,11 +156,11 @@ fn finish(mut found: Vec<Conversation>, limit: usize) -> Vec<Conversation> {
     found
 }
 
-fn codex_files(dir: &Path) -> Vec<(PathBuf, SystemTime)> {
+pub fn codex_files(dir: &Path) -> Vec<(PathBuf, SystemTime)> {
     newest(&dir.join("sessions"), usize::MAX, 300)
 }
 
-fn newest(dir: &Path, depth: usize, limit: usize) -> Vec<(PathBuf, SystemTime)> {
+pub fn newest(dir: &Path, depth: usize, limit: usize) -> Vec<(PathBuf, SystemTime)> {
     let mut files = Vec::new();
     jsonl_files(dir, depth, &mut files);
     files.sort_by_key(|file| std::cmp::Reverse(file.1));

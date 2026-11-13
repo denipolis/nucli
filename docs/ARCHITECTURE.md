@@ -37,6 +37,8 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `git.rs` | `git` CLI wrapper, parsers, commit graph lanes. |
 | `history.rs` | Agent conversation files and their cache. |
 | `claude.rs` | Claude Code status files and subagents. |
+| `transcript.rs` | Reads agent transcripts (Claude Code, Codex, pi, Gemini CLI) incrementally: model, context tokens, instruction files, skills, MCP servers, compactions. |
+| `agent_info.rs` | `AgentInfo` of a running agent: finds its transcript, merges it with what the agent's folders hold by convention (instruction files, skills, MCP config) for every known agent CLI. |
 | `process.rs` | Foreground process name and folder through `sysinfo`. |
 | `agents.rs` | Agent and shell profiles, detection, command lines. |
 | `import.rs` | macOS only: one-time import of Nucli 1 preferences. |
@@ -105,6 +107,9 @@ Tabs for a commit's version of a file are stored as `path@@hash`.
 - Claude Code status comes from `<config>/sessions/<pid>.json`, an undocumented file: when it is missing or changes format, the output based heuristic takes over. The `.key` files next to it hold secrets and are never opened.
 - `conversation` follows the session id in that file, so `/clear` and `/resume` change what the tab resumes.
 - Codex assigns its own ids, so a new Codex tab's id is looked up when the tab is saved.
+- Agent info runs inside the one second poll for every tab whose foreground process is a known agent. `transcript::read` keeps a byte offset per file and parses only complete new lines, so a long transcript is read once. Folder discovery (`agent_info::scan`) is cached for 10 seconds per agent, config folder and working folder.
+- Transcripts are matched to the process: Claude by the session id in its status file, Codex by the conversation id or the newest rollout of the folder started after the process (only the date folders around the start are listed), pi by the session id or the newest file of the folder, Gemini through `projects.json`. Without a match the info still has the folder discovery and the process start time.
+- What the transcript records wins over discovery: Claude's `instructions`, `nested_memory`, `skill_listing` and MCP deltas, pi's system prompt sections. Codex records no instruction file paths, so they come from its lookup rules. Unknown models get no context window unless the tokens seen pass 200k, then 1M is assumed.
 
 ## Gotchas
 
