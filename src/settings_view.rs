@@ -844,7 +844,8 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
                     .flex()
                     .flex_col()
                     .gap(px(12.0))
-                    .max_w(px(820.0))
+                    .w(px(820.0))
+                    .max_w_full()
                     .p(px(20.0))
                     .child(
                         div()
