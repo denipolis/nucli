@@ -496,13 +496,12 @@ impl Drop for Discovery {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::StreamExt;
 
     fn next(events: &mut futures::channel::mpsc::UnboundedReceiver<NetEvent>) -> NetEvent {
         futures::executor::block_on(async {
             let timeout = std::time::Instant::now() + Duration::from_secs(10);
             loop {
-                if let Ok(Some(event)) = events.try_next() {
+                if let Ok(event) = events.try_recv() {
                     return event;
                 }
                 assert!(std::time::Instant::now() < timeout, "no event");

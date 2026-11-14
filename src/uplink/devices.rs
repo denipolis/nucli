@@ -112,7 +112,7 @@ mod tests {
         assert!(devices.is_empty());
         let other = Identity::generate();
         let device = Device { key: wire::encode_key(&other.public), name: "laptop".into(), ..Default::default() };
-        save(&path, &identity, &[device.clone()]);
+        save(&path, &identity, std::slice::from_ref(&device));
         let (again, devices) = load(&path);
         assert_eq!(again.public, identity.public);
         assert_eq!(again.secret, identity.secret);
