@@ -145,8 +145,8 @@ pub fn tab_glyph(session: &Session) -> (&'static str, Option<crate::theme::ItemC
 
 fn header(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoElement {
     let theme = ui::theme(cx);
-    let current = view.store(cx).ui.sidebar_tab;
     let uplink = crate::uplink::Uplink::enabled(cx);
+    let current = shown_tab(view, cx);
     let wide = if uplink { 340.0 } else { 260.0 };
     let compact = view.state(cx).is_some_and(|state| state.window.sidebar_width < wide);
     let tab = |id: &'static str, glyph: &'static str, label: &'static str, tab: SidebarTab| {
@@ -748,11 +748,18 @@ fn footer(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoEle
         )
 }
 
+fn shown_tab(view: &WorkspaceView, cx: &App) -> SidebarTab {
+    match view.store(cx).ui.sidebar_tab {
+        SidebarTab::Uplink if !crate::uplink::Uplink::enabled(cx) => SidebarTab::Projects,
+        tab => tab,
+    }
+}
+
 pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
     let width = view.state(cx).map(|state| state.window.sidebar_width).unwrap_or(260.0);
     let query = view.filter.read(cx).text.clone();
-    let rows = match view.store(cx).ui.sidebar_tab {
+    let rows = match shown_tab(view, cx) {
         SidebarTab::Projects => projects(view, &query, cx),
         SidebarTab::Agents => board(view, &query, cx),
         SidebarTab::History => history(view, &query, cx),

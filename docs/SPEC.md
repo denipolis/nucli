@@ -291,7 +291,7 @@ Uplink lets computers running Nucli control each other's tabs: run agents on one
 
 - Settings › Uplink starts with the **Uplink** toggle (`uplink.enabled`, off by default). Everything else on the page shows only while it is on. "Turn Uplink On or Off" in the palette does the same.
 - Off means off: no port is open, nothing is announced, every connection closes and every remote view closes at once.
-- On, Nucli listens on TCP port `uplink.port` (47100, the development build 47101) on every network interface and announces itself with multicast DNS (`_nucli-uplink._tcp`) so devices on the same network find each other. On macOS the system asks once for Local Network access.
+- On, Nucli listens on TCP port `uplink.port` (47100, the development build 47101) on every network interface and announces itself with multicast DNS (`_nucli-uplink._tcp`) so devices on the same network find each other. On macOS the system asks once for Local Network access; on Windows the firewall asks once whether Nucli may accept connections. Turning Uplink off while its sidebar tab is shown shows Projects.
 - The page then lists, from top to bottom: the listening status and the latest event ("Paired with laptop.", "A device entered a wrong code. 2 attempts left."), Paired devices, Pair a new device, Join a device, Sharing, and This device (name, port, the addresses it can be reached at, and its fingerprint).
 
 ### Pairing
@@ -320,7 +320,7 @@ Each paired device shows its system glyph, name, state (`online · address · wa
 ### Remote tabs
 
 - The Uplink sidebar tab lists every paired device: online ones with their shared projects and tabs (glyph, title, program, status), offline ones with when they were last seen. The filter applies. Right-click a device for Disconnect and Uplink Settings….
-- Clicking a remote tab opens it in the viewport like a local tab: the full terminal with its scrollback, live, with selection, copy, find and links (file paths of the other computer are not opened locally). The title bar shows `device › project › tab`, the status chips show the device (and `view only` or `offline`), its folder, branch and program. Typing, pasting, mouse reporting and `⌘K` go to the other computer when this device can control it.
+- Clicking a remote tab opens it in the viewport like a local tab: the full terminal with its scrollback, live, with selection, copy, find and links (file paths of the other computer are not opened locally). The title bar shows `device › project › tab`, the status chips show the device (and `view only` or `offline`), its folder, branch and program. Typing, pasting text, mouse reporting and `⌘K` go to the other computer when this device can control it. Files dropped on a remote tab are not typed, since their paths exist only here, and images in the clipboard stay on this computer.
 - The terminal has one size, the size of the device that typed into it last, as with `tmux`: typing on the other computer takes the size back. A device with view access never resizes it.
 - `⌘W` or Close View closes the remote view; the tab keeps running on its computer. Remote views are not saved and reopen from the sidebar.
 - Hovering a remote project shows `+`, and its context menu lists the other computer's agents and shells: choosing one opens a new tab there and shows it here (control only).

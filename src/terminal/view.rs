@@ -788,6 +788,9 @@ impl Session {
     }
 
     fn type_paths(&mut self, paths: &[std::path::PathBuf], cx: &mut Context<Self>) {
+        if self.remote.is_some() {
+            return;
+        }
         let text: Vec<String> = paths.iter().map(|path| crate::agents::quote(&path.to_string_lossy())).collect();
         if !text.is_empty() {
             let bytes = keys::paste(&format!("{} ", text.join(" ")), self.terminal.mode());
