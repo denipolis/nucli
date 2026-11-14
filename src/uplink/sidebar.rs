@@ -117,7 +117,7 @@ fn project_row(
     let theme = ui::theme(cx);
     let tint = project.color.map(|color| color.color(theme.dark)).unwrap_or(theme.accent);
     let name = if project.name.is_empty() { "~".to_string() } else { project.name.clone() };
-    let group = SharedString::from(format!("uplink-project-{device}-{}", project.path));
+    let group = SharedString::from(format!("uplink-project-{}-{}", &super::wire::encode_key(&key)[..12], project.path));
     let can_open = catalog.control && !catalog.launchers.is_empty();
     let menu_items = launcher_menu(key, project, catalog, device);
     let button_items = menu_items.clone();
