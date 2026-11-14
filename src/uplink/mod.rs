@@ -42,6 +42,10 @@ pub fn mirror_id(key: &Key, tab: &str) -> String {
     format!("{MIRROR}{}:{tab}", &wire::encode_key(key)[..12])
 }
 
+fn valid_tab(id: &str) -> bool {
+    (1..=64).contains(&id.len()) && id.chars().all(|char| char.is_ascii_alphanumeric() || char == '-')
+}
+
 fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|time| time.as_secs()).unwrap_or(0)
 }
@@ -343,7 +347,8 @@ impl Uplink {
                     addresses.extend(nearby.addresses.iter().map(|address| address.to_string()));
                 }
                 addresses.extend(device.addresses.iter().cloned());
-                addresses.dedup();
+                let mut seen = std::collections::HashSet::new();
+                addresses.retain(|address| seen.insert(address.clone()));
                 (!addresses.is_empty()).then_some((key, addresses))
             })
             .collect();
@@ -931,7 +936,8 @@ impl Uplink {
         }
     }
 
-    fn receive_catalog(&mut self, key: Key, catalog: Catalog, cx: &mut Context<Self>) {
+    fn receive_catalog(&mut self, key: Key, mut catalog: Catalog, cx: &mut Context<Self>) {
+        catalog.tabs.retain(|tab| valid_tab(&tab.id));
         let previous = self.links.get(&key).and_then(|link| link.catalog.clone());
         if let Some(link) = self.links.get_mut(&key) {
             link.catalog = Some(catalog.clone());
@@ -1027,6 +1033,9 @@ impl Uplink {
     }
 
     pub fn open_mirror(&mut self, key: Key, tab: &str, workspace: &str, cx: &mut Context<Self>) {
+        if !valid_tab(tab) {
+            return;
+        }
         let id = mirror_id(&key, tab);
         let store_entity = store::store(cx);
         if store_entity.read(cx).session(&id).is_none() {
@@ -1216,4 +1225,18 @@ fn catalog(device: &Device, cx: &App) -> Catalog {
         }));
     }
     catalog
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remote_tab_ids_are_plain() {
+        assert!(valid_tab(&uuid::Uuid::new_v4().to_string()));
+        assert!(!valid_tab(""));
+        assert!(!valid_tab("../../etc/passwd"));
+        assert!(!valid_tab("a:b"));
+        assert!(!valid_tab(&"a".repeat(65)));
+    }
 }
