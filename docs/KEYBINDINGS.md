@@ -2,33 +2,33 @@
 
 Defaults below. Every command can be rebound under Settings, Keybindings, or in `keybindings.json` (palette: "Open Keybindings File"): `{"cmd-t": "new_shell", "cmd-shift-d": null}`. Keys use `cmd`, `ctrl`, `alt`, `shift` and names like `enter`, `escape`, `tab`, `space`, `left`, `pageup`, `f7`; `null` removes a default. The command palette shows each command's name and current key.
 
-On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ctrl-r`, …), so app commands use `ctrl-shift`. Inside the file view and text inputs the usual `ctrl-c`, `ctrl-v`, `ctrl-x`, `ctrl-a`, `ctrl-z` and `ctrl-s` work.
+On Linux and Windows every default uses the same key as on macOS with the modifiers translated: `cmd` becomes `ctrl-shift`, `cmd-shift` becomes `ctrl-alt-shift`, `cmd-alt` becomes `ctrl-alt` and `ctrl-cmd` becomes `ctrl-alt-shift`. Plain `ctrl` letters belong to the terminal (`ctrl-c`, `ctrl-r`, …). Exceptions: font size and settings use plain `ctrl`, `new_tab_in_folder` is `ctrl-alt-t` because `ctrl-alt-shift-t` is `new_agent`, and inside the file view and text inputs the usual `ctrl-c`, `ctrl-v`, `ctrl-x`, `ctrl-a`, `ctrl-z`, `ctrl-shift-z` and `ctrl-s` work.
 
 | Command | Name | macOS | Linux, Windows |
 |---|---|---|---|
 | New workspace | `new_workspace` | `cmd-n` | `ctrl-shift-n` |
 | New shell (last used), hold for the shell picker | `new_shell` | `cmd-t` | `ctrl-shift-t` |
-| New agent (last used), hold for the agent picker | `new_agent` | `cmd-shift-t` | `ctrl-shift-space` |
+| New agent (last used), hold for the agent picker | `new_agent` | `cmd-shift-t` | `ctrl-alt-shift-t` |
 | Shell picker | `new_shell_picker` | | |
 | Agent picker | `new_agent_picker` | | |
 | New tab picker | `new_tab_picker` | | |
-| New tab in another folder | `new_tab_in_folder` | `cmd-alt-shift-t` | `ctrl-alt-shift-t` |
+| New tab in another folder | `new_tab_in_folder` | `cmd-alt-shift-t` | `ctrl-alt-t` |
 | New tab without project | `new_tab_without_project` | | |
 | Move tab or panel terminal out of its project | `move_out_of_project` | | |
 | Open project | `open_project` | `cmd-o` | `ctrl-shift-o` |
-| Quick open a file | `quick_open` | `cmd-p` | `ctrl-shift-e` |
-| Command palette | `command_palette` | `cmd-shift-p` | `ctrl-shift-p` |
+| Quick open a file | `quick_open` | `cmd-p` | `ctrl-shift-p` |
+| Command palette | `command_palette` | `cmd-shift-p` | `ctrl-alt-shift-p` |
 | Close file tab, else tab | `close` | `cmd-w` | `ctrl-shift-w` |
 | Close project | `close_project` | `cmd-shift-w` | `ctrl-alt-shift-w` |
 | Rename tab | `rename_tab` | | |
 | Split right / down (file view: active file into a new group) | `split_right` / `split_down` | `cmd-d` / `cmd-shift-d` | `ctrl-shift-d` / `ctrl-alt-shift-d` |
 | Close split (file view: merge the group) | `close_split` | `cmd-alt-w` | `ctrl-alt-w` |
-| Focus split left / right / up / down | `focus_left` … | `cmd-alt-left` … | `ctrl-alt-shift-left` … |
+| Focus split left / right / up / down | `focus_left` … | `cmd-alt-left` … | `ctrl-alt-left` … |
 | Terminal panel: show and focus, hide when focused | `toggle_terminal` | ``ctrl-` `` | ``ctrl-` `` |
 | New terminal in the panel | `new_terminal` | ``ctrl-shift-` `` | ``ctrl-shift-` `` |
 | Tab switcher (hold the modifier, release to switch) | `tab_switcher` / `tab_switcher_back` | `ctrl-tab` / `ctrl-shift-tab` | `ctrl-tab` / `ctrl-shift-tab` |
-| Next / previous tab | `next_tab` / `previous_tab` | `cmd-shift-]` / `cmd-shift-[` | `ctrl-pagedown` / `ctrl-pageup` |
-| Tab 1 … 9 | `select_tab_1` … | `cmd-1` … `cmd-9` | `alt-1` … `alt-9` |
+| Next / previous tab | `next_tab` / `previous_tab` | `cmd-shift-]` / `cmd-shift-[` | `ctrl-alt-shift-]` / `ctrl-alt-shift-[` |
+| Tab 1 … 9 | `select_tab_1` … | `cmd-1` … `cmd-9` | `ctrl-shift-1` … `ctrl-shift-9` |
 | Toggle sidebar | `toggle_sidebar` | `cmd-b` | `ctrl-shift-b` |
 | Toggle panel | `toggle_panel` | `cmd-alt-b` | `ctrl-alt-b` |
 | Move panel to the other side | `move_panel` | | |
@@ -37,12 +37,12 @@ On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ct
 | Sidebar: Uplink (opens Settings, Uplink while it is off) | `show_uplink` | `cmd-alt-4` | `ctrl-alt-4` |
 | Turn Uplink on or off | `toggle_uplink` | | |
 | Uplink: pair a device (shows a one-time code) | `pair_device` | | |
-| Panel: Files / Changes / History | `show_files` … | `ctrl-cmd-1` … `3` | `ctrl-shift-1` … `3` |
-| Full screen | `toggle_full_screen` | `ctrl-cmd-f` | `f11` |
+| Panel: Files / Changes / History | `show_files` … | `ctrl-cmd-1` … `3` | `ctrl-alt-shift-1` … `3` |
+| Full screen | `toggle_full_screen` | `ctrl-cmd-f` | `ctrl-alt-shift-f` |
 | Font bigger / smaller / reset | `font_bigger` … | `cmd-=` / `cmd--` / `cmd-0` | `ctrl-=` / `ctrl--` / `ctrl-0` |
 | Clear terminal and scrollback | `clear` | `cmd-k` | `ctrl-shift-k` |
-| Find / next / previous | `find` / `find_next` / `find_previous` | `cmd-f` / `cmd-g` / `cmd-shift-g` | `ctrl-shift-f` / `f3` / `shift-f3` |
-| Replace in the file view | `replace` | `cmd-r` | `ctrl-h` |
+| Find / next / previous | `find` / `find_next` / `find_previous` | `cmd-f` / `cmd-g` / `cmd-shift-g` | `ctrl-shift-f` / `ctrl-shift-g` / `ctrl-alt-shift-g` |
+| Replace in the file view | `replace` | `cmd-r` | `ctrl-shift-r` |
 | Copy / paste / select all in a terminal (on Windows `ctrl-c` also copies while text is selected, otherwise it interrupts, and `ctrl-v` pastes) | `copy` / `paste` / `select_all` | `cmd-c` / `cmd-v` / `cmd-a` | `ctrl-shift-c` / `ctrl-shift-v` / `ctrl-shift-a` |
 | Undo / redo / cut in the file view | `undo` / `redo` / `cut` | `cmd-z` / `cmd-shift-z` / `cmd-x` | `ctrl-z` / `ctrl-shift-z` / `ctrl-x` |
 | Save file | `save` | `cmd-s` | `ctrl-s` |
@@ -62,7 +62,7 @@ On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ct
 
 Terminal keys on macOS (fixed): `cmd-left` / `cmd-right` line start / end, `cmd-backspace` delete to line start, `alt-left` / `alt-right` word back / forward, `alt-backspace` delete word back, `alt` + key sends Meta (`ESC` prefix).
 
-Find and replace in the file view: `enter` / `shift-enter` next and previous match, `tab` moves between the fields, `enter` in the replace field replaces and moves on, `cmd-enter` (`ctrl-enter`) replaces all, `esc` closes. Toggles: `cmd-alt-c` match case, `cmd-alt-w` whole word, `cmd-alt-r` regular expression, `cmd-alt-p` preserve case, `cmd-alt-l` in selection (`alt-c`, `alt-w`, `alt-r`, `alt-p`, `alt-l` on Linux and Windows).
+Find and replace in the file view: `enter` / `shift-enter` next and previous match, `tab` moves between the fields, `enter` in the replace field replaces and moves on, `cmd-enter` (`ctrl-enter`) replaces all, `esc` closes. Toggles: `cmd-alt-c` match case, `cmd-alt-w` whole word, `cmd-alt-r` regular expression, `cmd-alt-p` preserve case, `cmd-alt-l` in selection (`ctrl-alt-c`, `ctrl-alt-w`, `ctrl-alt-r`, `ctrl-alt-p`, `ctrl-alt-l` on Linux and Windows).
 
 New tab picker: arrows, `enter`, `1`–`9` launch the numbered agent or shell, `esc` closes. Rows under CONVERSATIONS resume that conversation.
 

@@ -90,7 +90,7 @@ The file view's split groups live in `Project::groups` and `Project::file_layout
 
 `commands::COMMANDS` is the only list of commands: it drives key bindings, the palette and the macOS menus. A binding's context limits where it applies (`Terminal`, `FileView`, `TextInput`). `keybindings.json` is applied on top of the defaults, and a `null` becomes `NoAction` in every context.
 
-On Linux and Windows `ctrl` letters must reach programs in the terminal, so app commands use `ctrl-shift`. The file view and text inputs add their own `ctrl` bindings in their contexts.
+On Linux and Windows `ctrl` letters must reach programs in the terminal, so defaults keep the macOS key and translate the modifiers: `cmd` to `ctrl-shift`, `cmd-shift` and `ctrl-cmd` to `ctrl-alt-shift`, `cmd-alt` to `ctrl-alt` (`docs/KEYBINDINGS.md`). The file view and text inputs add their own `ctrl` bindings in their contexts.
 
 ## Terminal
 

@@ -206,7 +206,7 @@ impl Editor {
     fn find_key(&mut self, event: &gpui::KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
         let keys = &event.keystroke.modifiers;
         let primary = if cfg!(target_os = "macos") { keys.platform } else { keys.control };
-        let chord = if cfg!(target_os = "macos") { keys.platform && keys.alt } else { keys.alt };
+        let chord = keys.alt && primary;
         if event.keystroke.key == "enter" && primary {
             self.replace_all(cx);
             cx.stop_propagation();
