@@ -612,9 +612,13 @@ fn board(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> 
             groups[index].1.push((id.clone(), session.clone(), project.path.clone()));
         }
     }
+    let remote = crate::uplink::sidebar::agents(query, cx);
+    let opened: Vec<String> =
+        crate::uplink::uplink(cx).map(|uplink| uplink.read(cx).mirrors.keys().cloned().collect()).unwrap_or_default();
     let mut rows = Vec::new();
-    for (title, items) in groups {
-        if items.is_empty() {
+    for (index, (title, items)) in groups.into_iter().enumerate() {
+        let others: Vec<_> = remote.iter().filter(|(group, ..)| *group == index).collect();
+        if items.is_empty() && others.is_empty() {
             continue;
         }
         rows.push(
@@ -622,7 +626,7 @@ fn board(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> 
                 .px(px(8.0))
                 .pt(px(6.0))
                 .text_color(theme.faint)
-                .child(format!("{title} {}", items.len()))
+                .child(format!("{title} {}", items.len() + others.len()))
                 .into_any_element(),
         );
         for (id, session, path) in items {
@@ -630,6 +634,12 @@ fn board(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> 
             let selected = state.selected_tab() == Some(id.as_str());
             let info = TabInfo::new(session.read(cx), &theme, tick);
             rows.push(tab_row(view, &project, info, 0, selected, None, cx));
+        }
+        for (_, key, tab, place) in others {
+            let id = crate::uplink::mirror_id(key, &tab.id);
+            let selected = state.selected_tab() == Some(id.as_str());
+            let opened = opened.contains(&id);
+            rows.push(crate::uplink::sidebar::tab_row(*key, tab, 38.0, selected, opened, Some(place.clone()), cx));
         }
     }
     if rows.is_empty() {

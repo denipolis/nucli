@@ -159,12 +159,13 @@ fn project_row(
         .into_any_element()
 }
 
-fn tab_row(
+pub fn tab_row(
     key: Key,
     tab: &RemoteTab,
     indent: f32,
     selected: bool,
     opened: bool,
+    place: Option<String>,
     cx: &mut Context<WorkspaceView>,
 ) -> AnyElement {
     let theme = ui::theme(cx);
@@ -180,10 +181,12 @@ fn tab_row(
     } else {
         theme.faint
     };
-    let subtitle = if tab.running {
-        tab.program.clone().filter(|program| !tab.title.contains(program.as_str())).unwrap_or_default()
-    } else {
-        "exited".into()
+    let subtitle = match place {
+        Some(place) => place,
+        None if tab.running => {
+            tab.program.clone().filter(|program| !tab.title.contains(program.as_str())).unwrap_or_default()
+        }
+        None => "exited".into(),
     };
     let (open_id, menu_id) = (tab.id.clone(), tab.id.clone());
     let title = tab.title.clone();
@@ -335,7 +338,15 @@ pub fn rows(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
             for tab in tabs {
                 let id = mirror_id(&key, &tab.id);
                 let is_selected = selected.as_deref() == Some(id.as_str());
-                body.push(tab_row(key, tab, if loose { 18.0 } else { 30.0 }, is_selected, opened.contains(&id), cx));
+                body.push(tab_row(
+                    key,
+                    tab,
+                    if loose { 18.0 } else { 30.0 },
+                    is_selected,
+                    opened.contains(&id),
+                    None,
+                    cx,
+                ));
             }
         }
         if body.is_empty() && !device_hit {
@@ -351,6 +362,43 @@ pub fn rows(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
         rows.push(div().p(px(10.0)).text_color(theme.faint).child("no matches").into_any_element());
     }
     rows
+}
+
+pub fn agents(query: &str, cx: &App) -> Vec<(usize, Key, RemoteTab, String)> {
+    let Some(entity) = super::uplink(cx).filter(|_| Uplink::enabled(cx)) else { return Vec::new() };
+    let uplink = entity.read(cx);
+    let mut agents = Vec::new();
+    for (key, link) in &uplink.links {
+        let Some(catalog) = &link.catalog else { continue };
+        let device = uplink.device_name(key);
+        for tab in &catalog.tabs {
+            if !tab.running || (tab.kind != Kind::Agent && tab.agent.is_none()) {
+                continue;
+            }
+            let project = catalog
+                .projects
+                .iter()
+                .find(|project| project.path == tab.project)
+                .map(|project| project.name.clone())
+                .filter(|name| !name.is_empty());
+            let place = match project {
+                Some(project) => format!("{device} · {project}"),
+                None => device.clone(),
+            };
+            if !matches(query, &[&tab.title, &place]) {
+                continue;
+            }
+            let group = match (tab.activity, tab.attention) {
+                (Activity::Waiting, _) => 0,
+                (_, true) => 1,
+                (Activity::Working, _) => 2,
+                _ => 3,
+            };
+            agents.push((group, *key, tab.clone(), place));
+        }
+    }
+    agents.sort_by(|a, b| a.3.cmp(&b.3).then_with(|| a.2.title.cmp(&b.2.title)));
+    agents
 }
 
 pub fn watched(id: &str, cx: &App) -> bool {

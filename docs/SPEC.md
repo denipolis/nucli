@@ -172,7 +172,7 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 - Tabs at the top: Projects (the tree), Agents (the board), History, and Uplink while Uplink is on. `⌥⌘1`/`⌥⌘2`/`⌥⌘3`/`⌥⌘4` switch (and show the sidebar). The choice is remembered. In a narrow sidebar only the active tab shows its name.
 - `⌘B` hides and shows the sidebar.
 - **Projects**: projects and their tabs. Tab rows: number, the agent's glyph and color, title (the terminal's title, or the profile name until there is one), the running program when the title does not name it (`exited` when the process ended), status on the right.
-- **Agents**: this workspace's running agent tabs grouped by status: Waiting, Done, Working, Idle. Clicking selects the tab.
+- **Agents**: this workspace's running agent tabs grouped by status: Waiting, Done, Working, Idle. While Uplink is on, running agents shared by connected devices join the same groups with `device · project` beside the title. Clicking selects the tab, or opens a remote one.
 - **History**: every conversation of every agent profile, newest first (max 150). Clicking resumes it in the project for its folder (opened as a project if needed).
 - **Uplink**: paired devices and what they share (see Uplink).
 - **Filter** (`⌥⌘F`) at the bottom filters the visible list by name, path and title; a matching project shows all its tabs; `enter` selects the first match, `esc` clears.
