@@ -25,6 +25,8 @@ use protocol::{Catalog, Hello, Message, RemoteLauncher, RemoteProject, RemoteTab
 use wire::Key;
 
 pub const MIRROR: &str = "uplink:";
+const RACE: Duration = Duration::from_secs(5);
+const NEARBY: usize = 64;
 
 pub struct UplinkHandle(pub Entity<Uplink>);
 
@@ -55,6 +57,7 @@ pub struct Link {
     pub hello: Hello,
     pub address: std::net::SocketAddr,
     initiator: bool,
+    since: Instant,
     outbox: Outbox,
     routes: Routes,
     pub catalog: Option<Catalog>,
@@ -411,7 +414,9 @@ impl Uplink {
                     dialing.backoff = Duration::from_secs(2);
                 }
                 self.nearby.retain(|nearby| nearby.fullname != found.fullname && nearby.key != found.key);
-                self.nearby.push(found);
+                if self.nearby.len() < NEARBY {
+                    self.nearby.push(found);
+                }
                 cx.notify();
             }
             NetEvent::Gone(fullname) => {
@@ -423,6 +428,12 @@ impl Uplink {
 
     fn connected(&mut self, connection: Connection, cx: &mut Context<Self>) {
         let key = connection.key;
+        if connection.initiator
+            && let Some(dialing) = self.dialing.get_mut(&key)
+        {
+            dialing.busy = false;
+            dialing.next = Instant::now() + dialing.backoff;
+        }
         if !self.device(&key).is_some_and(|device| !device.blocked) {
             connection.outbox.close();
             return;
@@ -430,7 +441,7 @@ impl Uplink {
         let initiator = |link_initiator: bool| if link_initiator { *self.identity() } else { key };
         if let Some(existing) = self.links.get(&key) {
             let (old, new) = (initiator(existing.initiator), initiator(connection.initiator));
-            if old != new && old < new {
+            if existing.since.elapsed() < RACE && old != new && old < new {
                 connection.outbox.close();
                 return;
             }
@@ -439,7 +450,6 @@ impl Uplink {
             self.drop_watchers(conn, cx);
         }
         if let Some(dialing) = self.dialing.get_mut(&key) {
-            dialing.busy = false;
             dialing.backoff = Duration::from_secs(2);
             dialing.error = None;
         }
@@ -466,6 +476,7 @@ impl Uplink {
                 hello: connection.hello,
                 address,
                 initiator: connection.initiator,
+                since: Instant::now(),
                 outbox: connection.outbox,
                 routes: connection.routes,
                 catalog: None,
@@ -531,6 +542,7 @@ impl Uplink {
         match self.device_mut(&key) {
             Some(device) => {
                 device.blocked = false;
+                device.access = access;
                 device.name = name.clone();
                 device.os = hello.os.clone();
                 if let Some(address) = address {
@@ -760,15 +772,22 @@ impl Uplink {
         let Some((key, _)) = self.link_of(conn) else { return };
         match message {
             Message::Hello(hello) => {
-                if let Some(device) = self.device_mut(&key) {
-                    device.name = hello.name.chars().take(64).collect();
-                    device.os = hello.os.clone();
-                }
+                let name: String = hello.name.chars().take(64).collect();
+                let changed = self
+                    .device_mut(&key)
+                    .filter(|device| device.name != name || device.os != hello.os)
+                    .map(|device| {
+                        device.name = name;
+                        device.os = hello.os.clone();
+                    })
+                    .is_some();
                 if let Some(link) = self.links.get_mut(&key) {
                     link.hello = hello;
                 }
-                self.save(cx);
-                self.update_mirrors(&key, cx);
+                if changed {
+                    self.save(cx);
+                    self.update_mirrors(&key, cx);
+                }
             }
             Message::Catalog(catalog) => self.receive_catalog(key, catalog, cx),
             Message::Watch { tab } => self.host_watch(conn, key, tab, cx),
@@ -850,6 +869,13 @@ impl Uplink {
 
     fn host_watch(&mut self, conn: u64, key: Key, tab: String, cx: &mut Context<Self>) {
         let Some(link) = self.links.get(&key) else { return };
+        if self
+            .watchers
+            .iter()
+            .any(|watcher| watcher.conn == conn && watcher.tab == tab && watcher.alive.load(Ordering::Acquire))
+        {
+            return;
+        }
         let session = store::store(cx).read(cx).session(&tab).cloned();
         let allowed = self.device(&key).is_some_and(|device| !device.blocked) && shared(&tab, cx);
         let Some(session) = session.filter(|_| allowed) else {
@@ -907,19 +933,18 @@ impl Uplink {
         let path = PathBuf::from(project);
         let store_entity = store::store(cx);
         let store = store_entity.read(cx);
+        let settings = settings::get(cx);
         let Some(workspace) = store
             .workspaces
             .iter()
             .filter(|workspace| !workspace.closed && store.windows.contains_key(&workspace.id))
-            .find(|workspace| workspace.project(&path).is_some())
+            .find(|workspace| {
+                workspace.project(&path).is_some_and(|project| project.uplink.unwrap_or(settings.uplink.share))
+            })
             .map(|workspace| workspace.id.clone())
         else {
             return;
         };
-        if !project_shared(&path, cx) {
-            return;
-        }
-        let settings = settings::get(cx);
         let launcher = match settings.agents.iter().find(|profile| profile.name == launcher) {
             Some(profile) => Launcher::Agent(profile.clone()),
             None => match settings.shells.iter().find(|shell| shell.name == launcher) {

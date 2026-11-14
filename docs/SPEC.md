@@ -291,7 +291,7 @@ Uplink lets computers running Nucli control each other's tabs: run agents on one
 
 - Settings › Uplink starts with the **Uplink** toggle (`uplink.enabled`, off by default). Everything else on the page shows only while it is on. "Turn Uplink On or Off" in the palette does the same.
 - Off means off: no port is open, nothing is announced, every connection closes and every remote view closes at once.
-- On, Nucli listens on TCP port `uplink.port` (47100, the development build 47101) on every network interface and announces itself with multicast DNS (`_nucli-uplink._tcp`) so devices on the same network find each other. On macOS the system asks once for Local Network access; on Windows the firewall asks once whether Nucli may accept connections. Turning Uplink off while its sidebar tab is shown shows Projects.
+- On, Nucli listens on TCP port `uplink.port` (47100, the development build 47101) on every network interface and announces itself with multicast DNS (`_nucli-uplink._tcp`, with its name and public key) so devices on the same network find each other. On macOS the system asks once for Local Network access; on Windows the firewall asks once whether Nucli may accept connections. Turning Uplink off while its sidebar tab is shown shows Projects.
 - The page then lists, from top to bottom: the listening status and the latest event ("Paired with laptop.", "A device entered a wrong code. 2 attempts left."), Paired devices, Pair a new device, Join a device, Sharing, and This device (name, port, the addresses it can be reached at, and its fingerprint).
 
 ### Pairing
@@ -307,14 +307,14 @@ Two devices pair once; after that they find and connect to each other by themsel
 Each paired device shows its system glyph, name, state (`online · address · watching N of your tabs`, `offline · seen 5 minutes ago · not reachable`, `blocked`), its fingerprint, and:
 
 - **it can control / view your shared tabs**: control means typing into shared tabs, resizing them, clearing them and opening new tabs in shared projects. A device that can control a tab can run any command there. View means watching only; its keystrokes are ignored.
-- **disconnect** drops the connection (it reconnects later), **block** refuses it until **unblock**, **forget** (confirmed) removes the pairing on both sides; the device must pair again to reconnect.
+- **disconnect** drops the connection (it reconnects later), **block** refuses it until **unblock**, **forget** (confirmed) removes the pairing on this side and, when the device is online, on its side too; the device must pair again to reconnect. A device forgotten while offline is refused when it calls (`it refused this device`) until it is forgotten there too.
 - **also try**: names or addresses to reach it by, comma separated, for networks without multicast. Nucli also remembers the last addresses that worked.
 
 ### Sharing
 
 - What a paired device sees is decided on the computer that runs the tabs. **Share tabs by default** (`uplink.share`, on by default): every tab and panel terminal is shared unless excluded. Off: only what is shared explicitly.
 - `[x] Share over Uplink` in a project's menu shares or excludes the whole project; the same item in a tab's menu overrides its project. Both are saved with the workspace.
-- Stopping sharing, changing a device to view, blocking or forgetting it applies at once: open remote views of a tab that is no longer shared close.
+- Stopping sharing, changing a device to view, blocking or forgetting it applies at once: open remote views of tabs that stop being shared close.
 - A tab being watched from another device shows an eye glyph in the sidebar, and the Uplink status chip names the devices watching it.
 
 ### Remote tabs
@@ -331,9 +331,9 @@ Each paired device shows its system glyph, name, state (`online · address · wa
 
 - Each device has its own X25519 key pair, created when Uplink first runs and stored in `uplink.json` in the data folder, readable only by the user. The fingerprint on the settings page is the start of the public key.
 - Pairing uses SPAKE2, a password-authenticated key exchange: the short code becomes a strong shared key without ever being sent, and someone who listens or answers in the middle cannot test codes offline; each wrong attempt costs one of the 3 tries. That key then authenticates a Noise `XXpsk3` handshake in which both devices exchange and prove their keys.
-- Every later connection is a Noise `XX` handshake (X25519, ChaCha20-Poly1305, BLAKE2s). Both sides check the other's key against their paired devices: unknown or blocked keys are dropped before anything is sent, and a device answering at a known address with a different key is refused. All traffic is encrypted and authenticated; a tampered or replayed message closes the connection.
+- Every later connection is a Noise `XX` handshake (X25519, ChaCha20-Poly1305, BLAKE2s). Both sides check the other's key against their paired devices: a connection from an unknown or blocked key is dropped as soon as its key is known, before any data is exchanged, and a device answering at a known address with a different key is refused. All traffic is encrypted and authenticated; a tampered or replayed message closes the connection.
 - The computer that runs a tab enforces every rule itself: what is shared, view or control, blocking. A device can only open tabs with the agent and shell profiles already configured there, in projects that are shared.
-- Limits keep a misbehaving peer from using up resources: 16 handshakes at a time, 10 seconds per handshake, 16 MB per message, a terminal size of at most 500 × 200, a remote view that opens midway gets at most 8 MB of the newest scrollback, and output for a slow viewer is dropped and resent as a fresh copy of the screen once 8 MB wait.
+- Limits keep a misbehaving peer from using up resources: 16 handshakes at a time, 10 seconds per handshake, 64 nearby devices, 16 MB per message, a terminal size of at most 500 × 200, a remote view that opens midway gets at most 8 MB of the newest scrollback, and output for a slow viewer is dropped and resent as a fresh copy of the screen once 8 MB wait.
 
 ## Settings
 

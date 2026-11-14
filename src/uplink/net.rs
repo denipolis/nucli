@@ -108,7 +108,7 @@ impl Outbox {
     }
 
     pub fn input(&self, tab: &str, data: &[u8]) -> bool {
-        self.push(protocol::input(tab, data))
+        data.chunks(PIECE).all(|piece| self.push(protocol::input(tab, piece)))
     }
 
     pub fn feed(&self, tab: &str, feed: &Feed) -> bool {
@@ -270,6 +270,17 @@ impl Drop for Slot {
     }
 }
 
+fn watchdog(stream: &TcpStream, limit: Duration) -> io::Result<Sender<()>> {
+    let stream = stream.try_clone()?;
+    let (done, wait) = channel::<()>();
+    std::thread::spawn(move || {
+        if wait.recv_timeout(limit) == Err(RecvTimeoutError::Timeout) {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
+    });
+    Ok(done)
+}
+
 fn prepare(stream: &TcpStream) -> io::Result<()> {
     stream.set_nonblocking(false)?;
     stream.set_nodelay(true)?;
@@ -285,9 +296,7 @@ fn incoming(mut stream: TcpStream, address: SocketAddr, shared: &Arc<Shared>) {
     let slot = Slot(shared.clone());
     std::thread::spawn(move || {
         let shared = slot.0.clone();
-        if prepare(&stream).is_err() {
-            return;
-        }
+        let Ok(_watchdog) = prepare(&stream).and_then(|_| watchdog(&stream, HANDSHAKE)) else { return };
         match wire::read_preamble(&mut stream) {
             Ok(Mode::Session) => {
                 if let Ok(link) = wire::accept(stream, &shared.identity, |key| shared.trusts(key)) {
@@ -321,10 +330,17 @@ fn host_pairing(stream: TcpStream, address: SocketAddr, shared: &Arc<Shared>) {
             _ => return,
         }
     };
-    let result = wire::host_pairing(stream, &shared.identity, &code)
-        .and_then(|channel| exchange_hello(channel, &shared.hello()));
+    let current = |shared: &Shared| {
+        shared.pairing.lock().is_ok_and(|pairing| pairing.as_ref().is_some_and(|current| current.code == code))
+    };
+    let result = wire::host_pairing(stream, &shared.identity, &code).and_then(|channel| {
+        if !current(shared) {
+            return Err(io::Error::other("pairing ended"));
+        }
+        exchange_hello(channel, &shared.hello())
+    });
     let Ok(mut pairing) = shared.pairing.lock() else { return };
-    let Some(current) = pairing.as_mut() else { return };
+    let Some(current) = pairing.as_mut().filter(|current| current.code == code) else { return };
     match result {
         Ok((key, hello)) => {
             let access = current.access;
@@ -394,6 +410,7 @@ pub fn dial(key: Key, addresses: Vec<String>, default_port: u16, shared: &Arc<Sh
     let shared = shared.clone();
     std::thread::spawn(move || {
         let result = dial_any(&addresses, default_port).and_then(|(stream, socket)| {
+            let _watchdog = watchdog(&stream, HANDSHAKE)?;
             let link = wire::connect(stream, &shared.identity, &key)?;
             start(link, socket, true, &shared)
         });
@@ -414,6 +431,7 @@ pub fn join(
     let shared = shared.clone();
     std::thread::spawn(move || {
         let result = dial_any(&addresses, default_port).and_then(|(stream, socket)| {
+            let _watchdog = watchdog(&stream, HANDSHAKE)?;
             let channel = wire::join(stream, &shared.identity, &code)?;
             let (key, hello) = exchange_hello(channel, &shared.hello())
                 .map_err(|_| io::Error::other("The code did not match, or pairing ended on the other device."))?;
@@ -461,6 +479,7 @@ impl Discovery {
                             .map(|ip| SocketAddr::new(ip, port))
                             .collect();
                         addresses.sort_by_key(|address| (address.is_ipv6(), address.ip().is_loopback()));
+                        addresses.truncate(4);
                         shared.post(NetEvent::Nearby(Nearby {
                             fullname: info.get_fullname().to_string(),
                             key,
@@ -514,6 +533,40 @@ mod tests {
         let (events, received) = futures::channel::mpsc::unbounded();
         let hello = Hello { name: name.into(), os: "test".into(), version: "1".into(), port: 0 };
         (Shared::new(Identity::generate(), hello, events), received)
+    }
+
+    #[test]
+    fn a_handshake_has_one_deadline() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (server, _) = listener.accept().unwrap();
+        let started = Instant::now();
+        let _watchdog = watchdog(&client, Duration::from_millis(200)).unwrap();
+        let writer = std::thread::spawn(move || {
+            for _ in 0..20 {
+                if io::Write::write_all(&mut &server, b"x").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        });
+        let mut bytes = [0u8; 64];
+        assert!(io::Read::read_exact(&mut client, &mut bytes).is_err());
+        assert!(started.elapsed() < Duration::from_millis(900));
+        let _ = writer.join();
+    }
+
+    #[test]
+    fn a_finished_handshake_keeps_its_socket() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (server, _) = listener.accept().unwrap();
+        drop(watchdog(&client, Duration::from_millis(50)).unwrap());
+        std::thread::sleep(Duration::from_millis(150));
+        io::Write::write_all(&mut &server, b"ok").unwrap();
+        let mut bytes = [0u8; 2];
+        io::Read::read_exact(&mut client, &mut bytes).unwrap();
+        assert_eq!(&bytes, b"ok");
     }
 
     fn free_port() -> u16 {

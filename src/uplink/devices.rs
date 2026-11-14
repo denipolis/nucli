@@ -51,22 +51,31 @@ pub fn file() -> PathBuf {
 }
 
 pub fn load(path: &Path) -> (Identity, Vec<Device>) {
-    if let Ok(text) = std::fs::read_to_string(path) {
-        let stored: Option<DeviceFile> = serde_json::from_str(&text).ok();
-        if let Some(stored) = stored
-            && let (Some(secret), Some(public)) = (wire::decode_key(&stored.secret), wire::decode_key(&stored.public))
-        {
-            let mut devices = stored.devices;
-            devices.retain(|device| device.public().is_some_and(|key| key != public));
-            return (Identity { secret, public }, devices);
+    match std::fs::read_to_string(path) {
+        Ok(text) => {
+            let stored: Option<DeviceFile> = serde_json::from_str(&text).ok();
+            if let Some(stored) = stored
+                && let (Some(secret), Some(public)) =
+                    (wire::decode_key(&stored.secret), wire::decode_key(&stored.public))
+            {
+                let mut devices = stored.devices;
+                devices.retain(|device| device.public().is_some_and(|key| key != public));
+                return (Identity { secret, public }, devices);
+            }
+            set_aside(path);
         }
-        let broken = path.with_extension("json.broken");
-        eprintln!("uplink: {} is unreadable, moved to {}", path.display(), broken.display());
-        let _ = std::fs::rename(path, broken);
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => set_aside(path),
+        Err(_) => {}
     }
     let identity = Identity::generate();
     save(path, &identity, &[]);
     (identity, Vec::new())
+}
+
+fn set_aside(path: &Path) {
+    let broken = path.with_extension("json.broken");
+    eprintln!("uplink: {} is unreadable, moved to {}", path.display(), broken.display());
+    let _ = std::fs::rename(path, broken);
 }
 
 pub fn save(path: &Path, identity: &Identity, devices: &[Device]) {
