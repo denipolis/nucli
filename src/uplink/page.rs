@@ -63,8 +63,8 @@ pub fn ensure(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
         let config = settings::get(cx).uplink.clone();
         let name = input(&config.device_name(), &config.name, cx);
         let port = input(&UPLINK_PORT.to_string(), &config.port.to_string(), cx);
-        let address = input("pick a device above, or type a name or address", "", cx);
-        let code = input("code, e.g. K7QM-4XRP, or a pairing link", "", cx);
+        let address = input("device name or address", "", cx);
+        let code = input("code or pairing link", "", cx);
         let subscriptions = vec![
             cx.subscribe_in(&name, window, |view, input, event, window, cx| match event {
                 InputEvent::Changed => {
@@ -269,13 +269,15 @@ fn pairing(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme:
         None => {
             div()
                 .flex()
+                .flex_wrap()
                 .items_center()
                 .justify_between()
-                .gap(px(16.0))
+                .gap_x(px(16.0))
+                .gap_y(px(4.0))
                 .px(px(12.0))
                 .py(px(8.0))
                 .child(
-                    div().flex().flex_col().child("Pair a new device").child(
+                    div().flex().flex_col().min_w_0().child("Pair a new device").child(
                         div().text_color(theme.faint).child("Shows a one-time code to enter on the other device."),
                     ),
                 )
@@ -431,15 +433,17 @@ fn joining(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme:
                 .gap(px(8.0))
                 .px(px(12.0))
                 .py(px(8.0))
-                .child(field(&inputs.address, 280.0, theme))
-                .child(field(&inputs.code, 220.0, theme))
+                .child(field(&inputs.address, 280.0, theme).min_w_0())
+                .child(field(&inputs.code, 220.0, theme).min_w_0())
                 .child(button("uplink-join", "join", theme).on_click(cx.listener(|view, _, _, cx| join(view, cx)))),
         )
         .child(
             div()
                 .flex()
+                .flex_wrap()
                 .items_center()
-                .gap(px(8.0))
+                .gap_x(px(8.0))
+                .gap_y(px(4.0))
                 .px(px(12.0))
                 .pb(px(8.0))
                 .child(div().text_color(theme.faint).child("the device you join can"))
@@ -514,36 +518,60 @@ fn device_card(
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
                     .items_center()
-                    .gap(px(8.0))
+                    .justify_between()
+                    .gap_x(px(16.0))
+                    .gap_y(px(4.0))
                     .pl(px(22.0))
-                    .child(div().text_color(theme.faint).child("it can"))
                     .child(
-                        segment(format!("uplink-control-{id}"), "control", access == Access::Control, theme).on_click(
-                            move |_, _, cx| with_uplink(cx, |uplink, cx| uplink.set_access(&key, Access::Control, cx)),
-                        ),
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap_x(px(8.0))
+                            .gap_y(px(4.0))
+                            .child(div().text_color(theme.faint).child("it can"))
+                            .child(
+                                segment(format!("uplink-control-{id}"), "control", access == Access::Control, theme)
+                                    .on_click(move |_, _, cx| {
+                                        with_uplink(cx, |uplink, cx| uplink.set_access(&key, Access::Control, cx))
+                                    }),
+                            )
+                            .child(
+                                segment(format!("uplink-view-{id}"), "view", access == Access::View, theme).on_click(
+                                    move |_, _, cx| {
+                                        with_uplink(cx, |uplink, cx| uplink.set_access(&key, Access::View, cx))
+                                    },
+                                ),
+                            )
+                            .child(div().text_color(theme.faint).child("your shared tabs")),
                     )
-                    .child(segment(format!("uplink-view-{id}"), "view", access == Access::View, theme).on_click(
-                        move |_, _, cx| with_uplink(cx, |uplink, cx| uplink.set_access(&key, Access::View, cx)),
-                    ))
-                    .child(div().text_color(theme.faint).child("your shared tabs"))
-                    .child(div().flex_1())
-                    .when(link.is_some(), |this| {
-                        this.child(
-                            button(format!("uplink-disconnect-{id}"), "disconnect", theme)
-                                .on_click(move |_, _, cx| with_uplink(cx, |uplink, cx| uplink.disconnect(&key, cx))),
-                        )
-                    })
                     .child(
-                        button(format!("uplink-block-{id}"), if device.blocked { "unblock" } else { "block" }, theme)
-                            .on_click({
-                                let blocked = device.blocked;
-                                move |_, _, cx| with_uplink(cx, |uplink, cx| uplink.set_blocked(&key, !blocked, cx))
-                            }),
-                    )
-                    .child(
-                        button(format!("uplink-forget-{id}"), "forget", theme)
-                            .on_click(cx.listener(move |_, _, window, cx| forget(key, &name, window, cx))),
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .when(link.is_some(), |this| {
+                                this.child(button(format!("uplink-disconnect-{id}"), "disconnect", theme).on_click(
+                                    move |_, _, cx| with_uplink(cx, |uplink, cx| uplink.disconnect(&key, cx)),
+                                ))
+                            })
+                            .child(
+                                button(
+                                    format!("uplink-block-{id}"),
+                                    if device.blocked { "unblock" } else { "block" },
+                                    theme,
+                                )
+                                .on_click({
+                                    let blocked = device.blocked;
+                                    move |_, _, cx| with_uplink(cx, |uplink, cx| uplink.set_blocked(&key, !blocked, cx))
+                                }),
+                            )
+                            .child(
+                                button(format!("uplink-forget-{id}"), "forget", theme)
+                                    .on_click(cx.listener(move |_, _, window, cx| forget(key, &name, window, cx))),
+                            ),
                     ),
             )
             .children(manual.map(|manual| {
@@ -553,7 +581,7 @@ fn device_card(
                     .gap(px(8.0))
                     .pl(px(22.0))
                     .child(div().text_color(theme.faint).child("also try"))
-                    .child(field(&manual, 300.0, theme))
+                    .child(field(&manual, 300.0, theme).min_w_0())
                     .child(div().text_color(theme.faint).child("[enter] save"))
             }))
             .into_any_element(),
