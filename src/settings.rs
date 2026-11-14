@@ -37,13 +37,20 @@ pub struct UplinkSettings {
     pub name: String,
     pub port: u16,
     pub share: bool,
+    pub excluded_networks: Vec<String>,
 }
 
 pub const UPLINK_PORT: u16 = if paths::DEV { 47101 } else { 47100 };
 
 impl Default for UplinkSettings {
     fn default() -> Self {
-        UplinkSettings { enabled: false, name: String::new(), port: UPLINK_PORT, share: true }
+        UplinkSettings {
+            enabled: false,
+            name: String::new(),
+            port: UPLINK_PORT,
+            share: true,
+            excluded_networks: Vec::new(),
+        }
     }
 }
 

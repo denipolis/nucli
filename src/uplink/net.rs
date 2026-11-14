@@ -65,6 +65,7 @@ pub struct Shared {
     pub trusted: Mutex<HashSet<Key>>,
     pub pairing: Mutex<Option<Pairing>>,
     pub hello: Mutex<Hello>,
+    pub excluded: Mutex<Vec<String>>,
     pub events: UnboundedSender<NetEvent>,
     handshakes: AtomicUsize,
 }
@@ -76,6 +77,7 @@ impl Shared {
             trusted: Mutex::new(HashSet::new()),
             pairing: Mutex::new(None),
             hello: Mutex::new(hello),
+            excluded: Mutex::new(Vec::new()),
             events,
             handshakes: AtomicUsize::new(0),
         })
@@ -296,6 +298,9 @@ fn incoming(mut stream: TcpStream, address: SocketAddr, shared: &Arc<Shared>) {
     let slot = Slot(shared.clone());
     std::thread::spawn(move || {
         let shared = slot.0.clone();
+        if arrived_excluded(&stream, &shared) {
+            return;
+        }
         let Ok(_watchdog) = prepare(&stream).and_then(|_| watchdog(&stream, HANDSHAKE)) else { return };
         match wire::read_preamble(&mut stream) {
             Ok(Mode::Session) => {
@@ -307,6 +312,22 @@ fn incoming(mut stream: TcpStream, address: SocketAddr, shared: &Arc<Shared>) {
             Err(_) => {}
         }
     });
+}
+
+fn arrived_excluded(stream: &TcpStream, shared: &Shared) -> bool {
+    let excluded = shared.excluded.lock().map(|names| names.clone()).unwrap_or_default();
+    if excluded.is_empty() {
+        return false;
+    }
+    let Ok(local) = stream.local_addr() else { return true };
+    let ip = match local.ip() {
+        IpAddr::V6(ip) => ip.to_ipv4_mapped().map_or(IpAddr::V6(ip), IpAddr::V4),
+        ip => ip,
+    };
+    if_addrs::get_if_addrs()
+        .unwrap_or_default()
+        .iter()
+        .any(|interface| interface.ip() == ip && excluded.contains(&interface.name))
 }
 
 fn exchange_hello(channel: Channel, ours: &Hello) -> io::Result<(Key, Hello)> {
@@ -458,6 +479,14 @@ pub struct Discovery {
 impl Discovery {
     pub fn start(shared: &Arc<Shared>) -> Option<Discovery> {
         let daemon = mdns_sd::ServiceDaemon::new().ok()?;
+        let excluded: Vec<mdns_sd::IfKind> = shared
+            .excluded
+            .lock()
+            .map(|names| names.iter().cloned().map(mdns_sd::IfKind::Name).collect())
+            .unwrap_or_default();
+        if !excluded.is_empty() {
+            daemon.disable_interface(excluded).ok()?;
+        }
         let own = shared.identity.public;
         let instance = wire::encode_key(&own)[..20].to_string();
         let browse = daemon.browse(SERVICE).ok()?;
@@ -533,6 +562,28 @@ mod tests {
         let (events, received) = futures::channel::mpsc::unbounded();
         let hello = Hello { name: name.into(), os: "test".into(), version: "1".into(), port: 0 };
         (Shared::new(Identity::generate(), hello, events), received)
+    }
+
+    #[test]
+    fn connections_on_an_excluded_network_are_refused() {
+        let loopback = IpAddr::from([127, 0, 0, 1]);
+        let Some(name) = if_addrs::get_if_addrs()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|interface| interface.ip() == loopback)
+            .map(|interface| interface.name)
+        else {
+            return;
+        };
+        let (shared, _events) = node("host");
+        let listener = TcpListener::bind((loopback, 0)).unwrap();
+        let _client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (stream, _) = listener.accept().unwrap();
+        assert!(!arrived_excluded(&stream, &shared));
+        *shared.excluded.lock().unwrap() = vec!["unrelated0".into()];
+        assert!(!arrived_excluded(&stream, &shared));
+        *shared.excluded.lock().unwrap() = vec![name];
+        assert!(arrived_excluded(&stream, &shared));
     }
 
     #[test]

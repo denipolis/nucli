@@ -216,7 +216,8 @@ fn adding(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme: 
                 "Choose add device on the other computer too, then type the code of one computer into the other.",
             ));
     if let Some((code, left, attempts, _)) = uplink.pairing() {
-        let addresses = uplink.port().map(invite::local_addresses).unwrap_or_default();
+        let excluded = &settings::get(cx).uplink.excluded_networks;
+        let addresses = uplink.port().map(|port| invite::local_addresses(port, excluded)).unwrap_or_default();
         let link = invite::link(&code, uplink.identity(), &addresses);
         let copied = link.clone();
         panel =
@@ -504,8 +505,65 @@ fn this_computer(
             }
         }
     }
-    let addresses = uplink.port().map(invite::local_addresses).unwrap_or_default();
-    let reach = if addresses.is_empty() { "no network address found".to_string() } else { addresses.join("  ") };
+    let excluded = &current.uplink.excluded_networks;
+    let mut networks: Vec<(String, Option<String>)> = uplink
+        .port()
+        .map(invite::networks)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, address)| (name, Some(address)))
+        .collect();
+    let missing: Vec<String> =
+        excluded.iter().filter(|name| !networks.iter().any(|(known, _)| known == *name)).cloned().collect();
+    networks.extend(missing.into_iter().map(|name| (name, None)));
+    let mut list = div()
+        .flex()
+        .flex_col()
+        .gap(px(2.0))
+        .px(px(12.0))
+        .py(px(8.0))
+        .border_b_1()
+        .border_color(theme.border)
+        .child("Addresses")
+        .child(
+            div()
+                .text_color(theme.faint)
+                .child("Unchecked: connections arriving there are refused and this computer is not announced there"),
+        );
+    if networks.is_empty() {
+        list = list.child(div().text_color(theme.faint).child("no network address found"));
+    }
+    for (index, (name, address)) in networks.into_iter().enumerate() {
+        let on = !excluded.contains(&name);
+        list = list.child(
+            div()
+                .id(("uplink-network", index))
+                .flex()
+                .gap(px(8.0))
+                .hover(|style| style.bg(theme.hover))
+                .child(div().text_color(if on { theme.accent } else { theme.muted }).child(if on {
+                    "[x]"
+                } else {
+                    "[ ]"
+                }))
+                .child(
+                    div()
+                        .text_color(if on { theme.text } else { theme.faint })
+                        .child(address.unwrap_or_else(|| "not connected".into())),
+                )
+                .child(div().text_color(theme.faint).child(name.clone()))
+                .on_click(move |_, _, cx| {
+                    settings::update(cx, |settings| {
+                        let excluded = &mut settings.uplink.excluded_networks;
+                        if on {
+                            excluded.push(name.clone());
+                        } else {
+                            excluded.retain(|item| *item != name);
+                        }
+                    })
+                }),
+        );
+    }
     group(theme)
         .child(header("This computer", theme))
         .child(row("Name", "How your other devices list this one", field(&inputs.name, 220.0, theme), theme))
@@ -516,7 +574,7 @@ fn this_computer(
             theme,
         ))
         .child(row("Port", "Press enter to apply", field(&inputs.port, 90.0, theme), theme))
-        .child(row("Addresses", reach, div(), theme))
+        .child(list)
         .child(row(
             "Fingerprint",
             "Other devices show it for this computer",

@@ -251,6 +251,19 @@ impl Uplink {
                 }
             }
         }
+        let moved = self.shared.excluded.lock().map(|current| *current != config.excluded_networks).unwrap_or(false);
+        if moved {
+            if let Ok(mut current) = self.shared.excluded.lock() {
+                *current = config.excluded_networks.clone();
+            }
+            self.discovery = None;
+            self.announced = None;
+            let incoming: Vec<Key> =
+                self.links.iter().filter(|(_, link)| !link.initiator).map(|(key, _)| *key).collect();
+            for key in incoming {
+                self.disconnect(&key, cx);
+            }
+        }
         if self.discovery.is_none() {
             self.discovery = Discovery::start(&self.shared);
         }

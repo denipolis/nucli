@@ -9,20 +9,24 @@ pub struct Invite {
     pub addresses: Vec<String>,
 }
 
-pub fn local_addresses(port: u16) -> Vec<String> {
-    let mut addresses: Vec<std::net::Ipv4Addr> = if_addrs::get_if_addrs()
+pub fn networks(port: u16) -> Vec<(String, String)> {
+    let mut networks: Vec<(String, std::net::Ipv4Addr)> = if_addrs::get_if_addrs()
         .unwrap_or_default()
         .into_iter()
         .filter(|interface| !interface.is_loopback() && !interface.is_link_local() && interface.is_oper_up())
         .filter(|interface| !virtual_bridge(&interface.name))
         .filter_map(|interface| match interface.ip() {
-            std::net::IpAddr::V4(ip) => Some(ip),
+            std::net::IpAddr::V4(ip) => Some((interface.name, ip)),
             std::net::IpAddr::V6(_) => None,
         })
         .collect();
-    addresses.sort_by_key(|ip| (!ip.is_private(), *ip));
-    addresses.dedup();
-    addresses.into_iter().map(|ip| format!("{ip}:{port}")).collect()
+    networks.sort_by_key(|(_, ip)| (!ip.is_private(), *ip));
+    networks.dedup_by_key(|(_, ip)| *ip);
+    networks.into_iter().map(|(name, ip)| (name, format!("{ip}:{port}"))).collect()
+}
+
+pub fn local_addresses(port: u16, excluded: &[String]) -> Vec<String> {
+    networks(port).into_iter().filter(|(name, _)| !excluded.contains(name)).map(|(_, address)| address).collect()
 }
 
 fn virtual_bridge(name: &str) -> bool {
@@ -65,7 +69,7 @@ mod tests {
         assert_eq!(parse(&text), Some(Invite { code: "K7QM4XRP".into(), key: Some(key), addresses }));
         assert_eq!(parse("K7QM-4XRP"), None);
         assert_eq!(parse("nucli-uplink://pair?code=nope"), None);
-        assert!(local_addresses(1).iter().all(|address| address.ends_with(":1")));
+        assert!(local_addresses(1, &[]).iter().all(|address| address.ends_with(":1")));
         assert!(virtual_bridge("bridge100") && virtual_bridge("vEthernet (WSL)") && !virtual_bridge("en0"));
     }
 }
