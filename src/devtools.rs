@@ -130,6 +130,12 @@ fn run(line: &str, cx: &mut App) {
                 eprintln!("TEXT {}", session.read(cx).terminal.text(40));
             }
         }
+        "screen" => {
+            let store = crate::store::store(cx);
+            if let Some(session) = store.read(cx).sessions.get(rest.trim()) {
+                eprintln!("SCREEN {}", session.read(cx).terminal.screen_lines().join("|"));
+            }
+        }
         "draw" => window.draw(cx).clear(),
         "activate" => {
             cx.activate(true);

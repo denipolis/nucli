@@ -152,6 +152,7 @@ pub fn everything(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Vec<
             }
         }
     }
+    items.extend(crate::uplink::sidebar::palette_items(&theme, cx));
     for workspace in store.workspaces.iter() {
         for project in &workspace.projects {
             let (workspace_id, path) = (workspace.id.clone(), project.path.clone());

@@ -134,20 +134,20 @@ const KITTY: [(TermMode, u8); 5] = [
     (TermMode::REPORT_ASSOCIATED_TEXT, 16),
 ];
 
+const BUDGET: usize = 8388608;
+
 pub fn snapshot<T>(term: &Term<T>) -> Vec<u8> {
     let mode = *term.mode();
     let alternate = mode.contains(TermMode::ALT_SCREEN);
     let grid = term.grid();
     let (rows, cols) = (grid.screen_lines() as i32, grid.columns());
     let top = if alternate { 0 } else { -(grid.history_size() as i32) };
-    let mut out = String::new();
-    if alternate {
-        out.push_str("\x1b[?1049h");
-    }
+    let mut lines: Vec<(String, bool)> = Vec::with_capacity((rows - top) as usize);
     let mut pen = Pen::plain();
     let mut current_link: Option<Hyperlink> = None;
     let mut continued = false;
     for line in top..rows {
+        let mut out = String::new();
         let row = &grid[Line(line)];
         let wrapped = row[Column(cols - 1)].flags.contains(Flags::WRAPLINE);
         let end = if wrapped {
@@ -176,7 +176,6 @@ pub fn snapshot<T>(term: &Term<T>) -> Vec<u8> {
                 out.extend(extra);
             }
         }
-        continued = wrapped;
         if line < rows - 1 && !wrapped {
             if current_link.take().is_some() {
                 link(&mut out, None);
@@ -187,6 +186,25 @@ pub fn snapshot<T>(term: &Term<T>) -> Vec<u8> {
             }
             out.push_str("\r\n");
         }
+        lines.push((out, continued));
+        continued = wrapped;
+    }
+    let history = (-top) as usize;
+    let mut size = 0;
+    let mut start = lines.len();
+    while start > 0 && (start > history || size + lines[start - 1].0.len() <= BUDGET) {
+        start -= 1;
+        size += lines[start].0.len();
+    }
+    while start < history && lines[start].1 {
+        start += 1;
+    }
+    let mut out = String::with_capacity(size + 256);
+    if alternate {
+        out.push_str("\x1b[?1049h");
+    }
+    for (line, _) in &lines[start..] {
+        out.push_str(line);
     }
     if current_link.is_some() {
         link(&mut out, None);
@@ -313,6 +331,30 @@ mod tests {
     #[test]
     fn copies_the_alternate_screen() {
         round_trip(20, 6, b"shell output\r\n\x1b[?1049h\x1b[2J\x1b[Hfull screen\x1b[5;3Hhere");
+    }
+
+    #[test]
+    fn keeps_the_newest_history_within_the_budget() {
+        let mut source = term(500, 4);
+        let wide: String = (0..499).map(|col| format!("\x1b[38;2;{};{};{}mx", col % 256, 255 - col % 256, 7)).collect();
+        let wide = format!("{wide}\x1b[0m\r\n");
+        for _ in 0..1100 {
+            feed(&mut source, wide.as_bytes());
+        }
+        feed(&mut source, b"last line");
+        let bytes = snapshot(&source);
+        assert!(bytes.len() <= BUDGET + 4096);
+        let copy = clone(&source);
+        assert!(copy.grid().history_size() < source.grid().history_size());
+        let bottom = |term: &Term<VoidListener>| -> String {
+            (0..term.columns())
+                .map(|col| term.grid()[Line(3)][Column(col)].c)
+                .collect::<String>()
+                .trim_end()
+                .to_string()
+        };
+        assert_eq!(bottom(&copy), "last line");
+        assert_eq!(copy.grid().cursor.point, source.grid().cursor.point);
     }
 
     #[test]

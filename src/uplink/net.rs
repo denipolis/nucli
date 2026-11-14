@@ -19,6 +19,7 @@ const PING: Duration = Duration::from_secs(15);
 const SILENCE: Duration = Duration::from_secs(45);
 const DIAL: Duration = Duration::from_secs(4);
 const BACKLOG: usize = 8388608;
+const PIECE: usize = 1048576;
 const HANDSHAKES: usize = 16;
 pub const PAIRING_TIME: Duration = Duration::from_secs(300);
 pub const PAIRING_ATTEMPTS: u32 = 3;
@@ -111,7 +112,15 @@ impl Outbox {
     }
 
     pub fn feed(&self, tab: &str, feed: &Feed) -> bool {
-        self.queued.load(Ordering::Acquire) < BACKLOG && self.push(protocol::feed(tab, feed))
+        if self.queued.load(Ordering::Acquire) >= BACKLOG {
+            return false;
+        }
+        match feed {
+            Feed::Bytes { local, data } if data.len() > PIECE => data
+                .chunks(PIECE)
+                .all(|piece| self.push(protocol::feed(tab, &Feed::Bytes { local: *local, data: piece.to_vec() }))),
+            _ => self.push(protocol::feed(tab, feed)),
+        }
     }
 
     fn push(&self, frame: Vec<u8>) -> bool {

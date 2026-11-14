@@ -234,7 +234,7 @@ Tabs for Files, Changes and History (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing
 
 ## Command palette
 
-- `⇧⌘P` searches everything: tabs (all windows), projects, workspaces (closed ones reopen), "New Tab: <agent>", "New Shell: <shell>", the project's conversations, every command with its shortcut, themes, and the project's files (ranked last, hidden while the query is empty).
+- `⇧⌘P` searches everything: tabs (all windows), remote tabs of paired devices, projects, workspaces (closed ones reopen), "New Tab: <agent>", "New Shell: <shell>", the project's conversations, every command with its shortcut, themes, and the project's files (ranked last, hidden while the query is empty).
 - `⌘P` quick-opens the project's files: recently opened first, then all files (`git ls-files` including untracked, or a capped folder walk outside git). Without a project it opens the full palette.
 - Fuzzy matching on subsequences with bonuses for word starts, separators, camel case and consecutive characters; file names score above folders. Matched characters are highlighted.
 - `enter` runs, `⌘enter` runs the alternate action (files: open in the default app), arrows and page keys move, `esc` or clicking outside closes.
@@ -333,7 +333,7 @@ Each paired device shows its system glyph, name, state (`online · address · wa
 - Pairing uses SPAKE2, a password-authenticated key exchange: the short code becomes a strong shared key without ever being sent, and someone who listens or answers in the middle cannot test codes offline; each wrong attempt costs one of the 3 tries. That key then authenticates a Noise `XXpsk3` handshake in which both devices exchange and prove their keys.
 - Every later connection is a Noise `XX` handshake (X25519, ChaCha20-Poly1305, BLAKE2s). Both sides check the other's key against their paired devices: unknown or blocked keys are dropped before anything is sent, and a device answering at a known address with a different key is refused. All traffic is encrypted and authenticated; a tampered or replayed message closes the connection.
 - The computer that runs a tab enforces every rule itself: what is shared, view or control, blocking. A device can only open tabs with the agent and shell profiles already configured there, in projects that are shared.
-- Limits keep a misbehaving peer from using up resources: 16 handshakes at a time, 10 seconds per handshake, 16 MB per message, a terminal size of at most 500 × 200, and output for a slow viewer is dropped and resent as a fresh copy of the screen once 8 MB wait.
+- Limits keep a misbehaving peer from using up resources: 16 handshakes at a time, 10 seconds per handshake, 16 MB per message, a terminal size of at most 500 × 200, a remote view that opens midway gets at most 8 MB of the newest scrollback, and output for a slow viewer is dropped and resent as a fresh copy of the screen once 8 MB wait.
 
 ## Settings
 

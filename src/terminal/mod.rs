@@ -177,13 +177,25 @@ enum Work {
     Watch(Tap),
 }
 
-type Taps = Arc<Mutex<Vec<Tap>>>;
+type Taps = Arc<Mutex<Vec<(Tap, bool)>>>;
 
 fn tee(taps: &Taps, feed: Feed) {
     if let Ok(mut taps) = taps.lock()
         && !taps.is_empty()
     {
-        taps.retain_mut(|tap| tap(&feed));
+        taps.retain_mut(|(tap, _)| tap(&feed));
+    }
+}
+
+fn reattach_after_alternate(term: &Term<Listener>, taps: &Taps, waiting: &mut Vec<Tap>) {
+    if term.mode().contains(TermMode::ALT_SCREEN) {
+        return;
+    }
+    let Ok(mut taps) = taps.lock() else { return };
+    if taps.iter().any(|(_, partial)| *partial) {
+        let (partial, full): (Vec<_>, Vec<_>) = taps.drain(..).partition(|(_, partial)| *partial);
+        *taps = full;
+        waiting.extend(partial.into_iter().map(|(tap, _)| tap));
     }
 }
 
@@ -574,14 +586,18 @@ fn spawn_reader(
                     };
                     processor.advance(&mut *term, &data);
                     tee(&taps, Feed::Bytes { local: false, data });
+                    reattach_after_alternate(&term, &taps, &mut waiting);
                     first = false;
                     drop(term);
                     listener.wakeup();
                 }
                 Ok(Work::Watch(tap)) => waiting.push(tap),
                 Ok(Work::Eof) | Err(RecvTimeoutError::Timeout) => {
-                    processor.stop_sync(&mut *term.lock());
+                    let mut term = term.lock();
+                    processor.stop_sync(&mut *term);
                     tee(&taps, Feed::Flush);
+                    reattach_after_alternate(&term, &taps, &mut waiting);
+                    drop(term);
                     listener.wakeup();
                 }
                 Err(RecvTimeoutError::Disconnected) => break,
@@ -589,6 +605,7 @@ fn spawn_reader(
             if !waiting.is_empty() && processor.sync_timeout().sync_timeout().is_none() {
                 let term = term.lock();
                 let (cols, rows) = (term.columns(), term.screen_lines());
+                let alternate = term.mode().contains(TermMode::ALT_SCREEN);
                 let data = snapshot::snapshot(&term);
                 for mut tap in waiting.drain(..) {
                     let start = Feed::Start { cols, rows };
@@ -596,7 +613,7 @@ fn spawn_reader(
                         && tap(&Feed::Bytes { local: false, data: data.clone() })
                         && let Ok(mut taps) = taps.lock()
                     {
-                        taps.push(tap);
+                        taps.push((tap, alternate));
                     }
                 }
             }
@@ -829,6 +846,28 @@ mod tests {
         }
         assert_eq!(mirror.size().cols, 50);
         assert_eq!(mirror.text(100), terminal.text(100));
+        terminal.kill();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_mirror_attached_during_a_full_screen_program_gets_the_shell_back() {
+        let (mut terminal, _events) = run("/bin/sh", &[]);
+        terminal
+            .write(b"printf 'nucli-history\\n'; printf '\\033[?1049h\\033[2Jfull'; sleep 1; printf '\\033[?1049l'\r");
+        wait_for(&terminal, "full");
+        let size = GridSize { cols: 80, rows: 24, cell_width: 8.0, cell_height: 16.0 };
+        let (mirror, _mirror_events, feeds) = Terminal::mirror(size, CursorStyle::default(), Box::new(|_| {}));
+        terminal.watch(Box::new(move |feed| feeds.send(feed.clone()).is_ok()));
+        let start = std::time::Instant::now();
+        while !screen(&mirror).contains("nucli-history") || mirror.screen_lines() != terminal.screen_lines() {
+            assert!(
+                start.elapsed() < std::time::Duration::from_secs(10),
+                "mirror lost the shell:\n{}",
+                screen(&mirror)
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
         terminal.kill();
     }
 

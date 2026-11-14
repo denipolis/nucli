@@ -356,3 +356,39 @@ pub fn rows(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
 pub fn watched(id: &str, cx: &App) -> bool {
     super::uplink(cx).is_some_and(|uplink| !uplink.read(cx).watchers_of(id).is_empty())
 }
+
+pub fn palette_items(theme: &Theme, cx: &App) -> Vec<crate::palette::Item> {
+    let Some(entity) = super::uplink(cx).filter(|_| Uplink::enabled(cx)) else { return Vec::new() };
+    let uplink = entity.read(cx);
+    let mut items = Vec::new();
+    for (key, link) in &uplink.links {
+        let Some(catalog) = &link.catalog else { continue };
+        let device = uplink.device_name(key);
+        for tab in &catalog.tabs {
+            let project = catalog
+                .projects
+                .iter()
+                .find(|project| project.path == tab.project)
+                .map(|project| project.name.clone())
+                .filter(|name| !name.is_empty());
+            let (glyph, color) = tab_glyph(tab);
+            let (key, id) = (*key, tab.id.clone());
+            items.push(
+                crate::palette::Item::new(tab.title.clone(), move |view, _, cx| {
+                    let workspace = view.workspace.clone();
+                    if let Some(uplink) = super::uplink(cx) {
+                        uplink.update(cx, |uplink, cx| uplink.open_mirror(key, &id, &workspace, cx));
+                    }
+                })
+                .subtitle(match project {
+                    Some(project) => format!("{device} · {project}"),
+                    None => device.clone(),
+                })
+                .glyph(glyph, color.map(|color| color.color(theme.dark)))
+                .detail("remote tab")
+                .rank(7),
+            );
+        }
+    }
+    items
+}
