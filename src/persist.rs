@@ -17,6 +17,7 @@ pub enum SettingsSection {
     Agents,
     Shells,
     StatusChips,
+    Uplink,
     Keybindings,
 }
 
@@ -27,6 +28,7 @@ pub enum SidebarTab {
     Projects,
     Agents,
     History,
+    Uplink,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
@@ -109,6 +111,8 @@ pub struct SavedTab {
     pub conversation: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uplink: Option<bool>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
@@ -138,6 +142,8 @@ pub struct ProjectFile {
     pub recent_files: Vec<String>,
     pub last_launcher: Option<String>,
     pub last_agent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uplink: Option<bool>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]

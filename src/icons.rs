@@ -45,6 +45,19 @@ pub const THEME: &str = "\u{eb5c}";
 pub const SPLIT: &str = "\u{eb56}";
 pub const UNSPLIT: &str = "\u{f0337}";
 pub const GAUGE: &str = "\u{f029a}";
+pub const UPLINK: &str = "\u{f0909}";
+pub const EYE: &str = "\u{ea70}";
+pub const LOCK: &str = "\u{ea75}";
+pub const DEVICE: &str = "\u{f0379}";
+
+pub fn os(name: &str) -> &'static str {
+    match name {
+        "macos" => "\u{f0035}",
+        "linux" => "\u{f033d}",
+        "windows" => "\u{f05b3}",
+        _ => DEVICE,
+    }
+}
 
 pub const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 

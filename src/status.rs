@@ -252,7 +252,19 @@ impl Store {
     }
 
     pub fn show_tab(&mut self, id: &str, cx: &mut Context<Self>) {
-        let Some(workspace) = self.workspace_of(id).map(|workspace| workspace.id.clone()) else { return };
+        if crate::uplink::is_mirror(id) && self.shower_of(id).is_none() {
+            let workspace = self.last_workspace.clone().filter(|id| self.windows.contains_key(id));
+            let Some(workspace) = workspace.or_else(|| self.windows.keys().next().cloned()) else { return };
+            let id = id.to_string();
+            cx.defer(move |cx| {
+                cx.activate(true);
+                if let Some(uplink) = crate::uplink::uplink(cx) {
+                    uplink.update(cx, |uplink, cx| uplink.open_by_id(&id, &workspace, cx));
+                }
+            });
+            return;
+        }
+        let Some(workspace) = self.shower_of(id).map(|workspace| workspace.id.clone()) else { return };
         let id = id.to_string();
         cx.defer(move |cx| {
             cx.activate(true);
@@ -266,7 +278,7 @@ impl Store {
     }
 
     pub fn watched(&self, id: &str, cx: &mut Context<Self>) -> bool {
-        let Some(workspace) = self.workspace_of(id) else { return false };
+        let Some(workspace) = self.shower_of(id) else { return false };
         let Some(window) = self.windows.get(&workspace.id).copied() else { return false };
         workspace.shows(id) && window.update(cx, |_, window, _| window.is_window_active()).unwrap_or(false)
     }

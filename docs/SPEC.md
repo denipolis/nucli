@@ -169,16 +169,17 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 
 ## Sidebar
 
-- Tabs at the top: Projects (the tree), Agents (the board), History. `⌥⌘1`/`⌥⌘2`/`⌥⌘3` switch (and show the sidebar). The choice is remembered.
+- Tabs at the top: Projects (the tree), Agents (the board), History, and Uplink while Uplink is on. `⌥⌘1`/`⌥⌘2`/`⌥⌘3`/`⌥⌘4` switch (and show the sidebar). The choice is remembered. In a narrow sidebar only the active tab shows its name.
 - `⌘B` hides and shows the sidebar.
 - **Projects**: projects and their tabs. Tab rows: number, the agent's glyph and color, title (the terminal's title, or the profile name until there is one), the running program when the title does not name it (`exited` when the process ended), status on the right.
 - **Agents**: this workspace's running agent tabs grouped by status: Waiting, Done, Working, Idle. Clicking selects the tab.
 - **History**: every conversation of every agent profile, newest first (max 150). Clicking resumes it in the project for its folder (opened as a project if needed).
+- **Uplink**: paired devices and what they share (see Uplink).
 - **Filter** (`⌥⌘F`) at the bottom filters the visible list by name, path and title; a matching project shows all its tabs; `enter` selects the first match, `esc` clears.
 - **Workspace popup** at the bottom: all workspaces (closed ones marked), New, Rename, Delete.
 - **`+` button**: New Shell, New Agent, New Tab…, New Tab Without Project…, New Terminal, Open Project….
 - Clicking empty space deselects: empty viewport with key hints and "or drop a folder here".
-- Context menus: project (New Terminal, New Tab…, Rename, Color, Move to Workspace, Reveal, Copy Path, Close Project), tab (Rename, Color, Split with Shown Tab, Remove from Split, Unsplit All, Move Out of Project, Close Tab), conversation in History (Resume, Copy Title, Copy Conversation ID, Copy Path, Reveal), empty space (Open Project, Rename Workspace, New Workspace, Delete Workspace).
+- Context menus: project (New Terminal, New Tab…, Rename, Color, Move to Workspace, Reveal, Copy Path, `[x] Share over Uplink` while Uplink is on, Close Project), tab (Rename, Color, Split with Shown Tab, Remove from Split, Unsplit All, Move Out of Project, `[x] Share over Uplink` while Uplink is on, Close Tab), conversation in History (Resume, Copy Title, Copy Conversation ID, Copy Path, Reveal), empty space (Open Project, Rename Workspace, New Workspace, Delete Workspace).
 
 ## Panel
 
@@ -253,6 +254,7 @@ One row of small framed chips directly under the selected tab, in the terminal's
 - Git branch (click: switch to one of the 30 newest local branches or create a new one).
 - The project's `±files +added -removed` (click: Changes), when there are changes.
 - The foreground program, unless it is the tab's shell.
+- **Uplink**: the paired devices watching this tab right now, with an eye glyph (click: Stop Sharing This Tab, Disconnect a device).
 
 While a known agent CLI runs in the tab (an agent tab, or one started by hand in a shell), agent chips follow:
 
@@ -279,7 +281,59 @@ The row is hidden for projects and settings. An invalid settings or keybindings 
 
 By default the row follows the focused pane or file group. With `status_chips` set to `every_pane` every pane of a split and every file group has its own row, and the error gets a row of its own.
 
-**Choosing chips**: every chip can be hidden, as in VS Code. Right-click a chip for "Hide <chip>" and the list of all chips with `[x]` / `[ ]`; right-click the empty row for the list alone. The same toggles are on the settings page (Status Chips) and in the palette ("Status Chips…", also in the View menu, `enter` toggles and keeps the list open). Hidden chips are stored as ids in `hidden_chips`: `folder`, `branch`, `changes`, `program`, `skills`, `instructions`, `model`, `context`, `mcp`, `session`, `position`, `language`, `file_changes`, `commit`.
+**Choosing chips**: every chip can be hidden, as in VS Code. Right-click a chip for "Hide <chip>" and the list of all chips with `[x]` / `[ ]`; right-click the empty row for the list alone. The same toggles are on the settings page (Status Chips) and in the palette ("Status Chips…", also in the View menu, `enter` toggles and keeps the list open). Hidden chips are stored as ids in `hidden_chips`: `folder`, `branch`, `changes`, `program`, `uplink`, `skills`, `instructions`, `model`, `context`, `mcp`, `session`, `position`, `language`, `file_changes`, `commit`.
+
+## Uplink
+
+Uplink lets computers running Nucli control each other's tabs: run agents on one machine and watch, type into and start them from another. There is no server. Every computer is a peer that hosts its own tabs and connects straight to the computers it is paired with, over the local network or any private network the user sets up between them (for example a VPN that gives each machine an address).
+
+### Turning it on and off
+
+- Settings › Uplink starts with the **Uplink** toggle (`uplink.enabled`, off by default). Everything else on the page shows only while it is on. "Turn Uplink On or Off" in the palette does the same.
+- Off means off: no port is open, nothing is announced, every connection closes and every remote view closes at once.
+- On, Nucli listens on TCP port `uplink.port` (47100, the development build 47101) on every network interface and announces itself with multicast DNS (`_nucli-uplink._tcp`) so devices on the same network find each other. On macOS the system asks once for Local Network access.
+- The page then lists, from top to bottom: the listening status and the latest event ("Paired with laptop.", "A device entered a wrong code. 2 attempts left."), Paired devices, Pair a new device, Join a device, Sharing, and This device (name, port, the addresses it can be reached at, and its fingerprint).
+
+### Pairing
+
+Two devices pair once; after that they find and connect to each other by themselves whenever both are on.
+
+- **Pair a new device** (on the computer to be reached, also "Uplink: Pair a Device…" in the palette): choose whether the new device can **control** or only **view** this computer's shared tabs, then `pair`. Nucli shows a one-time code of 8 letters and digits (`K7QM-4XRP`), a QR code and a "copy pairing link" button. The code works once, for 5 minutes, and pairing stops after 3 wrong codes; cancel stops it at once.
+- **Join a device** (on the other computer): nearby devices that are pairing are listed; click one (or type its name or address, `host`, `host:port`, an IP address), type the code, choose whether that device can control or only view this computer's shared tabs, and press `enter` or `join`. Codes ignore case and dashes, and `O`/`I`/`L` read as `0`/`1`. Pasting the pairing link (from the QR code or "copy pairing link") into the code field fills in the addresses too and pins the device's key, so it works across networks where multicast does not reach.
+- Both devices then list each other under Paired devices, each with the access chosen on its side; change it any time.
+
+### Paired devices
+
+Each paired device shows its system glyph, name, state (`online · address · watching N of your tabs`, `offline · seen 5 minutes ago · not reachable`, `blocked`), its fingerprint, and:
+
+- **it can control / view your shared tabs**: control means typing into shared tabs, resizing them, clearing them and opening new tabs in shared projects. A device that can control a tab can run any command there. View means watching only; its keystrokes are ignored.
+- **disconnect** drops the connection (it reconnects later), **block** refuses it until **unblock**, **forget** (confirmed) removes the pairing on both sides; the device must pair again to reconnect.
+- **also try**: names or addresses to reach it by, comma separated, for networks without multicast. Nucli also remembers the last addresses that worked.
+
+### Sharing
+
+- What a paired device sees is decided on the computer that runs the tabs. **Share tabs by default** (`uplink.share`, on by default): every tab and panel terminal is shared unless excluded. Off: only what is shared explicitly.
+- `[x] Share over Uplink` in a project's menu shares or excludes the whole project; the same item in a tab's menu overrides its project. Both are saved with the workspace.
+- Stopping sharing, changing a device to view, blocking or forgetting it applies at once: open remote views of a tab that is no longer shared close.
+- A tab being watched from another device shows an eye glyph in the sidebar, and the Uplink status chip names the devices watching it.
+
+### Remote tabs
+
+- The Uplink sidebar tab lists every paired device: online ones with their shared projects and tabs (glyph, title, program, status), offline ones with when they were last seen. The filter applies. Right-click a device for Disconnect and Uplink Settings….
+- Clicking a remote tab opens it in the viewport like a local tab: the full terminal with its scrollback, live, with selection, copy, find and links (file paths of the other computer are not opened locally). The title bar shows `device › project › tab`, the status chips show the device (and `view only` or `offline`), its folder, branch and program. Typing, pasting, mouse reporting and `⌘K` go to the other computer when this device can control it.
+- The terminal has one size, the size of the device that typed into it last, as with `tmux`: typing on the other computer takes the size back. A device with view access never resizes it.
+- `⌘W` or Close View closes the remote view; the tab keeps running on its computer. Remote views are not saved and reopen from the sidebar.
+- Hovering a remote project shows `+`, and its context menu lists the other computer's agents and shells: choosing one opens a new tab there and shows it here (control only).
+- Status follows the other computer once per second: working, waiting, done and exited. When a remote tab starts waiting or rings for attention, a desktop notification is posted (if `notifications` is on) titled with the tab and `device · project`; clicking it opens the remote tab. Seeing a remote tab here clears its done mark on its computer too.
+- While a device is offline its open remote views stay with their last content and the chip says `offline`; they continue when it reconnects.
+
+### Security
+
+- Each device has its own X25519 key pair, created when Uplink first runs and stored in `uplink.json` in the data folder, readable only by the user. The fingerprint on the settings page is the start of the public key.
+- Pairing uses SPAKE2, a password-authenticated key exchange: the short code becomes a strong shared key without ever being sent, and someone who listens or answers in the middle cannot test codes offline; each wrong attempt costs one of the 3 tries. That key then authenticates a Noise `XXpsk3` handshake in which both devices exchange and prove their keys.
+- Every later connection is a Noise `XX` handshake (X25519, ChaCha20-Poly1305, BLAKE2s). Both sides check the other's key against their paired devices: unknown or blocked keys are dropped before anything is sent, and a device answering at a known address with a different key is refused. All traffic is encrypted and authenticated; a tampered or replayed message closes the connection.
+- The computer that runs a tab enforces every rule itself: what is shared, view or control, blocking. A device can only open tabs with the agent and shell profiles already configured there, in projects that are shared.
+- Limits keep a misbehaving peer from using up resources: 16 handshakes at a time, 10 seconds per handshake, 16 MB per message, a terminal size of at most 500 × 200, and output for a slow viewer is dropped and resent as a fresh copy of the screen once 8 MB wait.
 
 ## Settings
 
@@ -290,9 +344,10 @@ By default the row follows the focused pane or file group. With `status_chips` s
   - **Agents**: name, executable, arguments and config folder of each profile, add, remove, detect. An agent's `env` and `theme` are only in the file.
   - **Shells**: name and path, add, remove, detect.
   - **Status Chips**: under the focused pane or every pane, and a `[x]` toggle for every chip, grouped by Agent, Terminal and File view.
+  - **Uplink**: see Uplink.
   - **Keybindings**: every command with its key, a filter, and a link to `keybindings.json`. Click a key and press the new one (`esc` cancels); a changed key has a reset button; a key used twice in the same context turns red. "Open Keybindings" opens this category.
 - "Open Settings File" and "Open Keybindings File" open the JSON files in the file view. Both reload when saved, from Nucli or any editor. Invalid JSON keeps the previous settings and shows the error on the status row.
-- `settings.json` keys: `theme`, `appearance` (`system`, `light`, `dark`), `font`, `font_size`, `ui_font_size`, `line_height`, `cursor` (`block`, `bar`, `underline`), `cursor_blink`, `ligatures`, `restore_tabs`, `notifications`, `status_chips` (`focused`, `every_pane`), `hidden_chips`, `agents`, `shells`. Commands that change settings (theme, font size, detection, notifications) rewrite the file with all keys.
+- `settings.json` keys: `theme`, `appearance` (`system`, `light`, `dark`), `font`, `font_size`, `ui_font_size`, `line_height`, `cursor` (`block`, `bar`, `underline`), `cursor_blink`, `ligatures`, `restore_tabs`, `notifications`, `status_chips` (`focused`, `every_pane`), `hidden_chips`, `agents`, `shells`, `uplink` (`enabled`, `name`, `port`, `share`). Commands that change settings (theme, font size, detection, notifications) rewrite the file with all keys.
 - `keybindings.json` maps a key to a command name, e.g. `{"cmd-t": "new_shell", "cmd-shift-d": null}`; `null` removes a default. The palette shows every command's name and current key.
 - **Themes**: Nucli (dark and light pairs following the system), Nucli Amber and Nucli Phosphor (monochrome dark), and Vitesse Dark, Dark Soft, Black, Light, Light Soft. A theme sets every UI color, the 16 terminal colors and the syntax colors. An automatic theme follows the system appearance; `appearance` can force its light or dark side.
 - **Custom themes**: every `*.json` file in the `themes` folder next to `settings.json` is a theme `{name, base, dark, background, foreground, accent, selection, ansi, syntax}`. Every key is optional. `name` defaults to the file name without `.json`; it is also the id that `theme` and an agent's `theme` refer to. `base` is a built-in single theme id (e.g. `vitesse-dark`, not the `vitesse` pair) whose colors fill every missing key; without it the base is Nucli Dark, or Nucli Light when `dark` is `false`. Colors are `#rrggbb`. `ansi` lists the 16 terminal colors; `syntax` lists 8 colors in this order: keyword, string, number, comment, type, function, constant, attribute. The other UI colors are derived from these, as for the built-in themes. Custom themes appear after the built-in ones in Select Theme, the settings page and onboarding, and reload live when a file is added, changed or removed. A broken file is skipped and its error shows on the status row. **Import Theme…** (command palette and the Appearance page) validates the chosen JSON files, copies them into the folder (same name overwrites) and selects the last one; **Open Themes Folder** shows the folder in the file manager.
@@ -311,6 +366,7 @@ By default the row follows the focused pane or file group. With `status_chips` s
 | Settings, keybindings | `~/.config/nucli` | `$XDG_CONFIG_HOME/nucli` | `%APPDATA%\Nucli` |
 | State, restored terminal output | `~/Library/Application Support/Nucli` | `$XDG_DATA_HOME/nucli` | `%LOCALAPPDATA%\Nucli` |
 | Conversation cache | `~/Library/Caches/Nucli` | `$XDG_CACHE_HOME/nucli` | `%LOCALAPPDATA%\Nucli\cache` |
+| Uplink key and paired devices (`uplink.json`) | `~/Library/Application Support/Nucli` | `$XDG_DATA_HOME/nucli` | `%LOCALAPPDATA%\Nucli` |
 
 The development build uses `nucli-dev` / `Nucli Dev` instead.
 
@@ -320,4 +376,4 @@ On macOS, when the `uk.polishch.nucli` defaults exist, onboarding in a release b
 
 ## Privacy
 
-No network calls, no telemetry. Nucli runs local processes (the user's shells, agents and `git`), reads agents' local conversation, status and config files, and stores only the files listed above.
+No telemetry and no server. Without Uplink Nucli makes no network calls: it runs local processes (the user's shells, agents and `git`), reads agents' local conversation, status and config files, and stores only the files listed above. With Uplink on, it talks only to devices the user paired, directly, end-to-end encrypted, and announces itself on the local network (see Uplink).

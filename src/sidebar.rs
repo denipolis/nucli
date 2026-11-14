@@ -47,6 +47,7 @@ pub struct TabInfo {
     pub status: Option<(SharedString, Hsla)>,
     pub terminal: bool,
     pub loose: bool,
+    pub watched: bool,
     pub subagents: Vec<crate::claude::Subagent>,
 }
 
@@ -74,6 +75,7 @@ impl TabInfo {
             status: status_glyph(session, theme, tick),
             terminal: session.kind == Kind::Terminal,
             loose: false,
+            watched: false,
             subagents: session.subagents.clone(),
         }
     }
@@ -144,7 +146,9 @@ pub fn tab_glyph(session: &Session) -> (&'static str, Option<crate::theme::ItemC
 fn header(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoElement {
     let theme = ui::theme(cx);
     let current = view.store(cx).ui.sidebar_tab;
-    let compact = view.state(cx).is_some_and(|state| state.window.sidebar_width < 260.0);
+    let uplink = crate::uplink::Uplink::enabled(cx);
+    let wide = if uplink { 340.0 } else { 260.0 };
+    let compact = view.state(cx).is_some_and(|state| state.window.sidebar_width < wide);
     let tab = |id: &'static str, glyph: &'static str, label: &'static str, tab: SidebarTab| {
         let active = current == tab;
         div()
@@ -180,6 +184,7 @@ fn header(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoEle
         .child(tab("sidebar-projects", icons::FOLDER, "Projects", SidebarTab::Projects))
         .child(tab("sidebar-agents", icons::AGENT, "Agents", SidebarTab::Agents))
         .child(tab("sidebar-history", icons::HISTORY, "History", SidebarTab::History))
+        .when(uplink, |this| this.child(tab("sidebar-uplink", icons::UPLINK, "Uplink", SidebarTab::Uplink)))
 }
 
 fn rename_field(view: &WorkspaceView, matches_target: impl Fn(&Rename) -> bool) -> Option<AnyElement> {
@@ -423,6 +428,15 @@ fn tab_row(
                 )
                 .into_any_element()
         }))
+        .when(info.watched, |this| {
+            this.child(
+                div()
+                    .id(SharedString::from(format!("tab-watched-{id}")))
+                    .text_color(if selected { theme.on_accent } else { theme.accent })
+                    .child(icons::EYE)
+                    .tooltip(ui::tooltip("Watched over Uplink")),
+            )
+        })
         .children(
             info.status
                 .clone()
@@ -536,6 +550,7 @@ fn projects(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
             let theme = ui::theme(cx);
             let mut info = TabInfo::new(session.read(cx), &theme, tick);
             info.loose = loose;
+            info.watched = crate::uplink::sidebar::watched(id, cx);
             let subagents = info.subagents.clone();
             rows.push(tab_row(view, project, info, number, selected, link, cx));
             let through = link.filter(|link| !link.last);
@@ -741,6 +756,7 @@ pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<W
         SidebarTab::Projects => projects(view, &query, cx),
         SidebarTab::Agents => board(view, &query, cx),
         SidebarTab::History => history(view, &query, cx),
+        SidebarTab::Uplink => crate::uplink::sidebar::rows(view, &query, cx),
     };
     let empty_click = cx.listener(|view, _: &gpui::MouseDownEvent, window, cx| {
         view.select(None, window, cx);

@@ -34,6 +34,9 @@ On Linux and Windows, plain `ctrl` letters belong to the terminal (`ctrl-c`, `ct
 | Move panel to the other side | `move_panel` | | |
 | Filter sidebar | `filter_sidebar` | `cmd-alt-f` | `ctrl-alt-f` |
 | Sidebar: Projects / Agents / History | `show_projects` … | `cmd-alt-1` … `3` | `ctrl-alt-1` … `3` |
+| Sidebar: Uplink (opens Settings, Uplink while it is off) | `show_uplink` | `cmd-alt-4` | `ctrl-alt-4` |
+| Turn Uplink on or off | `toggle_uplink` | | |
+| Uplink: pair a device (shows a one-time code) | `pair_device` | | |
 | Panel: Files / Changes / History | `show_files` … | `ctrl-cmd-1` … `3` | `ctrl-shift-1` … `3` |
 | Full screen | `toggle_full_screen` | `ctrl-cmd-f` | `f11` |
 | Font bigger / smaller / reset | `font_bigger` … | `cmd-=` / `cmd--` / `cmd-0` | `ctrl-=` / `ctrl--` / `ctrl-0` |

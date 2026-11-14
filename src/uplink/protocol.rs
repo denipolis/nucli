@@ -1,0 +1,241 @@
+use serde::{Deserialize, Serialize};
+
+use crate::session::{Activity, Kind};
+use crate::terminal::Feed;
+use crate::theme::ItemColor;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct Hello {
+    pub name: String,
+    pub os: String,
+    pub version: String,
+    pub port: u16,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct RemoteTab {
+    pub id: String,
+    pub title: String,
+    pub kind: Kind,
+    pub agent: Option<String>,
+    pub program: Option<String>,
+    pub activity: Activity,
+    pub attention: bool,
+    pub running: bool,
+    pub failed: bool,
+    pub color: Option<ItemColor>,
+    pub project: String,
+    pub cwd: Option<String>,
+    pub branch: Option<String>,
+    pub notice: Option<String>,
+}
+
+impl Default for RemoteTab {
+    fn default() -> Self {
+        RemoteTab {
+            id: String::new(),
+            title: String::new(),
+            kind: Kind::Shell,
+            agent: None,
+            program: None,
+            activity: Activity::Idle,
+            attention: false,
+            running: true,
+            failed: false,
+            color: None,
+            project: String::new(),
+            cwd: None,
+            branch: None,
+            notice: None,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct RemoteProject {
+    pub path: String,
+    pub name: String,
+    pub color: Option<ItemColor>,
+    pub workspace: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct RemoteLauncher {
+    pub name: String,
+    pub agent: bool,
+    pub command: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct Catalog {
+    pub tabs: Vec<RemoteTab>,
+    pub projects: Vec<RemoteProject>,
+    pub launchers: Vec<RemoteLauncher>,
+    pub control: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Message {
+    Hello(Hello),
+    Catalog(Catalog),
+    Watch {
+        tab: String,
+    },
+    Unwatch {
+        tab: String,
+    },
+    Resize {
+        tab: String,
+        cols: u16,
+        rows: u16,
+    },
+    Clear {
+        tab: String,
+    },
+    Open {
+        project: String,
+        launcher: String,
+    },
+    Opened {
+        tab: String,
+    },
+    Stop {
+        tab: String,
+        reason: Stop,
+    },
+    Seen {
+        tab: String,
+    },
+    Unpair,
+    Ping,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum Stop {
+    Behind,
+    NotShared,
+    Closed,
+}
+
+pub enum Frame {
+    Message(Message),
+    Feed(String, Feed),
+    Input(String, Vec<u8>),
+}
+
+const MESSAGE: u8 = 0;
+const START: u8 = 1;
+const OUTPUT: u8 = 2;
+const LOCAL: u8 = 3;
+const SIZE: u8 = 4;
+const FLUSH: u8 = 5;
+const INPUT: u8 = 6;
+
+pub fn message(message: &Message) -> Vec<u8> {
+    let mut frame = vec![MESSAGE];
+    serde_json::to_writer(&mut frame, message).expect("messages serialize");
+    frame
+}
+
+fn tagged(kind: u8, tab: &str, extra: usize) -> Vec<u8> {
+    let tab = &tab.as_bytes()[..tab.len().min(255)];
+    let mut frame = Vec::with_capacity(2 + tab.len() + extra);
+    frame.push(kind);
+    frame.push(tab.len() as u8);
+    frame.extend_from_slice(tab);
+    frame
+}
+
+fn size(frame: &mut Vec<u8>, cols: usize, rows: usize) {
+    frame.extend_from_slice(&(cols.min(u16::MAX as usize) as u16).to_be_bytes());
+    frame.extend_from_slice(&(rows.min(u16::MAX as usize) as u16).to_be_bytes());
+}
+
+pub fn feed(tab: &str, feed: &Feed) -> Vec<u8> {
+    match feed {
+        Feed::Start { cols, rows } => {
+            let mut frame = tagged(START, tab, 4);
+            size(&mut frame, *cols, *rows);
+            frame
+        }
+        Feed::Size { cols, rows } => {
+            let mut frame = tagged(SIZE, tab, 4);
+            size(&mut frame, *cols, *rows);
+            frame
+        }
+        Feed::Bytes { local, data } => {
+            let mut frame = tagged(if *local { LOCAL } else { OUTPUT }, tab, data.len());
+            frame.extend_from_slice(data);
+            frame
+        }
+        Feed::Flush => tagged(FLUSH, tab, 0),
+    }
+}
+
+pub fn input(tab: &str, data: &[u8]) -> Vec<u8> {
+    let mut frame = tagged(INPUT, tab, data.len());
+    frame.extend_from_slice(data);
+    frame
+}
+
+pub fn decode(frame: &[u8]) -> Option<Frame> {
+    let (&kind, rest) = frame.split_first()?;
+    if kind == MESSAGE {
+        return serde_json::from_slice(rest).ok().map(Frame::Message);
+    }
+    let (&length, rest) = rest.split_first()?;
+    let tab = std::str::from_utf8(rest.get(..length as usize)?).ok()?.to_string();
+    let body = &rest[length as usize..];
+    let dimensions = || {
+        let cols = u16::from_be_bytes([*body.first()?, *body.get(1)?]) as usize;
+        let rows = u16::from_be_bytes([*body.get(2)?, *body.get(3)?]) as usize;
+        Some((cols, rows))
+    };
+    let feed = match kind {
+        START => dimensions().map(|(cols, rows)| Feed::Start { cols, rows })?,
+        SIZE => dimensions().map(|(cols, rows)| Feed::Size { cols, rows })?,
+        OUTPUT => Feed::Bytes { local: false, data: body.to_vec() },
+        LOCAL => Feed::Bytes { local: true, data: body.to_vec() },
+        FLUSH => Feed::Flush,
+        INPUT => return Some(Frame::Input(tab, body.to_vec())),
+        _ => return None,
+    };
+    Some(Frame::Feed(tab, feed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frames_round_trip() {
+        let hello = Message::Hello(Hello { name: "mac".into(), os: "macos".into(), version: "2".into(), port: 7 });
+        assert!(matches!(decode(&message(&hello)), Some(Frame::Message(decoded)) if decoded == hello));
+        let catalog = Message::Catalog(Catalog { tabs: vec![RemoteTab::default()], ..Default::default() });
+        assert!(matches!(decode(&message(&catalog)), Some(Frame::Message(decoded)) if decoded == catalog));
+        let start = feed("tab", &Feed::Start { cols: 80, rows: 24 });
+        assert!(matches!(decode(&start), Some(Frame::Feed(tab, Feed::Start { cols: 80, rows: 24 })) if tab == "tab"));
+        let bytes = feed("t", &Feed::Bytes { local: true, data: b"hi".to_vec() });
+        assert!(matches!(decode(&bytes), Some(Frame::Feed(_, Feed::Bytes { local: true, data })) if data == b"hi"));
+        assert!(matches!(decode(&input("t", b"ls\r")), Some(Frame::Input(tab, data)) if tab == "t" && data == b"ls\r"));
+    }
+
+    #[test]
+    fn ignores_unknown_and_broken_frames() {
+        assert!(matches!(decode(b"\x00{\"type\":\"from_the_future\"}"), Some(Frame::Message(Message::Unknown))));
+        assert!(decode(b"").is_none());
+        assert!(decode(b"\x01\x05ab").is_none());
+        assert!(decode(b"\x01\x01a\x00").is_none());
+        assert!(decode(b"\x09\x01a").is_none());
+        assert!(decode(b"\x00not json").is_none());
+    }
+}

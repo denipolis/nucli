@@ -52,6 +52,7 @@ mod theme;
 mod titlebar;
 mod transcript;
 mod ui;
+mod uplink;
 mod watcher;
 mod window;
 
@@ -222,6 +223,7 @@ pub fn launch(cx: &mut App) {
         store.start_polling(cx);
         store.start_watching(cx);
     });
+    uplink::init(cx);
     cx.on_app_quit(|cx| {
         let state = store::store(cx).read(cx).snapshot(true, cx);
         state.write();

@@ -32,6 +32,37 @@ pub enum StatusChips {
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 #[serde(default)]
+pub struct UplinkSettings {
+    pub enabled: bool,
+    pub name: String,
+    pub port: u16,
+    pub share: bool,
+}
+
+pub const UPLINK_PORT: u16 = if paths::DEV { 47101 } else { 47100 };
+
+impl Default for UplinkSettings {
+    fn default() -> Self {
+        UplinkSettings { enabled: false, name: String::new(), port: UPLINK_PORT, share: true }
+    }
+}
+
+impl UplinkSettings {
+    pub fn device_name(&self) -> String {
+        let name = self.name.trim();
+        if !name.is_empty() {
+            return name.chars().take(64).collect();
+        }
+        sysinfo::System::host_name()
+            .ok()
+            .map(|host| host.trim_end_matches(".local").to_string())
+            .filter(|host| !host.is_empty())
+            .unwrap_or_else(|| "Nucli".into())
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[serde(default)]
 pub struct Settings {
     pub theme: String,
     pub appearance: Appearance,
@@ -48,6 +79,7 @@ pub struct Settings {
     pub hidden_chips: Vec<String>,
     pub agents: Vec<AgentProfile>,
     pub shells: Vec<ShellProfile>,
+    pub uplink: UplinkSettings,
 }
 
 impl Default for Settings {
@@ -68,6 +100,7 @@ impl Default for Settings {
             hidden_chips: Vec::new(),
             agents: Vec::new(),
             shells: Vec::new(),
+            uplink: UplinkSettings::default(),
         }
     }
 }

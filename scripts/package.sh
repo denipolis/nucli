@@ -37,6 +37,8 @@ case "$TARGET" in
     <key>UIDesignRequiresCompatibility</key><true/>
     <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSLocalNetworkUsageDescription</key><string>Uplink connects to your other computers running Nucli on this network, so you can control their agents and terminals.</string>
+    <key>NSBonjourServices</key><array><string>_nucli-uplink._tcp</string></array>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

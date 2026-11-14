@@ -54,6 +54,7 @@ pub struct Project {
     pub saved_terminals: Vec<SavedTab>,
     pub expanded: BTreeSet<String>,
     pub languages: BTreeMap<String, String>,
+    pub uplink: Option<bool>,
 }
 
 impl Project {
@@ -285,6 +286,7 @@ impl Project {
             last_agent: file.last_agent,
             saved: file.tabs,
             saved_terminals: file.terminals,
+            uplink: file.uplink,
             ..Default::default()
         };
         project.repair_files();
@@ -634,8 +636,36 @@ impl Store {
         Some(id)
     }
 
+    pub fn add_mirror(&mut self, entity: Entity<Session>, cx: &mut Context<Self>) {
+        let id = entity.read(cx).id.clone();
+        cx.subscribe(&entity, |store, entity, event, cx| store.on_session_event(entity, event, cx)).detach();
+        self.sessions.insert(id, entity);
+        cx.notify();
+    }
+
+    pub fn remove_mirror(&mut self, id: &str, cx: &mut Context<Self>) {
+        if self.sessions.remove(id).is_none() {
+            return;
+        }
+        for workspace in &mut self.workspaces {
+            workspace.mru.retain(|tab| tab != id);
+            if matches!(&workspace.selected, Some(Selected::Tab(tab)) if tab == id) {
+                workspace.selected = None;
+            }
+        }
+        self.changed(cx);
+    }
+
+    pub fn shower_of(&self, id: &str) -> Option<&Workspace> {
+        self.workspace_of(id).or_else(|| {
+            self.workspaces
+                .iter()
+                .find(|workspace| matches!(&workspace.selected, Some(Selected::Tab(tab)) if tab == id))
+        })
+    }
+
     fn window_of(&self, id: &str) -> Option<WindowHandle<WorkspaceView>> {
-        let workspace = self.workspace_of(id)?;
+        let workspace = self.shower_of(id)?;
         self.windows.get(&workspace.id).copied()
     }
 
@@ -714,7 +744,7 @@ impl Store {
 
     pub fn remove_tab(&mut self, id: &str, cx: &mut Context<Self>) {
         let Some(workspace) = self.workspace_of(id).map(|workspace| workspace.id.clone()) else {
-            self.sessions.remove(id);
+            self.remove_mirror(id, cx);
             return;
         };
         let target = self.workspace_mut(&workspace).expect("workspace exists");
@@ -808,6 +838,7 @@ impl Store {
             recent_files: project.recent_files.clone(),
             last_launcher: project.last_launcher.clone(),
             last_agent: project.last_agent.clone(),
+            uplink: project.uplink,
             ..Default::default()
         };
         let state = StateFile {
@@ -880,6 +911,7 @@ impl Store {
                 entity.update(cx, |session, _| {
                     session.name = tab.name.clone();
                     session.color = tab.color;
+                    session.uplink = tab.uplink;
                 });
             }
             if let Some(project) = self.workspace_mut(workspace).and_then(|workspace| workspace.project_mut(&path)) {

@@ -2,6 +2,7 @@ pub mod boxes;
 pub mod find;
 pub mod keys;
 pub mod links;
+pub mod snapshot;
 pub mod view;
 
 use std::io::{Read, Write};
@@ -95,8 +96,12 @@ pub struct Listener {
 
 impl Listener {
     fn write(&self, text: &str) {
+        self.write_bytes(text.as_bytes());
+    }
+
+    fn write_bytes(&self, bytes: &[u8]) {
         if let Ok(mut writer) = self.writer.lock() {
-            let _ = writer.write_all(text.as_bytes());
+            let _ = writer.write_all(bytes);
             let _ = writer.flush();
         }
     }
@@ -150,16 +155,65 @@ pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
+#[derive(Clone)]
+pub enum Feed {
+    Start { cols: usize, rows: usize },
+    Bytes { local: bool, data: Vec<u8> },
+    Size { cols: usize, rows: usize },
+    Flush,
+}
+
+pub type Tap = Box<dyn FnMut(&Feed) -> bool + Send>;
+
+pub enum Request {
+    Input(Vec<u8>),
+    Resize { cols: usize, rows: usize },
+    Clear,
+}
+
+enum Work {
+    Output(Vec<u8>),
+    Eof,
+    Watch(Tap),
+}
+
+type Taps = Arc<Mutex<Vec<Tap>>>;
+
+fn tee(taps: &Taps, feed: Feed) {
+    if let Ok(mut taps) = taps.lock()
+        && !taps.is_empty()
+    {
+        taps.retain_mut(|tap| tap(&feed));
+    }
+}
+
+enum Backend {
+    Pty {
+        master: Box<dyn MasterPty + Send>,
+        killer: Box<dyn ChildKiller + Send + Sync>,
+        work: std::sync::mpsc::Sender<Work>,
+        taps: Taps,
+        remote_size: bool,
+    },
+    Mirror {
+        requests: Box<dyn Fn(Request) + Send>,
+        requested: Option<(usize, usize)>,
+    },
+}
+
 pub struct Terminal {
     pub term: Arc<FairMutex<Term<Listener>>>,
     listener: Listener,
-    master: Box<dyn MasterPty + Send>,
-    killer: Box<dyn ChildKiller + Send + Sync>,
+    backend: Backend,
     pub pid: Option<u32>,
     anchor: Arc<AtomicBool>,
     pub activity: Arc<Activity>,
-    pub size: GridSize,
+    size: GridSize,
     local: Processor,
+}
+
+fn config(cursor: CursorStyle) -> Config {
+    Config { scrolling_history: 10000, kitty_keyboard: true, default_cursor_style: cursor, ..Config::default() }
 }
 
 impl Terminal {
@@ -195,23 +249,17 @@ impl Terminal {
             size: Arc::new(Mutex::new(size)),
             pending: Arc::new(AtomicBool::new(false)),
         };
-        let config = Config {
-            scrolling_history: 10000,
-            kitty_keyboard: true,
-            default_cursor_style: cursor,
-            ..Config::default()
-        };
-        let term = Arc::new(FairMutex::new(Term::new(config, &size, listener.clone())));
+        let term = Arc::new(FairMutex::new(Term::new(config(cursor), &size, listener.clone())));
         let anchor = Arc::new(AtomicBool::new(false));
         let activity = Arc::new(Activity { last_output: AtomicU64::new(0), busy_since: AtomicU64::new(0) });
-        spawn_reader(reader, term.clone(), listener.clone(), anchor.clone(), activity.clone());
+        let taps: Taps = Arc::new(Mutex::new(Vec::new()));
+        let work = spawn_reader(reader, term.clone(), listener.clone(), anchor.clone(), activity.clone(), taps.clone());
         spawn_waiter(child, sender);
         Ok((
             Terminal {
                 term,
                 listener,
-                master: pair.master,
-                killer,
+                backend: Backend::Pty { master: pair.master, killer, work, taps, remote_size: false },
                 pid,
                 anchor,
                 activity,
@@ -220,6 +268,39 @@ impl Terminal {
             },
             receiver,
         ))
+    }
+
+    pub fn mirror(
+        size: GridSize,
+        cursor: CursorStyle,
+        requests: Box<dyn Fn(Request) + Send>,
+    ) -> (Terminal, UnboundedReceiver<Event>, std::sync::mpsc::Sender<Feed>) {
+        let (sender, receiver) = unbounded();
+        let listener = Listener {
+            events: sender,
+            writer: Arc::new(Mutex::new(Box::new(std::io::sink()))),
+            colors: Arc::new(Mutex::new(Vec::new())),
+            size: Arc::new(Mutex::new(size)),
+            pending: Arc::new(AtomicBool::new(false)),
+        };
+        let term = Arc::new(FairMutex::new(Term::new(config(cursor), &size, listener.clone())));
+        let activity = Arc::new(Activity { last_output: AtomicU64::new(0), busy_since: AtomicU64::new(0) });
+        let feeds = spawn_mirror(term.clone(), listener.clone(), activity.clone());
+        let terminal = Terminal {
+            term,
+            listener,
+            backend: Backend::Mirror { requests, requested: None },
+            pid: None,
+            anchor: Arc::new(AtomicBool::new(false)),
+            activity,
+            size,
+            local: Processor::new(),
+        };
+        (terminal, receiver, feeds)
+    }
+
+    pub fn size(&self) -> GridSize {
+        self.listener.size.lock().map(|size| *size).unwrap_or(self.size)
     }
 
     pub fn anchor_prompt(&self, on: bool) {
@@ -237,16 +318,36 @@ impl Terminal {
         blank_rows_below(&term)
     }
 
-    pub fn write(&self, bytes: &[u8]) {
-        if let Ok(mut writer) = self.listener.writer.lock() {
-            let _ = writer.write_all(bytes);
-            let _ = writer.flush();
+    pub fn write(&mut self, bytes: &[u8]) {
+        if let Backend::Mirror { requests, requested } = &mut self.backend {
+            let current = self.listener.size.lock().map(|size| (size.cols, size.rows)).ok();
+            if let Some((cols, rows)) = *requested
+                && current != Some((cols, rows))
+            {
+                requests(Request::Resize { cols, rows });
+            }
+            requests(Request::Input(bytes.to_vec()));
+            return;
         }
+        self.listener.write_bytes(bytes);
+    }
+
+    pub fn write_remote(&self, bytes: &[u8]) {
+        self.listener.write_bytes(bytes);
     }
 
     pub fn feed(&mut self, bytes: &[u8]) {
         let mut term = self.term.lock();
         self.local.advance(&mut *term, bytes);
+        if let Backend::Pty { taps, .. } = &self.backend {
+            tee(taps, Feed::Bytes { local: true, data: bytes.to_vec() });
+        }
+    }
+
+    pub fn watch(&self, tap: Tap) {
+        if let Backend::Pty { work, .. } = &self.backend {
+            let _ = work.send(Work::Watch(tap));
+        }
     }
 
     pub fn set_colors(&self, colors: Vec<Rgb>) {
@@ -256,13 +357,7 @@ impl Terminal {
     }
 
     pub fn set_cursor(&self, cursor: CursorStyle) {
-        let config = Config {
-            scrolling_history: 10000,
-            kitty_keyboard: true,
-            default_cursor_style: cursor,
-            ..Config::default()
-        };
-        self.term.lock().set_options(config);
+        self.term.lock().set_options(config(cursor));
     }
 
     pub fn take_wakeup(&self) {
@@ -270,17 +365,49 @@ impl Terminal {
     }
 
     pub fn resize(&mut self, size: GridSize) {
-        if size == self.size || size.cols < 2 || size.rows < 1 {
+        match &mut self.backend {
+            Backend::Mirror { requests, requested } => {
+                self.size = size;
+                if *requested != Some((size.cols, size.rows)) && size.cols >= 2 && size.rows >= 1 {
+                    *requested = Some((size.cols, size.rows));
+                    requests(Request::Resize { cols: size.cols, rows: size.rows });
+                }
+            }
+            Backend::Pty { remote_size: true, .. } => {}
+            Backend::Pty { .. } => self.apply_size(size),
+        }
+    }
+
+    pub fn resize_remote(&mut self, cols: usize, rows: usize) {
+        let size = GridSize { cols: cols.clamp(2, 500), rows: rows.clamp(1, 200), ..self.size };
+        if let Backend::Pty { remote_size, .. } = &mut self.backend {
+            *remote_size = true;
+        }
+        self.apply_size(size);
+    }
+
+    pub fn claim(&mut self) {
+        if let Backend::Pty { remote_size, .. } = &mut self.backend {
+            *remote_size = false;
+        }
+    }
+
+    fn apply_size(&mut self, size: GridSize) {
+        let Backend::Pty { master, taps, .. } = &self.backend else { return };
+        let current = self.size();
+        if (size.cols, size.rows) == (current.cols, current.rows) && size == self.size || size.cols < 2 || size.rows < 1
+        {
             return;
         }
-        let grew = size.rows.saturating_sub(self.size.rows);
+        let grew = size.rows.saturating_sub(current.rows);
         self.size = size;
         if let Ok(mut shared) = self.listener.size.lock() {
             *shared = size;
         }
-        let _ = self.master.resize(size.pty());
+        let _ = master.resize(size.pty());
         let mut term = self.term.lock();
         term.resize(size);
+        tee(taps, Feed::Size { cols: size.cols, rows: size.rows });
         let anchored = !LIFTS_PROMPT && self.anchor.load(Ordering::Acquire);
         if grew > 0 && anchored && !term.mode().contains(TermMode::ALT_SCREEN) {
             let cursor = term.grid().cursor.point;
@@ -292,21 +419,26 @@ impl Terminal {
             if below > 0 && blank {
                 let shift = format!("\x1b[{below}T\x1b[{below}B");
                 self.local.advance(&mut *term, shift.as_bytes());
+                tee(taps, Feed::Bytes { local: true, data: shift.into_bytes() });
             }
         }
     }
 
     pub fn kill(&mut self) {
-        let _ = self.killer.kill();
+        if let Backend::Pty { killer, .. } = &mut self.backend {
+            let _ = killer.kill();
+        }
     }
 
     pub fn foreground_pid(&self) -> Option<u32> {
+        let Backend::Pty { master, .. } = &self.backend else { return None };
         #[cfg(unix)]
         {
-            self.master.process_group_leader().filter(|pid| *pid > 0).map(|pid| pid as u32).or(self.pid)
+            master.process_group_leader().filter(|pid| *pid > 0).map(|pid| pid as u32).or(self.pid)
         }
         #[cfg(not(unix))]
         {
+            let _ = master;
             self.pid
         }
     }
@@ -320,13 +452,22 @@ impl Terminal {
     }
 
     pub fn clear(&mut self) {
+        if let Backend::Mirror { requests, .. } = &self.backend {
+            requests(Request::Clear);
+            return;
+        }
         let mut term = self.term.lock();
         term.grid_mut().clear_history();
+        let mut sent = b"\x1b[3J".to_vec();
         if !term.mode().contains(TermMode::ALT_SCREEN) {
             self.local.advance(&mut *term, b"\x1b[H\x1b[2J");
+            sent.extend_from_slice(b"\x1b[H\x1b[2J");
+        }
+        if let Backend::Pty { taps, .. } = &self.backend {
+            tee(taps, Feed::Bytes { local: true, data: sent });
         }
         drop(term);
-        self.write(b"\x0c");
+        self.listener.write_bytes(b"\x0c");
     }
 
     pub fn text(&self, last_lines: usize) -> String {
@@ -392,60 +533,115 @@ fn spawn_reader(
     listener: Listener,
     anchor: Arc<AtomicBool>,
     activity: Arc<Activity>,
-) {
-    let (chunks, received) = channel::<Vec<u8>>();
+    taps: Taps,
+) -> std::sync::mpsc::Sender<Work> {
+    let (work, received) = channel::<Work>();
+    let output = work.clone();
     std::thread::spawn(move || {
         let mut buffer = vec![0u8; 65536];
         while let Ok(count @ 1..) = reader.read(&mut buffer) {
-            if chunks.send(buffer[..count].to_vec()).is_err() {
-                break;
+            if output.send(Work::Output(buffer[..count].to_vec())).is_err() {
+                return;
             }
         }
+        let _ = output.send(Work::Eof);
     });
     std::thread::spawn(move || {
         let mut processor: Processor = Processor::new();
         let mut first = true;
         let mut scanner = Scanner::default();
+        let mut waiting: Vec<Tap> = Vec::new();
         loop {
             let next = match processor.sync_timeout().sync_timeout() {
                 Some(deadline) => received.recv_timeout(deadline.saturating_duration_since(Instant::now())),
                 None => received.recv().map_err(|_| RecvTimeoutError::Disconnected),
             };
-            let chunk = match next {
-                Ok(chunk) => chunk,
-                Err(RecvTimeoutError::Timeout) => {
-                    processor.stop_sync(&mut *term.lock());
+            match next {
+                Ok(Work::Output(chunk)) => {
+                    let now = now_ms();
+                    let last = activity.last_output.swap(now, Ordering::AcqRel);
+                    if now.saturating_sub(last) > 1500 {
+                        activity.busy_since.store(now, Ordering::Release);
+                    }
+                    for text in scanner.notifications(&chunk) {
+                        let _ = listener.events.unbounded_send(Event::Notify(text));
+                    }
+                    let mut term = term.lock();
+                    let data = if !LIFTS_PROMPT && anchor.load(Ordering::Acquire) {
+                        anchor_bottom(&chunk, term.mode().contains(TermMode::ALT_SCREEN), first)
+                    } else {
+                        chunk
+                    };
+                    processor.advance(&mut *term, &data);
+                    tee(&taps, Feed::Bytes { local: false, data });
+                    first = false;
+                    drop(term);
                     listener.wakeup();
-                    continue;
                 }
-                Err(RecvTimeoutError::Disconnected) => {
+                Ok(Work::Watch(tap)) => waiting.push(tap),
+                Ok(Work::Eof) | Err(RecvTimeoutError::Timeout) => {
                     processor.stop_sync(&mut *term.lock());
+                    tee(&taps, Feed::Flush);
                     listener.wakeup();
-                    break;
                 }
-            };
-            let now = now_ms();
-            let last = activity.last_output.swap(now, Ordering::AcqRel);
-            if now.saturating_sub(last) > 1500 {
-                activity.busy_since.store(now, Ordering::Release);
+                Err(RecvTimeoutError::Disconnected) => break,
             }
-            let chunk = chunk.as_slice();
-            for text in scanner.notifications(chunk) {
-                let _ = listener.events.unbounded_send(Event::Notify(text));
+            if !waiting.is_empty() && processor.sync_timeout().sync_timeout().is_none() {
+                let term = term.lock();
+                let (cols, rows) = (term.columns(), term.screen_lines());
+                let data = snapshot::snapshot(&term);
+                for mut tap in waiting.drain(..) {
+                    let start = Feed::Start { cols, rows };
+                    if tap(&start)
+                        && tap(&Feed::Bytes { local: false, data: data.clone() })
+                        && let Ok(mut taps) = taps.lock()
+                    {
+                        taps.push(tap);
+                    }
+                }
             }
+        }
+    });
+    work
+}
+
+fn spawn_mirror(
+    term: Arc<FairMutex<Term<Listener>>>,
+    listener: Listener,
+    activity: Arc<Activity>,
+) -> std::sync::mpsc::Sender<Feed> {
+    let (feeds, received) = channel::<Feed>();
+    std::thread::spawn(move || {
+        let mut reader: Processor = Processor::new();
+        let mut local: Processor = Processor::new();
+        while let Ok(feed) = received.recv() {
             let mut term = term.lock();
-            if !LIFTS_PROMPT && anchor.load(Ordering::Acquire) {
-                let alternate = term.mode().contains(TermMode::ALT_SCREEN);
-                let anchored = anchor_bottom(chunk, alternate, first);
-                processor.advance(&mut *term, &anchored);
-            } else {
-                processor.advance(&mut *term, chunk);
+            match feed {
+                Feed::Start { cols, rows } => {
+                    resize_mirror(&mut term, &listener, cols, rows);
+                    reader = Processor::new();
+                    local = Processor::new();
+                    reader.advance(&mut *term, b"\x1bc");
+                }
+                Feed::Bytes { local: true, data } => local.advance(&mut *term, &data),
+                Feed::Bytes { local: false, data } => {
+                    activity.last_output.store(now_ms(), Ordering::Release);
+                    reader.advance(&mut *term, &data);
+                }
+                Feed::Size { cols, rows } => resize_mirror(&mut term, &listener, cols, rows),
+                Feed::Flush => reader.stop_sync(&mut *term),
             }
-            first = false;
             drop(term);
             listener.wakeup();
         }
     });
+    feeds
+}
+
+fn resize_mirror(term: &mut Term<Listener>, listener: &Listener, cols: usize, rows: usize) {
+    let Ok(mut size) = listener.size.lock() else { return };
+    *size = GridSize { cols: cols.clamp(2, 500), rows: rows.clamp(1, 200), ..*size };
+    term.resize(*size);
 }
 
 fn blank_rows_below<T>(term: &Term<T>) -> usize {
@@ -609,6 +805,30 @@ mod tests {
     fn an_unfinished_synchronized_update_still_reaches_the_screen() {
         let (mut terminal, _events) = run("/bin/sh", &["-c", "printf '\\033[?2026hnucli-synced'; sleep 40"]);
         wait_for(&terminal, "nucli-synced");
+        terminal.kill();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_mirror_follows_the_terminal_from_any_point() {
+        let (mut terminal, _events) = run("/bin/sh", &[]);
+        terminal.write(b"printf 'nucli-before\\n'\r");
+        wait_for(&terminal, "nucli-before");
+        let size = GridSize { cols: 80, rows: 24, cell_width: 8.0, cell_height: 16.0 };
+        let (mirror, _mirror_events, feeds) = Terminal::mirror(size, CursorStyle::default(), Box::new(|_| {}));
+        terminal.watch(Box::new(move |feed| feeds.send(feed.clone()).is_ok()));
+        terminal.write(b"printf '\\033[31mnucli-after\\033[0m\\n'\r");
+        wait_for(&terminal, "nucli-after");
+        terminal.resize(GridSize { cols: 50, rows: 12, cell_width: 8.0, cell_height: 16.0 });
+        terminal.write(b"printf 'nucli-resized\\n'\r");
+        wait_for(&terminal, "nucli-resized");
+        let start = std::time::Instant::now();
+        while mirror.screen_lines() != terminal.screen_lines() || mirror.cursor_line() != terminal.cursor_line() {
+            assert!(start.elapsed() < std::time::Duration::from_secs(10), "mirror differs:\n{}", screen(&mirror));
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(mirror.size().cols, 50);
+        assert_eq!(mirror.text(100), terminal.text(100));
         terminal.kill();
     }
 

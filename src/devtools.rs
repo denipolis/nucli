@@ -23,6 +23,45 @@ pub fn start(cx: &mut App) {
     .detach();
 }
 
+fn uplink(line: &str, cx: &mut App) {
+    let Some(entity) = crate::uplink::uplink(cx) else { return };
+    let (command, rest) = line.split_once(' ').unwrap_or((line, ""));
+    let workspace = crate::store::store(cx).read(cx).windows.keys().next().cloned().unwrap_or_default();
+    entity.update(cx, |uplink, cx| match command {
+        "pair" => uplink.start_pairing(crate::uplink::devices::Access::Control, cx),
+        "join" => {
+            let (address, code) = rest.split_once(' ').unwrap_or((rest, ""));
+            uplink.start_join(address, code, crate::uplink::devices::Access::Control, cx);
+        }
+        "open" => {
+            let first = uplink.links.iter().find_map(|(key, link)| {
+                let tab = link.catalog.as_ref()?.tabs.iter().find(|tab| rest.is_empty() || tab.title.contains(rest))?;
+                Some((*key, tab.id.clone()))
+            });
+            if let Some((key, tab)) = first {
+                uplink.open_mirror(key, &tab, &workspace, cx);
+            }
+        }
+        _ => {
+            let pairing = uplink.pairing().map(|(code, ..)| code).unwrap_or_default();
+            let devices: Vec<String> = uplink.devices.iter().map(|device| format!("{}:{:?}", device.name, device.access)).collect();
+            let links: Vec<String> = uplink
+                .links
+                .values()
+                .map(|link| format!("{}={}tabs", link.hello.name, link.catalog.as_ref().map_or(0, |catalog| catalog.tabs.len())))
+                .collect();
+            let nearby: Vec<String> = uplink.nearby.iter().map(|nearby| format!("{}{:?}", nearby.name, nearby.addresses)).collect();
+            eprintln!(
+                "UPLINK pairing={pairing} join={:?} note={:?} error={:?} devices={devices:?} links={links:?} nearby={nearby:?} mirrors={}",
+                uplink.join,
+                uplink.note,
+                uplink.error,
+                uplink.mirrors.len()
+            );
+        }
+    });
+}
+
 fn run(line: &str, cx: &mut App) {
     let (command, rest) = line.split_once(' ').unwrap_or((line, ""));
     if command == "open" {
@@ -31,6 +70,10 @@ fn run(line: &str, cx: &mut App) {
             let path = std::path::PathBuf::from(rest.trim());
             let _ = handle.update(cx, |view, window, cx| crate::actions::open_folder(view, path, window, cx));
         }
+        return;
+    }
+    if command == "uplink" {
+        uplink(rest.trim(), cx);
         return;
     }
     #[cfg(target_os = "macos")]
@@ -76,8 +119,8 @@ fn run(line: &str, cx: &mut App) {
                     session.activity,
                     session.attention,
                     session.exit,
-                    session.terminal.size.cols,
-                    session.terminal.size.rows
+                    session.terminal.size().cols,
+                    session.terminal.size().rows
                 );
             }
         }

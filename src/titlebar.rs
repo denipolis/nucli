@@ -20,8 +20,14 @@ fn location(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement
     let theme = ui::theme(cx);
     let project = view.state(cx).map(|state| state.current_project().unwrap_or(&state.scratch));
     let tint = project.and_then(|project| project.color).map(|color| color.color(theme.dark));
-    let name = project.map(|project| project.display_name()).unwrap_or_default();
-    let detail = if view.settings.is_some() {
+    let mut name = project.map(|project| project.display_name()).unwrap_or_default();
+    let remote = view.selected_session(cx).and_then(|session| session.read(cx).remote.clone());
+    let glyph = if remote.is_some() { icons::UPLINK } else { icons::FOLDER };
+    let detail = if let Some(remote) = remote.as_ref().filter(|_| view.settings.is_none()) {
+        name = remote.device.clone();
+        let title = view.selected_session(cx).map(|session| session.read(cx).display_title()).unwrap_or_default();
+        Some(if remote.project.is_empty() { title } else { format!("{} › {title}", remote.project) })
+    } else if view.settings.is_some() {
         Some("settings".to_string())
     } else if view.file_shown(cx) {
         project.and_then(|project| project.active_file().map(String::as_str)).map(|file| {
@@ -46,7 +52,7 @@ fn location(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement
         .border_1()
         .border_color(theme.border)
         .hover(|style| style.border_color(theme.muted))
-        .child(div().flex_none().text_color(tint.unwrap_or(theme.accent)).child(icons::FOLDER))
+        .child(div().flex_none().text_color(tint.unwrap_or(theme.accent)).child(glyph))
         .child(div().flex_none().child(name))
         .when_some(detail, |this, detail| {
             this.child(div().flex_none().text_color(theme.faint).child("›"))

@@ -1,0 +1,1219 @@
+pub mod devices;
+pub mod invite;
+pub mod net;
+pub mod page;
+pub mod protocol;
+pub mod sidebar;
+pub mod wire;
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use futures::StreamExt;
+use gpui::{App, AppContext, Context, Entity, Global, Task};
+
+use crate::session::{Remote, Session};
+use crate::settings;
+use crate::store::{self, Launcher};
+use crate::terminal::{Feed, Request};
+use devices::{Access, Device};
+use net::{Connection, Discovery, Nearby, NetEvent, Outbox, Pairing, Routes, Server, Shared};
+use protocol::{Catalog, Hello, Message, RemoteLauncher, RemoteProject, RemoteTab, Stop};
+use wire::Key;
+
+pub const MIRROR: &str = "uplink:";
+
+pub struct UplinkHandle(pub Entity<Uplink>);
+
+impl Global for UplinkHandle {}
+
+pub fn uplink(cx: &App) -> Option<Entity<Uplink>> {
+    cx.try_global::<UplinkHandle>().map(|handle| handle.0.clone())
+}
+
+pub fn is_mirror(id: &str) -> bool {
+    id.starts_with(MIRROR)
+}
+
+pub fn mirror_id(key: &Key, tab: &str) -> String {
+    format!("{MIRROR}{}:{tab}", &wire::encode_key(key)[..12])
+}
+
+fn now() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|time| time.as_secs()).unwrap_or(0)
+}
+
+pub struct Link {
+    pub conn: u64,
+    pub hello: Hello,
+    pub address: std::net::SocketAddr,
+    initiator: bool,
+    outbox: Outbox,
+    routes: Routes,
+    pub catalog: Option<Catalog>,
+    sent: Option<Catalog>,
+}
+
+struct Watcher {
+    conn: u64,
+    key: Key,
+    tab: String,
+    alive: Arc<AtomicBool>,
+}
+
+pub struct Target {
+    pub key: Key,
+    pub tab: String,
+    feeds: std::sync::mpsc::Sender<Feed>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Join {
+    Idle,
+    Working,
+    Failed(String),
+    Done(String),
+}
+
+struct Dialing {
+    busy: bool,
+    next: Instant,
+    backoff: Duration,
+    error: Option<String>,
+}
+
+pub struct Uplink {
+    pub shared: Arc<Shared>,
+    pub devices: Vec<Device>,
+    path: PathBuf,
+    server: Option<Server>,
+    discovery: Option<Discovery>,
+    announced: Option<(String, u16, bool)>,
+    pub error: Option<String>,
+    pub links: HashMap<Key, Link>,
+    pub nearby: Vec<Nearby>,
+    pub join: Join,
+    pub note: Option<String>,
+    dialing: HashMap<Key, Dialing>,
+    watchers: Vec<Watcher>,
+    pub mirrors: HashMap<String, Target>,
+    outboxes: Arc<Mutex<HashMap<Key, Outbox>>>,
+    push: Option<Task<()>>,
+    opening: Option<(Key, String)>,
+}
+
+pub fn init(cx: &mut App) {
+    let path = devices::file();
+    let (identity, list) = devices::load(&path);
+    let (events, mut received) = futures::channel::mpsc::unbounded();
+    let shared = Shared::new(identity, Hello::default(), events);
+    let entity = cx.new(|_| {
+        let uplink = Uplink {
+            shared,
+            devices: list,
+            path,
+            server: None,
+            discovery: None,
+            announced: None,
+            error: None,
+            links: HashMap::new(),
+            nearby: Vec::new(),
+            join: Join::Idle,
+            note: None,
+            dialing: HashMap::new(),
+            watchers: Vec::new(),
+            mirrors: HashMap::new(),
+            outboxes: Default::default(),
+            push: None,
+            opening: None,
+        };
+        uplink.trust();
+        uplink
+    });
+    cx.set_global(UplinkHandle(entity.clone()));
+    let events_entity = entity.clone();
+    cx.spawn(async move |cx| {
+        while let Some(event) = received.next().await {
+            if events_entity.update(cx, |uplink, cx| uplink.handle(event, cx)).is_err() {
+                break;
+            }
+        }
+    })
+    .detach();
+    let ticking = entity.clone();
+    cx.spawn(async move |cx| {
+        loop {
+            cx.background_executor().timer(Duration::from_secs(1)).await;
+            if ticking.update(cx, |uplink, cx| uplink.tick(cx)).is_err() {
+                break;
+            }
+        }
+    })
+    .detach();
+    let settings_entity = entity.clone();
+    cx.observe_global::<settings::Settings>(move |cx| settings_entity.update(cx, |uplink, cx| uplink.apply(cx)))
+        .detach();
+    let store_entity = entity.clone();
+    cx.observe(&store::store(cx), move |_, cx| {
+        store_entity.update(cx, |uplink, cx| {
+            uplink.forget_closed_mirrors(cx);
+            uplink.schedule_push(cx);
+        })
+    })
+    .detach();
+    entity.update(cx, |uplink, cx| uplink.apply(cx));
+}
+
+impl Uplink {
+    pub fn enabled(cx: &App) -> bool {
+        settings::get(cx).uplink.enabled
+    }
+
+    pub fn port(&self) -> Option<u16> {
+        self.server.as_ref().map(|server| server.port)
+    }
+
+    pub fn identity(&self) -> &Key {
+        &self.shared.identity.public
+    }
+
+    fn trust(&self) {
+        if let Ok(mut trusted) = self.shared.trusted.lock() {
+            trusted.clear();
+            trusted.extend(self.devices.iter().filter(|device| !device.blocked).filter_map(Device::public));
+        }
+    }
+
+    fn save(&mut self, cx: &mut Context<Self>) {
+        devices::save(&self.path, &self.shared.identity, &self.devices);
+        self.trust();
+        cx.notify();
+    }
+
+    pub fn device(&self, key: &Key) -> Option<&Device> {
+        self.devices.iter().find(|device| device.public().as_ref() == Some(key))
+    }
+
+    fn device_mut(&mut self, key: &Key) -> Option<&mut Device> {
+        self.devices.iter_mut().find(|device| device.public().as_ref() == Some(key))
+    }
+
+    pub fn device_name(&self, key: &Key) -> String {
+        self.device(key).map(|device| device.name.clone()).unwrap_or_else(|| wire::fingerprint(key))
+    }
+
+    pub fn pairing(&self) -> Option<(String, Duration, u32, Access)> {
+        let pairing = self.shared.pairing.lock().ok()?;
+        let current = pairing.as_ref()?;
+        let left = current.expires.saturating_duration_since(Instant::now());
+        (!left.is_zero()).then(|| (current.code.clone(), left, current.attempts, current.access))
+    }
+
+    fn apply(&mut self, cx: &mut Context<Self>) {
+        let config = settings::get(cx).uplink.clone();
+        if !config.enabled {
+            if self.server.is_some() || self.discovery.is_some() || !self.links.is_empty() {
+                self.stop(cx);
+            }
+            return;
+        }
+        let hello = Hello {
+            name: config.device_name(),
+            os: std::env::consts::OS.into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            port: config.port,
+        };
+        let renamed = self.shared.hello.lock().map(|current| *current != hello).unwrap_or(true);
+        if let Ok(mut current) = self.shared.hello.lock() {
+            *current = hello.clone();
+        }
+        if self.server.as_ref().is_some_and(|server| server.port != config.port) {
+            self.server = None;
+        }
+        if self.server.is_none() {
+            match net::listen(config.port, &self.shared) {
+                Ok(server) => {
+                    self.server = Some(server);
+                    self.error = None;
+                }
+                Err(error) => {
+                    self.error = Some(format!("Port {} is not available: {error}", config.port));
+                }
+            }
+        }
+        if self.discovery.is_none() {
+            self.discovery = Discovery::start(&self.shared);
+        }
+        self.announce();
+        if renamed {
+            for link in self.links.values() {
+                link.outbox.send(&Message::Hello(hello.clone()));
+            }
+        }
+        cx.notify();
+    }
+
+    fn announce(&mut self) {
+        let Some(discovery) = &self.discovery else { return };
+        let Ok(hello) = self.shared.hello.lock().map(|hello| hello.clone()) else { return };
+        let state = (hello.name.clone(), hello.port, self.pairing().is_some());
+        if self.announced.as_ref() != Some(&state) && self.server.is_some() {
+            discovery.announce(&self.shared.identity.public, &state.0, state.1, state.2);
+            self.announced = Some(state);
+        }
+    }
+
+    fn stop(&mut self, cx: &mut Context<Self>) {
+        self.server = None;
+        self.discovery = None;
+        self.announced = None;
+        self.error = None;
+        if let Ok(mut pairing) = self.shared.pairing.lock() {
+            *pairing = None;
+        }
+        for link in self.links.values() {
+            link.outbox.close();
+        }
+        self.links.clear();
+        if let Ok(mut outboxes) = self.outboxes.lock() {
+            outboxes.clear();
+        }
+        self.nearby.clear();
+        self.dialing.clear();
+        self.join = Join::Idle;
+        self.note = None;
+        let watched: Vec<String> = self
+            .watchers
+            .drain(..)
+            .map(|watcher| {
+                watcher.alive.store(false, Ordering::Release);
+                watcher.tab
+            })
+            .collect();
+        for tab in watched {
+            self.release(&tab, cx);
+        }
+        let mirrors: Vec<String> = self.mirrors.keys().cloned().collect();
+        for id in mirrors {
+            self.close_mirror(&id, cx);
+        }
+        cx.notify();
+    }
+
+    fn tick(&mut self, cx: &mut Context<Self>) {
+        if !Uplink::enabled(cx) {
+            return;
+        }
+        if self.server.is_none() {
+            self.apply(cx);
+        }
+        if let Ok(mut pairing) = self.shared.pairing.lock()
+            && pairing.as_ref().is_some_and(|current| current.expires <= Instant::now())
+        {
+            *pairing = None;
+        }
+        self.announce();
+        self.dial(cx);
+        self.watchers.retain(|watcher| watcher.alive.load(Ordering::Acquire));
+        if self.pairing().is_some() {
+            cx.notify();
+        }
+    }
+
+    fn dial(&mut self, cx: &mut Context<Self>) {
+        let port = settings::get(cx).uplink.port;
+        let now = Instant::now();
+        let candidates: Vec<(Key, Vec<String>)> = self
+            .devices
+            .iter()
+            .filter(|device| !device.blocked)
+            .filter_map(|device| {
+                let key = device.public()?;
+                if self.links.contains_key(&key) {
+                    return None;
+                }
+                if self.dialing.get(&key).is_some_and(|dialing| dialing.busy || dialing.next > now) {
+                    return None;
+                }
+                let mut addresses: Vec<String> = device.manual.clone();
+                for nearby in self.nearby.iter().filter(|nearby| nearby.key == key) {
+                    addresses.extend(nearby.addresses.iter().map(|address| address.to_string()));
+                }
+                addresses.extend(device.addresses.iter().cloned());
+                addresses.dedup();
+                (!addresses.is_empty()).then_some((key, addresses))
+            })
+            .collect();
+        for (key, addresses) in candidates {
+            let dialing = self.dialing.entry(key).or_insert(Dialing {
+                busy: false,
+                next: now,
+                backoff: Duration::from_secs(2),
+                error: None,
+            });
+            dialing.busy = true;
+            net::dial(key, addresses, port, &self.shared);
+        }
+    }
+
+    pub fn dial_error(&self, key: &Key) -> Option<&str> {
+        self.dialing.get(key).and_then(|dialing| dialing.error.as_deref())
+    }
+
+    fn handle(&mut self, event: NetEvent, cx: &mut Context<Self>) {
+        if !Uplink::enabled(cx) {
+            if let NetEvent::Connected(connection) = event {
+                connection.outbox.close();
+            }
+            return;
+        }
+        match event {
+            NetEvent::Connected(connection) => self.connected(connection, cx),
+            NetEvent::Message(conn, message) => self.message(conn, message, cx),
+            NetEvent::Input(conn, tab, data) => self.host_input(conn, &tab, &data, cx),
+            NetEvent::Closed(conn) => self.closed(conn, cx),
+            NetEvent::DialFailed(key, error) => {
+                if let Some(dialing) = self.dialing.get_mut(&key) {
+                    dialing.busy = false;
+                    dialing.next = Instant::now() + dialing.backoff;
+                    dialing.backoff = (dialing.backoff * 2).min(Duration::from_secs(30));
+                    dialing.error = Some(error);
+                }
+                cx.notify();
+            }
+            NetEvent::Paired { key, hello, address, access } => self.paired(key, hello, address, access, cx),
+            NetEvent::PairingFailed { attempts, ended } => {
+                self.note = Some(if ended {
+                    format!("Pairing stopped after {attempts} wrong codes.")
+                } else {
+                    let left = net::PAIRING_ATTEMPTS - attempts;
+                    format!("A device entered a wrong code. {left} attempts left.")
+                });
+                cx.notify();
+            }
+            NetEvent::JoinFailed(reason) => {
+                self.join = Join::Failed(reason);
+                cx.notify();
+            }
+            NetEvent::Nearby(found) => {
+                if let Some(dialing) = self.dialing.get_mut(&found.key)
+                    && !dialing.busy
+                {
+                    dialing.next = Instant::now();
+                    dialing.backoff = Duration::from_secs(2);
+                }
+                self.nearby.retain(|nearby| nearby.fullname != found.fullname && nearby.key != found.key);
+                self.nearby.push(found);
+                cx.notify();
+            }
+            NetEvent::Gone(fullname) => {
+                self.nearby.retain(|nearby| nearby.fullname != fullname);
+                cx.notify();
+            }
+        }
+    }
+
+    fn connected(&mut self, connection: Connection, cx: &mut Context<Self>) {
+        let key = connection.key;
+        if !self.device(&key).is_some_and(|device| !device.blocked) {
+            connection.outbox.close();
+            return;
+        }
+        let initiator = |link_initiator: bool| if link_initiator { *self.identity() } else { key };
+        if let Some(existing) = self.links.get(&key) {
+            let (old, new) = (initiator(existing.initiator), initiator(connection.initiator));
+            if old != new && old < new {
+                connection.outbox.close();
+                return;
+            }
+            existing.outbox.close();
+            let conn = existing.conn;
+            self.drop_watchers(conn, cx);
+        }
+        if let Some(dialing) = self.dialing.get_mut(&key) {
+            dialing.busy = false;
+            dialing.backoff = Duration::from_secs(2);
+            dialing.error = None;
+        }
+        let address = if connection.initiator {
+            connection.address
+        } else {
+            std::net::SocketAddr::new(connection.address.ip(), connection.hello.port.max(1))
+        };
+        if let Some(device) = self.device_mut(&key) {
+            device.seen = now();
+            device.learn(address.to_string());
+            if !connection.hello.name.is_empty() {
+                device.name = connection.hello.name.chars().take(64).collect();
+            }
+            device.os = connection.hello.os.clone();
+        }
+        if let Ok(mut outboxes) = self.outboxes.lock() {
+            outboxes.insert(key, connection.outbox.clone());
+        }
+        self.links.insert(
+            key,
+            Link {
+                conn: connection.id,
+                hello: connection.hello,
+                address,
+                initiator: connection.initiator,
+                outbox: connection.outbox,
+                routes: connection.routes,
+                catalog: None,
+                sent: None,
+            },
+        );
+        self.save(cx);
+        self.push_catalogs(cx);
+        let mirrors: Vec<String> =
+            self.mirrors.iter().filter(|(_, target)| target.key == key).map(|(id, _)| id.clone()).collect();
+        for id in mirrors {
+            self.watch(&id, cx);
+        }
+    }
+
+    fn link_of(&self, conn: u64) -> Option<(Key, &Link)> {
+        self.links.iter().find(|(_, link)| link.conn == conn).map(|(key, link)| (*key, link))
+    }
+
+    fn closed(&mut self, conn: u64, cx: &mut Context<Self>) {
+        self.drop_watchers(conn, cx);
+        let Some((key, _)) = self.link_of(conn) else { return };
+        self.links.remove(&key);
+        if let Ok(mut outboxes) = self.outboxes.lock() {
+            outboxes.remove(&key);
+        }
+        if let Some(device) = self.device_mut(&key) {
+            device.seen = now();
+        }
+        self.update_mirrors(&key, cx);
+        cx.notify();
+    }
+
+    fn drop_watchers(&mut self, conn: u64, cx: &mut Context<Self>) {
+        let mut released = Vec::new();
+        self.watchers.retain(|watcher| {
+            if watcher.conn != conn {
+                return true;
+            }
+            watcher.alive.store(false, Ordering::Release);
+            released.push(watcher.tab.clone());
+            false
+        });
+        for tab in released {
+            self.release(&tab, cx);
+        }
+    }
+
+    fn release(&mut self, tab: &str, cx: &mut Context<Self>) {
+        if self.watchers.iter().any(|watcher| watcher.tab == tab && watcher.alive.load(Ordering::Acquire)) {
+            return;
+        }
+        if let Some(session) = store::store(cx).read(cx).session(tab).cloned() {
+            session.update(cx, |session, cx| {
+                session.terminal.claim();
+                cx.notify();
+            });
+        }
+    }
+
+    fn paired(&mut self, key: Key, hello: Hello, address: Option<String>, access: Access, cx: &mut Context<Self>) {
+        let name: String = hello.name.chars().take(64).collect();
+        match self.device_mut(&key) {
+            Some(device) => {
+                device.blocked = false;
+                device.name = name.clone();
+                device.os = hello.os.clone();
+                if let Some(address) = address {
+                    device.learn(address);
+                }
+            }
+            None => {
+                let mut device = Device {
+                    key: wire::encode_key(&key),
+                    name: name.clone(),
+                    os: hello.os.clone(),
+                    access,
+                    paired: now(),
+                    seen: now(),
+                    ..Default::default()
+                };
+                if let Some(address) = address {
+                    device.learn(address);
+                }
+                self.devices.push(device);
+            }
+        }
+        if self.join == Join::Working {
+            self.join = Join::Done(name.clone());
+        }
+        self.note = Some(format!("Paired with {name}. It connects by itself from now on."));
+        self.dialing.remove(&key);
+        self.save(cx);
+        self.announce();
+        self.dial(cx);
+    }
+
+    pub fn start_pairing(&mut self, access: Access, cx: &mut Context<Self>) {
+        if let Ok(mut pairing) = self.shared.pairing.lock() {
+            *pairing = Some(Pairing::new(access));
+        }
+        self.note = None;
+        self.announce();
+        cx.notify();
+    }
+
+    pub fn cancel_pairing(&mut self, cx: &mut Context<Self>) {
+        if let Ok(mut pairing) = self.shared.pairing.lock() {
+            *pairing = None;
+        }
+        self.note = None;
+        self.announce();
+        cx.notify();
+    }
+
+    pub fn start_join(&mut self, address: &str, code: &str, access: Access, cx: &mut Context<Self>) {
+        let (addresses, code, expected) = match invite::parse(code).or_else(|| invite::parse(address)) {
+            Some(invite) => (invite.addresses, invite.code, invite.key),
+            None => {
+                let Some(code) = wire::normalize_code(code) else {
+                    self.join = Join::Failed(format!("A pairing code has {} letters and digits.", wire::CODE_LEN));
+                    cx.notify();
+                    return;
+                };
+                let nearby = self.nearby.iter().find(|nearby| {
+                    nearby.name == address.trim()
+                        || nearby.addresses.iter().any(|known| known.to_string() == address.trim())
+                });
+                let addresses = match nearby {
+                    Some(nearby) => nearby.addresses.iter().map(|known| known.to_string()).collect(),
+                    None => vec![address.trim().to_string()],
+                };
+                (addresses, code, nearby.map(|nearby| nearby.key))
+            }
+        };
+        if addresses.iter().all(|address| address.is_empty()) {
+            self.join = Join::Failed("Choose a nearby device or type its address.".into());
+            cx.notify();
+            return;
+        }
+        self.join = Join::Working;
+        net::join(addresses, code, expected, access, settings::get(cx).uplink.port, &self.shared);
+        cx.notify();
+    }
+
+    pub fn finish_join(&mut self) {
+        self.join = Join::Idle;
+    }
+
+    pub fn set_access(&mut self, key: &Key, access: Access, cx: &mut Context<Self>) {
+        if let Some(device) = self.device_mut(key) {
+            device.access = access;
+        }
+        self.save(cx);
+        self.enforce(cx);
+    }
+
+    pub fn set_blocked(&mut self, key: &Key, blocked: bool, cx: &mut Context<Self>) {
+        if let Some(device) = self.device_mut(key) {
+            device.blocked = blocked;
+        }
+        self.save(cx);
+        if blocked {
+            self.disconnect(key, cx);
+        } else if let Some(dialing) = self.dialing.get_mut(key) {
+            dialing.next = Instant::now();
+        }
+    }
+
+    pub fn set_manual(&mut self, key: &Key, addresses: Vec<String>, cx: &mut Context<Self>) {
+        if let Some(device) = self.device_mut(key) {
+            device.manual = addresses;
+        }
+        if let Some(dialing) = self.dialing.get_mut(key) {
+            dialing.next = Instant::now();
+            dialing.backoff = Duration::from_secs(2);
+        }
+        self.save(cx);
+    }
+
+    pub fn disconnect(&mut self, key: &Key, cx: &mut Context<Self>) {
+        if let Some(link) = self.links.get(key) {
+            link.outbox.close();
+            let conn = link.conn;
+            self.closed(conn, cx);
+        }
+    }
+
+    pub fn forget(&mut self, key: &Key, cx: &mut Context<Self>) {
+        self.devices.retain(|device| device.public().as_ref() != Some(key));
+        self.save(cx);
+        self.dialing.remove(key);
+        if let Some(link) = self.links.remove(key) {
+            link.outbox.send(&Message::Unpair);
+            if let Ok(mut outboxes) = self.outboxes.lock() {
+                outboxes.remove(key);
+            }
+            self.drop_watchers(link.conn, cx);
+            cx.spawn(async move |_, cx| {
+                cx.background_executor().timer(Duration::from_millis(500)).await;
+                link.outbox.close();
+            })
+            .detach();
+        }
+        let mirrors: Vec<String> =
+            self.mirrors.iter().filter(|(_, target)| target.key == *key).map(|(id, _)| id.clone()).collect();
+        for id in mirrors {
+            self.close_mirror(&id, cx);
+        }
+        cx.notify();
+    }
+
+    pub fn open_by_id(&mut self, id: &str, workspace: &str, cx: &mut Context<Self>) {
+        let Some(rest) = id.strip_prefix(MIRROR) else { return };
+        let Some((prefix, tab)) = rest.split_once(':') else { return };
+        let key = self.devices.iter().filter(|device| device.key.starts_with(prefix)).find_map(Device::public);
+        if let Some(key) = key {
+            self.open_mirror(key, tab, workspace, cx);
+        }
+    }
+
+    pub fn watchers_of(&self, tab: &str) -> Vec<Key> {
+        let mut keys: Vec<Key> = self
+            .watchers
+            .iter()
+            .filter(|watcher| watcher.tab == tab && watcher.alive.load(Ordering::Acquire))
+            .map(|watcher| watcher.key)
+            .collect();
+        keys.dedup();
+        keys
+    }
+
+    pub fn watched_count(&self, key: &Key) -> usize {
+        self.watchers.iter().filter(|watcher| watcher.key == *key && watcher.alive.load(Ordering::Acquire)).count()
+    }
+
+    fn schedule_push(&mut self, cx: &mut Context<Self>) {
+        if self.links.is_empty() || self.push.is_some() {
+            return;
+        }
+        self.push = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_millis(150)).await;
+            let _ = this.update(cx, |uplink, cx| {
+                uplink.push = None;
+                uplink.enforce(cx);
+            });
+        }));
+    }
+
+    fn enforce(&mut self, cx: &mut Context<Self>) {
+        let store = store::store(cx).read(cx);
+        let mut stopped = Vec::new();
+        for watcher in &self.watchers {
+            if !watcher.alive.load(Ordering::Acquire) {
+                continue;
+            }
+            let reason = match store.session(&watcher.tab) {
+                None => Some(Stop::Closed),
+                Some(_) if !self.device(&watcher.key).is_some_and(|device| !device.blocked) => Some(Stop::NotShared),
+                Some(_) if !shared(&watcher.tab, cx) => Some(Stop::NotShared),
+                Some(_) => None,
+            };
+            if let Some(reason) = reason {
+                watcher.alive.store(false, Ordering::Release);
+                if let Some(link) = self.links.get(&watcher.key) {
+                    link.outbox.send(&Message::Stop { tab: watcher.tab.clone(), reason });
+                }
+                stopped.push(watcher.tab.clone());
+            }
+        }
+        for tab in stopped {
+            self.release(&tab, cx);
+        }
+        self.push_catalogs(cx);
+    }
+
+    fn push_catalogs(&mut self, cx: &mut Context<Self>) {
+        let keys: Vec<Key> = self.links.keys().copied().collect();
+        for key in keys {
+            let Some(device) = self.device(&key).cloned() else { continue };
+            let catalog = catalog(&device, cx);
+            if let Some(link) = self.links.get_mut(&key)
+                && link.sent.as_ref() != Some(&catalog)
+            {
+                link.outbox.send(&Message::Catalog(catalog.clone()));
+                link.sent = Some(catalog);
+            }
+        }
+    }
+
+    fn message(&mut self, conn: u64, message: Message, cx: &mut Context<Self>) {
+        let Some((key, _)) = self.link_of(conn) else { return };
+        match message {
+            Message::Hello(hello) => {
+                if let Some(device) = self.device_mut(&key) {
+                    device.name = hello.name.chars().take(64).collect();
+                    device.os = hello.os.clone();
+                }
+                if let Some(link) = self.links.get_mut(&key) {
+                    link.hello = hello;
+                }
+                self.save(cx);
+                self.update_mirrors(&key, cx);
+            }
+            Message::Catalog(catalog) => self.receive_catalog(key, catalog, cx),
+            Message::Watch { tab } => self.host_watch(conn, key, tab, cx),
+            Message::Unwatch { tab } => {
+                self.watchers.retain(|watcher| {
+                    let gone = watcher.conn == conn && watcher.tab == tab;
+                    if gone {
+                        watcher.alive.store(false, Ordering::Release);
+                    }
+                    !gone
+                });
+                self.release(&tab, cx);
+                cx.notify();
+            }
+            Message::Resize { tab, cols, rows } => {
+                if let Some(session) = self.controlled(conn, key, &tab, cx) {
+                    session.update(cx, |session, cx| {
+                        session.terminal.resize_remote(cols as usize, rows as usize);
+                        cx.notify();
+                    });
+                }
+            }
+            Message::Clear { tab } => {
+                if let Some(session) = self.controlled(conn, key, &tab, cx) {
+                    session.update(cx, |session, cx| {
+                        session.terminal.clear();
+                        cx.notify();
+                    });
+                }
+            }
+            Message::Open { project, launcher } => self.host_open(key, &project, &launcher, cx),
+            Message::Opened { tab } => {
+                if let Some((opener, workspace)) = self.opening.take()
+                    && opener == key
+                {
+                    self.open_mirror(key, &tab, &workspace, cx);
+                }
+            }
+            Message::Stop { tab, reason } => {
+                let id = mirror_id(&key, &tab);
+                match reason {
+                    Stop::Behind => self.watch(&id, cx),
+                    Stop::NotShared | Stop::Closed => self.close_mirror(&id, cx),
+                }
+            }
+            Message::Unpair => {
+                self.note = Some(format!("{} removed this device.", self.device_name(&key)));
+                self.forget(&key, cx);
+            }
+            Message::Seen { tab } => {
+                if self.watchers.iter().any(|watcher| watcher.conn == conn && watcher.tab == tab)
+                    && let Some(session) = store::store(cx).read(cx).session(&tab).cloned()
+                {
+                    session.update(cx, |session, cx| {
+                        session.attention = false;
+                        cx.notify();
+                    });
+                    store::store(cx).update(cx, |store, cx| store.update_badge(cx));
+                }
+            }
+            Message::Ping | Message::Unknown => {}
+        }
+    }
+
+    fn controlled(&self, conn: u64, key: Key, tab: &str, cx: &App) -> Option<Entity<Session>> {
+        let device = self.device(&key)?;
+        if device.blocked || device.access != Access::Control {
+            return None;
+        }
+        let watching = self
+            .watchers
+            .iter()
+            .any(|watcher| watcher.conn == conn && watcher.tab == tab && watcher.alive.load(Ordering::Acquire));
+        if !watching || !shared(tab, cx) {
+            return None;
+        }
+        store::store(cx).read(cx).session(tab).cloned()
+    }
+
+    fn host_watch(&mut self, conn: u64, key: Key, tab: String, cx: &mut Context<Self>) {
+        let Some(link) = self.links.get(&key) else { return };
+        let session = store::store(cx).read(cx).session(&tab).cloned();
+        let allowed = self.device(&key).is_some_and(|device| !device.blocked) && shared(&tab, cx);
+        let Some(session) = session.filter(|_| allowed) else {
+            link.outbox.send(&Message::Stop { tab, reason: Stop::NotShared });
+            return;
+        };
+        self.watchers.retain(|watcher| {
+            let same = watcher.conn == conn && watcher.tab == tab;
+            if same {
+                watcher.alive.store(false, Ordering::Release);
+            }
+            !same
+        });
+        let alive = Arc::new(AtomicBool::new(true));
+        let (outbox, id, flag) = (link.outbox.clone(), tab.clone(), alive.clone());
+        let tap: crate::terminal::Tap = Box::new(move |feed| {
+            if !flag.load(Ordering::Acquire) || outbox.is_closed() {
+                return false;
+            }
+            if outbox.feed(&id, feed) {
+                return true;
+            }
+            flag.store(false, Ordering::Release);
+            outbox.send(&Message::Stop { tab: id.clone(), reason: Stop::Behind });
+            false
+        });
+        session.read(cx).terminal.watch(tap);
+        self.watchers.push(Watcher { conn, key, tab, alive });
+        cx.notify();
+        store::store(cx).update(cx, |_, cx| cx.notify());
+    }
+
+    fn host_input(&mut self, conn: u64, tab: &str, data: &[u8], cx: &mut Context<Self>) {
+        let Some((key, _)) = self.link_of(conn) else { return };
+        let Some(session) = self.controlled(conn, key, tab, cx) else { return };
+        session.update(cx, |session, cx| {
+            if session.exit.is_some() {
+                return;
+            }
+            {
+                let mut term = session.terminal.term.lock();
+                term.scroll_display(alacritty_terminal::grid::Scroll::Bottom);
+                term.selection = None;
+            }
+            session.terminal.write_remote(data);
+            cx.notify();
+        });
+    }
+
+    fn host_open(&mut self, key: Key, project: &str, launcher: &str, cx: &mut Context<Self>) {
+        let Some(device) = self.device(&key) else { return };
+        if device.blocked || device.access != Access::Control {
+            return;
+        }
+        let path = PathBuf::from(project);
+        let store_entity = store::store(cx);
+        let store = store_entity.read(cx);
+        let Some(workspace) = store
+            .workspaces
+            .iter()
+            .filter(|workspace| !workspace.closed && store.windows.contains_key(&workspace.id))
+            .find(|workspace| workspace.project(&path).is_some())
+            .map(|workspace| workspace.id.clone())
+        else {
+            return;
+        };
+        if !project_shared(&path, cx) {
+            return;
+        }
+        let settings = settings::get(cx);
+        let launcher = match settings.agents.iter().find(|profile| profile.name == launcher) {
+            Some(profile) => Launcher::Agent(profile.clone()),
+            None => match settings.shells.iter().find(|shell| shell.name == launcher) {
+                Some(shell) => Launcher::Shell(shell.clone()),
+                None => return,
+            },
+        };
+        let opened = store_entity.update(cx, |store, cx| store.open_tab(&workspace, &path, launcher, None, cx));
+        if let Some(tab) = opened {
+            self.push_catalogs(cx);
+            if let Some(link) = self.links.get(&key) {
+                link.outbox.send(&Message::Opened { tab });
+            }
+        }
+    }
+
+    fn receive_catalog(&mut self, key: Key, catalog: Catalog, cx: &mut Context<Self>) {
+        let previous = self.links.get(&key).and_then(|link| link.catalog.clone());
+        if let Some(link) = self.links.get_mut(&key) {
+            link.catalog = Some(catalog.clone());
+        }
+        if let Some(previous) = previous {
+            self.notify_changes(key, &previous, &catalog, cx);
+        }
+        self.update_mirrors(&key, cx);
+        cx.notify();
+    }
+
+    fn notify_changes(&self, key: Key, previous: &Catalog, catalog: &Catalog, cx: &mut Context<Self>) {
+        if !settings::get(cx).notifications {
+            return;
+        }
+        let device = self.device_name(&key);
+        for tab in &catalog.tabs {
+            let Some(before) = previous.tabs.iter().find(|old| old.id == tab.id) else { continue };
+            let text = if tab.activity == crate::session::Activity::Waiting
+                && before.activity != crate::session::Activity::Waiting
+            {
+                Some("is waiting for input".to_string())
+            } else if tab.attention && !before.attention {
+                Some(tab.notice.clone().unwrap_or_else(|| "finished".into()))
+            } else {
+                None
+            };
+            let Some(text) = text else { continue };
+            let id = mirror_id(&key, &tab.id);
+            if store::store(cx).update(cx, |store, cx| store.watched(&id, cx)) {
+                continue;
+            }
+            let project = catalog
+                .projects
+                .iter()
+                .find(|project| project.path == tab.project)
+                .map(|project| format!("{device} · {}", project.name))
+                .unwrap_or(device.clone());
+            crate::notify::post(&tab.title, &project, &text, &id);
+        }
+    }
+
+    fn update_mirrors(&mut self, key: &Key, cx: &mut Context<Self>) {
+        let link = self.links.get(key);
+        let online = link.is_some();
+        let catalog = link.and_then(|link| link.catalog.clone());
+        let device = self.device_name(key);
+        let targets: Vec<(String, String)> = self
+            .mirrors
+            .iter()
+            .filter(|(_, target)| target.key == *key)
+            .map(|(id, target)| (id.clone(), target.tab.clone()))
+            .collect();
+        for (id, tab) in targets {
+            let Some(session) = store::store(cx).read(cx).session(&id).cloned() else { continue };
+            let meta = catalog.as_ref().and_then(|catalog| catalog.tabs.iter().find(|item| item.id == tab).cloned());
+            let project = meta.as_ref().and_then(|meta| {
+                catalog
+                    .as_ref()?
+                    .projects
+                    .iter()
+                    .find(|project| project.path == meta.project)
+                    .map(|project| project.name.clone())
+            });
+            let control = catalog.as_ref().is_some_and(|catalog| catalog.control);
+            if meta.as_ref().is_some_and(|meta| meta.attention)
+                && store::store(cx).update(cx, |store, cx| store.watched(&id, cx))
+                && let Some(link) = self.links.get(key)
+            {
+                link.outbox.send(&Message::Seen { tab: tab.clone() });
+            }
+            session.update(cx, |session, cx| {
+                let mut changed = meta.as_ref().is_some_and(|meta| session.apply_remote(meta));
+                if let Some(remote) = &mut session.remote {
+                    let next = Remote {
+                        device: device.clone(),
+                        online,
+                        control: control && online,
+                        project: project.clone().unwrap_or_else(|| remote.project.clone()),
+                        ..remote.clone()
+                    };
+                    if *remote != next {
+                        *remote = next;
+                        changed = true;
+                    }
+                }
+                if changed {
+                    cx.notify();
+                }
+            });
+        }
+        store::store(cx).update(cx, |_, cx| cx.notify());
+    }
+
+    pub fn open_mirror(&mut self, key: Key, tab: &str, workspace: &str, cx: &mut Context<Self>) {
+        let id = mirror_id(&key, tab);
+        let store_entity = store::store(cx);
+        if store_entity.read(cx).session(&id).is_none() {
+            let catalog = self.links.get(&key).and_then(|link| link.catalog.clone()).unwrap_or_default();
+            let meta = catalog
+                .tabs
+                .iter()
+                .find(|item| item.id == tab)
+                .cloned()
+                .unwrap_or_else(|| RemoteTab { id: tab.to_string(), ..Default::default() });
+            let project = catalog
+                .projects
+                .iter()
+                .find(|project| project.path == meta.project)
+                .map(|project| project.name.clone())
+                .unwrap_or_default();
+            let remote = Remote {
+                key,
+                device: self.device_name(&key),
+                tab: tab.to_string(),
+                project,
+                cwd: meta.cwd.clone(),
+                branch: meta.branch.clone(),
+                online: self.links.contains_key(&key),
+                control: catalog.control,
+            };
+            let outboxes = self.outboxes.clone();
+            let remote_tab = tab.to_string();
+            let requests: Box<dyn Fn(Request) + Send> = Box::new(move |request| {
+                let Some(outbox) = outboxes.lock().ok().and_then(|outboxes| outboxes.get(&key).cloned()) else {
+                    return;
+                };
+                match request {
+                    Request::Input(data) => {
+                        outbox.input(&remote_tab, &data);
+                    }
+                    Request::Resize { cols, rows } => {
+                        outbox.send(&Message::Resize {
+                            tab: remote_tab.clone(),
+                            cols: cols.min(u16::MAX as usize) as u16,
+                            rows: rows.min(u16::MAX as usize) as u16,
+                        });
+                    }
+                    Request::Clear => {
+                        outbox.send(&Message::Clear { tab: remote_tab.clone() });
+                    }
+                }
+            });
+            let (session, feeds) = Session::mirror(id.clone(), remote, &meta, requests, cx);
+            store_entity.update(cx, |store, cx| store.add_mirror(session, cx));
+            self.mirrors.insert(id.clone(), Target { key, tab: tab.to_string(), feeds });
+            self.watch(&id, cx);
+        }
+        if let Some(link) = self.links.get(&key) {
+            link.outbox.send(&Message::Seen { tab: tab.to_string() });
+        }
+        let workspace = workspace.to_string();
+        crate::actions::in_window(&workspace, cx, move |view, window, cx| view.select_tab(&id, window, cx));
+    }
+
+    fn watch(&mut self, id: &str, cx: &mut Context<Self>) {
+        let Some(target) = self.mirrors.get(id) else { return };
+        let Some(link) = self.links.get(&target.key) else { return };
+        if let Ok(mut routes) = link.routes.lock() {
+            routes.insert(target.tab.clone(), target.feeds.clone());
+        }
+        link.outbox.send(&Message::Watch { tab: target.tab.clone() });
+        let key = target.key;
+        self.update_mirrors(&key, cx);
+    }
+
+    pub fn close_mirror(&mut self, id: &str, cx: &mut Context<Self>) {
+        if let Some(target) = self.mirrors.remove(id)
+            && let Some(link) = self.links.get(&target.key)
+        {
+            if let Ok(mut routes) = link.routes.lock() {
+                routes.remove(&target.tab);
+            }
+            link.outbox.send(&Message::Unwatch { tab: target.tab.clone() });
+        }
+        let id = id.to_string();
+        store::store(cx).update(cx, |store, cx| store.remove_mirror(&id, cx));
+    }
+
+    pub fn forget_closed_mirrors(&mut self, cx: &mut Context<Self>) {
+        let store = store::store(cx).read(cx);
+        let gone: Vec<String> = self.mirrors.keys().filter(|id| store.session(id).is_none()).cloned().collect();
+        for id in gone {
+            self.close_mirror(&id, cx);
+        }
+    }
+
+    pub fn request_open(&mut self, key: Key, project: &str, launcher: &str, workspace: &str, cx: &mut Context<Self>) {
+        let Some(link) = self.links.get(&key) else { return };
+        link.outbox.send(&Message::Open { project: project.to_string(), launcher: launcher.to_string() });
+        self.opening = Some((key, workspace.to_string()));
+        let _ = cx;
+    }
+
+    pub fn toggle(cx: &mut App) {
+        settings::update(cx, |settings| settings.uplink.enabled = !settings.uplink.enabled);
+    }
+}
+
+pub fn shared(tab: &str, cx: &App) -> bool {
+    if is_mirror(tab) {
+        return false;
+    }
+    let store = store::store(cx).read(cx);
+    let Some(session) = store.session(tab) else { return false };
+    let project =
+        store.workspaces.iter().filter(|workspace| !workspace.closed).find_map(|workspace| workspace.project_of(tab));
+    let Some(project) = project else { return false };
+    session.read(cx).uplink.or(project.uplink).unwrap_or(settings::get(cx).uplink.share)
+}
+
+pub fn project_shared(path: &Path, cx: &App) -> bool {
+    let store = store::store(cx).read(cx);
+    let project =
+        store.workspaces.iter().filter(|workspace| !workspace.closed).find_map(|workspace| workspace.project(path));
+    project.is_some_and(|project| project.uplink.unwrap_or(settings::get(cx).uplink.share))
+}
+
+fn project_key(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
+}
+
+fn catalog(device: &Device, cx: &App) -> Catalog {
+    if device.blocked {
+        return Catalog::default();
+    }
+    let store = store::store(cx).read(cx);
+    let default = settings::get(cx).uplink.share;
+    let mut catalog = Catalog { control: device.access == Access::Control, ..Default::default() };
+    for workspace in store.workspaces.iter().filter(|workspace| !workspace.closed) {
+        for project in workspace.all_projects() {
+            let project_on = project.uplink.unwrap_or(default);
+            let mut any = false;
+            for id in project.tabs.iter().chain(&project.terminals) {
+                let Some(entity) = store.session(id) else { continue };
+                let session = entity.read(cx);
+                if session.remote.is_some() || !session.uplink.unwrap_or(project_on) {
+                    continue;
+                }
+                any = true;
+                catalog.tabs.push(RemoteTab {
+                    id: session.id.clone(),
+                    title: session.display_title(),
+                    kind: session.kind,
+                    agent: session
+                        .running_agent
+                        .clone()
+                        .or_else(|| session.agent.map(|kind| kind.command().to_string())),
+                    program: session.program().map(String::from),
+                    activity: session.activity,
+                    attention: session.attention,
+                    running: session.is_running(),
+                    failed: matches!(session.exit, Some(code) if code != Some(0)),
+                    color: session.color,
+                    project: project_key(&project.path),
+                    cwd: session.cwd.as_deref().map(crate::paths::display),
+                    branch: session.branch.clone(),
+                    notice: session.notice.as_ref().map(|(text, _)| text.clone()),
+                });
+            }
+            if project_on || any {
+                catalog.projects.push(RemoteProject {
+                    path: project_key(&project.path),
+                    name: if project.is_scratch() { String::new() } else { project.display_name() },
+                    color: project.color,
+                    workspace: workspace.name.clone(),
+                });
+            }
+        }
+    }
+    if catalog.control {
+        let settings = settings::get(cx);
+        catalog.launchers.extend(settings.agents.iter().filter(|profile| profile.is_launchable()).map(|profile| {
+            RemoteLauncher {
+                name: profile.name.clone(),
+                agent: true,
+                command: crate::agents::command_name(&profile.executable),
+            }
+        }));
+        catalog.launchers.extend(settings.shells.iter().filter(|shell| shell.is_launchable()).map(|shell| {
+            RemoteLauncher { name: shell.name.clone(), agent: false, command: crate::agents::command_name(&shell.path) }
+        }));
+    }
+    catalog
+}

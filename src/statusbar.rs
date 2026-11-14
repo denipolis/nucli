@@ -26,6 +26,7 @@ pub enum Chip {
     Branch,
     Changes,
     Program,
+    Uplink,
     Skills,
     Instructions,
     Model,
@@ -39,11 +40,12 @@ pub enum Chip {
 }
 
 impl Chip {
-    pub const ALL: [Chip; 14] = [
+    pub const ALL: [Chip; 15] = [
         Chip::Folder,
         Chip::Branch,
         Chip::Changes,
         Chip::Program,
+        Chip::Uplink,
         Chip::Skills,
         Chip::Instructions,
         Chip::Model,
@@ -62,6 +64,7 @@ impl Chip {
             Chip::Branch => "branch",
             Chip::Changes => "changes",
             Chip::Program => "program",
+            Chip::Uplink => "uplink",
             Chip::Skills => "skills",
             Chip::Instructions => "instructions",
             Chip::Model => "model",
@@ -81,6 +84,7 @@ impl Chip {
             Chip::Branch => "Branch",
             Chip::Changes => "Changes",
             Chip::Program => "Program",
+            Chip::Uplink => "Uplink",
             Chip::Skills => "Skills",
             Chip::Instructions => "Instruction files",
             Chip::Model => "Model",
@@ -100,6 +104,7 @@ impl Chip {
             Chip::Branch => "Git branch of that folder",
             Chip::Changes => "Uncommitted changes of the project",
             Chip::Program => "The program running in the tab",
+            Chip::Uplink => "The computer a remote tab runs on, or the devices watching this tab",
             Chip::Skills => "Skills the agent can load, the used ones first",
             Chip::Instructions => "Instruction files the agent loaded (CLAUDE.md, AGENTS.md, …)",
             Chip::Model => "The agent's current model",
@@ -115,7 +120,7 @@ impl Chip {
 
     pub fn group(self) -> &'static str {
         match self {
-            Chip::Folder | Chip::Branch | Chip::Changes | Chip::Program => "Terminal",
+            Chip::Folder | Chip::Branch | Chip::Changes | Chip::Program | Chip::Uplink => "Terminal",
             Chip::Position | Chip::Language | Chip::FileChanges | Chip::Commit => "File view",
             _ => "Agent",
         }
@@ -257,6 +262,9 @@ fn session_chips(
     cx: &mut Context<WorkspaceView>,
 ) -> Vec<AnyElement> {
     let session = session.read(cx);
+    if let Some(remote) = session.remote.clone() {
+        return mirror_chips(session, remote, theme, cx);
+    }
     let folder = session.working_dir().to_path_buf();
     let (reveal, copy) = (folder.clone(), folder.clone());
     let mut chips = Vec::new();
@@ -304,9 +312,112 @@ fn session_chips(
                 .into_any_element(),
         );
     }
+    if let Some(chip) = watched_chip(session, theme, cx) {
+        chips.push(chip);
+    }
     if let Some(info) = session.agent_info.clone() {
         let root = project.unwrap_or_else(|| folder.clone());
         chips.extend(agent_chips(Rc::new(info), root, theme, cx));
+    }
+    chips
+}
+
+fn watched_chip(session: &Session, theme: &Theme, cx: &Context<WorkspaceView>) -> Option<AnyElement> {
+    let uplink = crate::uplink::uplink(cx)?;
+    let uplink = uplink.read(cx);
+    let watchers = uplink.watchers_of(&session.id);
+    if watchers.is_empty() || !Chip::Uplink.shown(cx) {
+        return None;
+    }
+    let names: Vec<(crate::uplink::wire::Key, String)> =
+        watchers.iter().map(|key| (*key, uplink.device_name(key))).collect();
+    let label = names.iter().map(|(_, name)| name.as_str()).collect::<Vec<_>>().join(", ");
+    let id = session.id.clone();
+    Some(
+        clickable(chip("status-uplink", icons::EYE, theme), Chip::Uplink, theme, cx)
+            .child(div().text_color(theme.accent).child(label))
+            .on_click(cx.listener(move |view, event: &gpui::ClickEvent, _, cx| {
+                let tab = id.clone();
+                let mut items = vec![menu::action("Stop Sharing This Tab", move |_, _, cx| {
+                    crate::actions::set_tab_shared(&tab, false, cx)
+                })];
+                for (key, name) in names.clone() {
+                    items.push(menu::action(format!("Disconnect {name}"), move |_, _, cx| {
+                        if let Some(uplink) = crate::uplink::uplink(cx) {
+                            uplink.update(cx, |uplink, cx| uplink.disconnect(&key, cx));
+                        }
+                    }));
+                }
+                view.open_menu(event.position(), items, cx);
+            }))
+            .into_any_element(),
+    )
+}
+
+fn mirror_chips(
+    session: &Session,
+    remote: crate::session::Remote,
+    theme: &Theme,
+    cx: &Context<WorkspaceView>,
+) -> Vec<AnyElement> {
+    let mut chips = Vec::new();
+    if Chip::Uplink.shown(cx) {
+        let (id, key) = (session.id.clone(), remote.key);
+        let online = remote.online;
+        chips.push(
+            clickable(chip("status-uplink", icons::UPLINK, theme), Chip::Uplink, theme, cx)
+                .child(div().text_color(if online { theme.accent } else { theme.faint }).child(remote.device.clone()))
+                .when(!online, |this| this.child(div().text_color(theme.red).child("offline")))
+                .when(online && !remote.control, |this| this.child(div().text_color(theme.orange).child("view only")))
+                .on_click(cx.listener(move |view, event: &gpui::ClickEvent, _, cx| {
+                    let close = id.clone();
+                    let mut items = vec![menu::action("Close View", move |_, _, cx| {
+                        if let Some(uplink) = crate::uplink::uplink(cx) {
+                            uplink.update(cx, |uplink, cx| uplink.close_mirror(&close, cx));
+                        }
+                    })];
+                    if online {
+                        items.push(menu::action("Disconnect", move |_, _, cx| {
+                            if let Some(uplink) = crate::uplink::uplink(cx) {
+                                uplink.update(cx, |uplink, cx| uplink.disconnect(&key, cx));
+                            }
+                        }));
+                    }
+                    items.push(menu::Item::Separator);
+                    items.push(menu::action("Uplink Settings…", |view, window, cx| {
+                        crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx)
+                    }));
+                    view.open_menu(event.position(), items, cx);
+                }))
+                .into_any_element(),
+        );
+    }
+    if let Some(folder) = remote.cwd.clone().filter(|_| Chip::Folder.shown(cx)) {
+        let copy = folder.clone();
+        chips.push(
+            clickable(chip("status-folder", icons::FOLDER, theme), Chip::Folder, theme, cx)
+                .flex_shrink()
+                .min_w_0()
+                .child(div().min_w_0().truncate().child(folder))
+                .on_click(cx.listener(move |view, event: &gpui::ClickEvent, _, cx| {
+                    view.open_menu(event.position(), vec![menu::copy("Copy Path", copy.clone())], cx);
+                }))
+                .into_any_element(),
+        );
+    }
+    if let Some(branch) = remote.branch.clone().filter(|_| Chip::Branch.shown(cx)) {
+        chips.push(
+            clickable(chip("status-branch", icons::BRANCH, theme), Chip::Branch, theme, cx)
+                .child(branch)
+                .into_any_element(),
+        );
+    }
+    if let Some(name) = session.program().map(str::to_string).filter(|_| Chip::Program.shown(cx)) {
+        chips.push(
+            clickable(chip("status-program", icons::PLAY, theme), Chip::Program, theme, cx)
+                .child(name)
+                .into_any_element(),
+        );
     }
     chips
 }

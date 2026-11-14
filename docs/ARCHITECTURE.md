@@ -19,6 +19,7 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `terminal/boxes.rs` | Box and block characters as rectangles. |
 | `terminal/links.rs` | Finding URLs and `path:line:col` under the mouse. |
 | `terminal/find.rs` | Terminal find bar. |
+| `terminal/snapshot.rs` | Serializes a terminal's state (scrollback, screen, styles, links, modes, cursor) into the bytes that rebuild it, for a remote view joining midway. |
 | `window.rs` | `WorkspaceView`, the window root: title bar, layout, overlays, focus. |
 | `actions.rs` | Handlers for commands, launching, closing, renaming, moving, context menus, quit and close prompts. |
 | `commands.rs` | The command table: name, title, action, keys per platform, the menus shared by the native menu bar and the title bar, `keybindings.json`. |
@@ -59,6 +60,13 @@ One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes 
 | `icons.rs` | Nerd Font codepoints, file type glyphs. |
 | `settings.rs`, `paths.rs` | `settings.json`, platform folders, atomic writes. |
 | `devtools.rs` | Debug builds only: control file. |
+| `uplink/mod.rs` | `Uplink` (one global entity): settings, paired devices, live links, remote catalogs, host side rules (what is shared, view or control) and remote views (mirror sessions). |
+| `uplink/wire.rs` | Keys, codes, SPAKE2 pairing, Noise handshakes and the encrypted, fragmented frame stream. |
+| `uplink/net.rs` | Threads: listener, handshakes, dialing, joining, per connection reader and writer, multicast DNS discovery. Events go to the main thread over one channel. |
+| `uplink/protocol.rs` | Messages (JSON) and terminal frames (binary) between devices. |
+| `uplink/devices.rs` | `uplink.json`: the device key and the paired devices, written readable by the user only. |
+| `uplink/invite.rs` | Local addresses and the pairing link shown as a QR code. |
+| `uplink/page.rs`, `uplink/sidebar.rs` | Settings › Uplink and the Uplink sidebar tab. |
 
 ## State
 
@@ -112,9 +120,23 @@ Tabs for a commit's version of a file are stored as `path@@hash`.
 - What the transcript records wins over discovery: Claude's `instructions`, `nested_memory`, `skill_listing` and MCP deltas, pi's system prompt sections. Codex records no instruction file paths, so they come from its lookup rules. Unknown models get no context window unless the tokens seen pass 200k, then 1M is assumed.
 - No agent writes compaction progress to disk (Claude's `sessions/<pid>.json` stays `busy`, the transcript gets `compact_boundary` only after it ends), so `Session::apply` scans the visible screen for the agent's own spinner line (`Compacting conversation…`, `Compacting context...`, `Auto-compacting...`) and sets `AgentInfo.compacting`.
 
+## Uplink
+
+Peer to peer: every device listens and dials. Between two paired devices there is one TCP connection; when both dial at once, both keep the one opened by the device with the smaller key and close the other. Each connection runs a reader and a writer thread; the writer pings every 15 seconds and a reader that hears nothing for 45 seconds drops the link. Dialing backs off from 2 to 30 seconds and restarts when multicast DNS sees the device.
+
+Security lives in `wire.rs`: SPAKE2 turns the 40-bit code into a key that authenticates a Noise `XXpsk3` handshake, so a wrong guess fails online and costs one of 3 attempts; sessions use Noise `XX` and both sides check the remote static key. A PSK pattern alone must never take the short code directly: an active attacker could test codes offline. Both sides send `Hello` as the first encrypted message and only then report the link, so the dialing side learns about a refusal before it shows the device online. Frames are a 2-byte length and one Noise message (at most 65535 bytes), and a message of up to 16 MB is split across frames with a "more" byte.
+
+A remote view mirrors the terminal byte stream instead of drawing cells: the host's `Terminal` has taps (`terminal::Tap`) that receive exactly what its own `Term` processes, under the same lock, so a viewer's `Term` of the same size stays identical and scrollback, selection, find and links work unchanged. `Feed` carries the bytes of both parsers (the reader thread's and the main thread's own, for anchoring and clears), resizes and parser flushes in order. A new viewer is attached by the reader thread between chunks and outside a synchronized update: `Start` resets the viewer (`ESC c` plus the size) and `snapshot.rs` sends the current state, then the live stream continues. The viewer never answers terminal queries (the host's terminal does) and never times out synchronized updates itself; it waits for the host's `Flush`.
+
+The terminal has one size: `resize_remote` marks a host terminal as sized by a viewer, which makes the local view's own resizes no-ops until local input (`Terminal::claim`). A mirror's view sends a resize request when its own size changes and again before input when the terminal has another size.
+
+All rules are checked on the host on every request: shared (`uplink::shared`), the device's access, blocked, and that the connection watches the tab. `Uplink::enforce` runs after every store change, stops watchers of tabs that are no longer shared and pushes changed catalogs. A tap returns false to remove itself: when its connection closes, when the watcher is stopped, or when more than 8 MB wait on the connection, in which case the host sends `Stop::Behind` and the viewer watches again with a fresh snapshot.
+
+Mirrors are `Session`s whose `Terminal` has no pty (`Backend::Mirror`). They sit in `Store.sessions` under `uplink:<key prefix>:<tab id>` and are selected like tabs, but belong to no project: `Store::shower_of` finds the window showing one, `remove_tab` closes them, and the status poll skips them because they have no process.
+
 ## Gotchas
 
-- `libc` is pinned to 0.2.186 in `Cargo.lock`. `gpui`'s `xattr` 0.2 dependency needs `libc::ENOATTR`, which newer `libc` versions do not define on Linux. Do not run a plain `cargo update` without checking the Linux build.
+- `libc` is pinned to 0.2.189 in `Cargo.lock`. `gpui`'s `xattr` 0.2 dependency needs `libc::ENOATTR`, which later `libc` versions do not define on Linux, and `mdns-sd` needs at least 0.2.189. Do not run a plain `cargo update` without checking the Linux build.
 - Platforms consume shift for symbols, so `ctrl-shift-2` arrives as `ctrl-@`. `commands::shifted_alias` also binds the US layout's shifted form of every such key.
 - On Windows a native modal dialog pumps messages, so GPUI tasks run inside whatever update opened it and panic with `RefCell already borrowed`. Show one from its own thread, as `notify::alert` does.
 - `Window::handle_input` panics outside paint: call it from a `canvas` paint closure, not prepaint.
@@ -132,6 +154,8 @@ Tabs for a commit's version of a file are stored as `path@@hash`.
 - `Window::dispatch_event` returns a private type, so input cannot be simulated with it from outside `gpui`.
 - GPUI does not paint while the macOS screen is locked, and window captures come back black. It also stops presenting while a window is fully covered, so captures of a window behind others show an old frame.
 - On X11 GPUI starts painting only after a window manager reports the window as visible, so a bare Xvfb stays black.
+- The snapshot cannot reproduce state that `alacritty_terminal` keeps private: the scroll region, tab stops, the saved cursor, charsets and the primary screen while a program uses the alternate screen. Programs redraw these on their next full repaint.
+- macOS only lets an app that declares `NSLocalNetworkUsageDescription` and `NSBonjourServices` (in `scripts/package.sh`) use the local network once the user allows it. Without that, multicast DNS answers only on loopback and other machines cannot find the device; an unbundled debug binary is attributed to the app that launched it.
 - `runtime_shaders` is on because the Metal compiler is not installed everywhere; shaders compile at startup instead.
 - Release builds on Windows compile shaders with `fxc.exe` from the Windows SDK; they cannot be cross-compiled from another system. `GPUI_FXC_PATH` overrides its location.
 

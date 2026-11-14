@@ -372,6 +372,13 @@ fn running_agent(view: &WorkspaceView, id: &str, cx: &App) -> bool {
 }
 
 pub fn close_tab(view: &mut WorkspaceView, id: &str, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    if crate::uplink::is_mirror(id) {
+        if let Some(uplink) = crate::uplink::uplink(cx) {
+            uplink.update(cx, |uplink, cx| uplink.close_mirror(id, cx));
+        }
+        view.focus_current(window, cx);
+        return;
+    }
     let skip = view.store(cx).skip_close_confirm_until > crate::terminal::now_ms();
     let id = id.to_string();
     if !running_agent(view, &id, cx) || skip {
@@ -468,6 +475,9 @@ pub fn close_project(view: &mut WorkspaceView, path: &Path, window: &mut Window,
 }
 
 pub fn begin_rename(view: &mut WorkspaceView, target: Rename, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    if matches!(&target, Rename::Tab(id) if crate::uplink::is_mirror(id)) {
+        return;
+    }
     let current = match &target {
         Rename::Project(path) => view
             .state(cx)
@@ -751,11 +761,55 @@ pub fn project_menu(view: &WorkspaceView, path: &Path, cx: &App) -> Vec<Item> {
     }
     items.push(menu::copy("Copy Path", target.to_string_lossy()));
     items.push(Item::Separator);
+    if crate::uplink::Uplink::enabled(cx) {
+        let shared = crate::uplink::project_shared(path, cx);
+        let (workspace, share_target) = (view.workspace.clone(), target.clone());
+        let label = if shared { "[x] Share over Uplink" } else { "[ ] Share over Uplink" };
+        items.push(menu::action(label, move |_, _, cx| {
+            let (workspace, share_target) = (workspace.clone(), share_target.clone());
+            store::store(cx).update(cx, |store, cx| {
+                if let Some(project) =
+                    store.workspace_mut(&workspace).and_then(|state| state.project_mut(&share_target))
+                {
+                    project.uplink = Some(!shared);
+                }
+                store.changed(cx);
+            });
+        }));
+    }
     items.push(menu::action("Close Project", move |view, window, cx| close_project(view, &target, window, cx)));
     items
 }
 
+pub fn set_tab_shared(id: &str, on: bool, cx: &mut App) {
+    if let Some(session) = store::store(cx).read(cx).session(id).cloned() {
+        session.update(cx, |session, cx| {
+            session.uplink = Some(on);
+            cx.notify();
+        });
+    }
+    store::store(cx).update(cx, |store, cx| store.changed(cx));
+}
+
+fn mirror_menu(id: &str) -> Vec<Item> {
+    let close = id.to_string();
+    vec![
+        menu::action("Close View", move |_, _, cx| {
+            if let Some(uplink) = crate::uplink::uplink(cx) {
+                uplink.update(cx, |uplink, cx| uplink.close_mirror(&close, cx));
+            }
+        }),
+        Item::Separator,
+        menu::action("Uplink Settings…", |view, window, cx| {
+            crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx)
+        }),
+    ]
+}
+
 pub fn tab_menu(view: &WorkspaceView, id: &str, cx: &App) -> Vec<Item> {
+    if crate::uplink::is_mirror(id) {
+        return mirror_menu(id);
+    }
     let color = view.store(cx).session(id).and_then(|session| session.read(cx).color);
     let grouped = view.state(cx).is_some_and(|state| crate::splits::group(&state.layouts, id).is_some());
     let mut items = Vec::new();
@@ -803,6 +857,12 @@ pub fn tab_menu(view: &WorkspaceView, id: &str, cx: &App) -> Vec<Item> {
         items.push(menu::action("Move Out of Project", move |view, window, cx| {
             move_tab(view, &id, Path::new(""), None, window, cx)
         }));
+    }
+    if crate::uplink::Uplink::enabled(cx) {
+        let shared = crate::uplink::shared(id, cx);
+        let tab = id.to_string();
+        let label = if shared { "[x] Share over Uplink" } else { "[ ] Share over Uplink" };
+        items.push(menu::action(label, move |_, _, cx| set_tab_shared(&tab, !shared, cx)));
     }
     let id = id.to_string();
     items.push(menu::action("Close Tab", move |view, window, cx| close_tab(view, &id, window, cx)));
@@ -1300,6 +1360,21 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|view, _: &ShowProjects, _, cx| show_sidebar_tab(view, SidebarTab::Projects, cx)))
         .on_action(cx.listener(|view, _: &ShowAgents, _, cx| show_sidebar_tab(view, SidebarTab::Agents, cx)))
         .on_action(cx.listener(|view, _: &ShowHistory, _, cx| show_sidebar_tab(view, SidebarTab::History, cx)))
+        .on_action(cx.listener(|view, _: &ShowUplink, window, cx| {
+            if crate::uplink::Uplink::enabled(cx) {
+                show_sidebar_tab(view, SidebarTab::Uplink, cx);
+            } else {
+                crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx);
+            }
+        }))
+        .on_action(cx.listener(|_, _: &ToggleUplink, _, cx| crate::uplink::Uplink::toggle(cx)))
+        .on_action(cx.listener(|view, _: &PairDevice, window, cx| {
+            settings::update(cx, |settings| settings.uplink.enabled = true);
+            if let Some(uplink) = crate::uplink::uplink(cx) {
+                uplink.update(cx, |uplink, cx| uplink.start_pairing(crate::uplink::devices::Access::Control, cx));
+            }
+            crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx);
+        }))
         .on_action(cx.listener(|_, _: &ShowFiles, _, cx| show_panel_tab(PanelTab::Files, cx)))
         .on_action(cx.listener(|_, _: &ShowChanges, _, cx| show_panel_tab(PanelTab::Changes, cx)))
         .on_action(cx.listener(|_, _: &ShowCommits, _, cx| show_panel_tab(PanelTab::Commits, cx)))

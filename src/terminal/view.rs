@@ -440,7 +440,7 @@ fn fit(image: Size<Pixels>, room: Size<Pixels>) -> Size<Pixels> {
 
 fn grid_point(session: &Session, position: Point<Pixels>) -> Option<(GridPoint, Side)> {
     let (origin, cell) = session.view.layout?;
-    let size = session.terminal.size;
+    let size = session.terminal.size();
     let x = f32::from(position.x - origin.x) / f32::from(cell.width);
     let y = f32::from(position.y - origin.y) / f32::from(cell.height);
     let column = (x.max(0.0) as usize).min(size.cols - 1);
@@ -458,7 +458,7 @@ fn mouse_report(
     mods: &gpui::Modifiers,
 ) -> Option<Vec<u8>> {
     let (column, row) = session.cell_at(position)?;
-    let size = session.terminal.size;
+    let size = session.terminal.size();
     let column = column.min(size.cols - 1) + 1;
     let row = row.min(size.rows - 1) + 1;
     let code =
@@ -490,7 +490,7 @@ fn button_code(button: MouseButton) -> Option<u8> {
 
 impl Session {
     pub fn input(&mut self, bytes: &[u8], cx: &mut Context<Self>) {
-        if self.exit.is_some() {
+        if self.exit.is_some() || self.remote.as_ref().is_some_and(|remote| !remote.control) {
             return;
         }
         {
@@ -499,6 +499,7 @@ impl Session {
             term.selection = None;
         }
         self.view.cursor_hidden = false;
+        self.terminal.claim();
         self.terminal.write(bytes);
         cx.notify();
     }
@@ -594,6 +595,7 @@ impl Session {
             let uri = link.uri().to_string();
             drop(term);
             let target = match uri.strip_prefix("file://") {
+                Some(_) if self.remote.is_some() => None,
                 Some(path) => links::classify(path, self.working_dir(), &self.project),
                 None => Some(Target::Url(uri)),
             }?;
@@ -603,6 +605,9 @@ impl Session {
         let (start, end, token) = links::token_at(&text, index)?;
         drop(term);
         let target = links::classify(&token, self.working_dir(), &self.project)?;
+        if self.remote.is_some() && matches!(target, Target::File(..)) {
+            return None;
+        }
         Some(Link { start: cells[start], end: cells[end], target })
     }
 
@@ -647,6 +652,7 @@ impl Session {
 
     fn mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus);
+        self.terminal.claim();
         if event.button == MouseButton::Left
             && event.modifiers.secondary()
             && let Some(link) = self.link_at(event.position)

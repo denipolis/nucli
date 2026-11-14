@@ -17,7 +17,7 @@ use crate::window::WorkspaceView;
 
 type Rows = Vec<Vec<Entity<TextInput>>>;
 
-const SECTIONS: [(SettingsSection, &str, &str, &str); 7] = [
+const SECTIONS: [(SettingsSection, &str, &str, &str); 8] = [
     (
         SettingsSection::General,
         icons::SETTINGS,
@@ -33,6 +33,12 @@ const SECTIONS: [(SettingsSection, &str, &str, &str); 7] = [
         icons::GAUGE,
         "Status Chips",
         "The row of chips under a tab or file. Right-click a chip to hide it.",
+    ),
+    (
+        SettingsSection::Uplink,
+        icons::UPLINK,
+        "Uplink",
+        "Control the agents and terminals of your other computers, and let them control yours.",
     ),
     (SettingsSection::Keybindings, icons::KEYBOARD, "Keybindings", "Click a key, then press the new one."),
 ];
@@ -51,6 +57,7 @@ pub struct SettingsPage {
     agents: Rows,
     shells: Rows,
     subscriptions: Vec<Subscription>,
+    pub uplink: Option<crate::uplink::page::Inputs>,
     _filter_subscription: Subscription,
 }
 
@@ -99,6 +106,7 @@ pub fn show(
             agents: Vec::new(),
             shells: Vec::new(),
             subscriptions: Vec::new(),
+            uplink: None,
             _filter_subscription: filter_subscription,
         });
     }
@@ -761,6 +769,9 @@ fn chips_page(current: &Settings, theme: &Theme, cx: &App) -> Vec<AnyElement> {
 
 pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) -> AnyElement {
     sync_fields(view, window, cx);
+    if view.store(cx).ui.settings_section == SettingsSection::Uplink {
+        crate::uplink::page::ensure(view, window, cx);
+    }
     let theme = ui::theme(cx);
     let current = settings::get(cx).clone();
     let system_dark = ui::system_dark(cx);
@@ -808,6 +819,7 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
         (SettingsSection::Agents, Some(page)) => agents_page(page, &current, &theme),
         (SettingsSection::Shells, Some(page)) => shells_page(page, &current, &theme),
         (SettingsSection::StatusChips, _) => chips_page(&current, &theme, cx),
+        (SettingsSection::Uplink, _) => crate::uplink::page::render(view, cx),
         (SettingsSection::Keybindings, _) => keybindings(view, &theme, cx),
         _ => Vec::new(),
     };

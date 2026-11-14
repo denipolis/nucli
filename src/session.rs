@@ -18,7 +18,8 @@ pub enum Kind {
     Terminal,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Activity {
     #[default]
     Idle,
@@ -70,7 +71,21 @@ pub struct Session {
     pub agent_info: Option<crate::agent_info::AgentInfo>,
     pub started: SystemTime,
     pub view: terminal::view::ViewState,
+    pub uplink: Option<bool>,
+    pub remote: Option<Remote>,
     _events: Task<()>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Remote {
+    pub key: crate::uplink::wire::Key,
+    pub device: String,
+    pub tab: String,
+    pub project: String,
+    pub cwd: Option<String>,
+    pub branch: Option<String>,
+    pub online: bool,
+    pub control: bool,
 }
 
 impl EventEmitter<SessionEvent> for Session {}
@@ -94,15 +109,49 @@ impl Session {
         let launch = environment(program, args, profile_env, spec.cwd.clone());
         let settings = settings::get(cx);
         let cursor = terminal::cursor_style(settings.cursor, settings.cursor_blink);
-        let (mut terminal, mut events) = Terminal::spawn(launch, size, cursor)?;
+        let (mut terminal, events) = Terminal::spawn(launch, size, cursor)?;
         terminal.anchor_prompt(spec.kind != Kind::Agent);
         if let Some(text) = spec.restored.as_deref().filter(|text| !text.trim().is_empty()) {
             let body = text.replace('\n', "\r\n");
             let mark = terminal::RESTORED_MARK;
             terminal.feed(format!("\x1b[2m{body}\x1b[0m\r\n\x1b[2m{mark}\x1b[0m\r\n").as_bytes());
         }
-        let agent = spec.profile.as_ref().and_then(AgentProfile::kind);
-        Ok(cx.new(|cx| {
+        let id = spec.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        Ok(Session::create(id, spec.kind, terminal, events, cx, |session| {
+            session.profile = spec.profile.as_ref().map(|profile| profile.name.clone());
+            session.agent = spec.profile.as_ref().and_then(AgentProfile::kind);
+            session.shell = spec.shell.clone();
+            session.conversation = spec.conversation.clone();
+            session.project = spec.cwd.clone();
+        }))
+    }
+
+    pub fn mirror(
+        id: String,
+        remote: Remote,
+        tab: &crate::uplink::protocol::RemoteTab,
+        requests: Box<dyn Fn(terminal::Request) + Send>,
+        cx: &mut App,
+    ) -> (Entity<Session>, std::sync::mpsc::Sender<terminal::Feed>) {
+        let settings = settings::get(cx);
+        let cursor = terminal::cursor_style(settings.cursor, settings.cursor_blink);
+        let (terminal, events, feeds) = Terminal::mirror(default_size(cx), cursor, requests);
+        let entity = Session::create(id, tab.kind, terminal, events, cx, |session| {
+            session.remote = Some(remote);
+            session.apply_remote(tab);
+        });
+        (entity, feeds)
+    }
+
+    fn create(
+        id: String,
+        kind: Kind,
+        terminal: Terminal,
+        mut events: futures::channel::mpsc::UnboundedReceiver<Event>,
+        cx: &mut App,
+        setup: impl FnOnce(&mut Session),
+    ) -> Entity<Session> {
+        cx.new(|cx| {
             let task = cx.spawn(async move |this: gpui::WeakEntity<Session>, cx: &mut gpui::AsyncApp| {
                 while let Some(event) = events.next().await {
                     if this.update(cx, |session, cx| session.handle(event, cx)).is_err() {
@@ -126,16 +175,16 @@ impl Session {
             })
             .detach();
             let mut session = Session {
-                id: spec.id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
-                kind: spec.kind,
-                profile: spec.profile.as_ref().map(|profile| profile.name.clone()),
-                agent,
-                shell: spec.shell.clone(),
+                id,
+                kind,
+                profile: None,
+                agent: None,
+                shell: None,
                 name: None,
                 title: None,
                 color: None,
-                conversation: spec.conversation.clone(),
-                project: spec.cwd.clone(),
+                conversation: None,
+                project: PathBuf::new(),
                 terminal,
                 focus: cx.focus_handle(),
                 exit: None,
@@ -150,11 +199,49 @@ impl Session {
                 agent_info: None,
                 started: SystemTime::now(),
                 view: Default::default(),
+                uplink: None,
+                remote: None,
                 _events: task,
             };
+            setup(&mut session);
             session.apply_theme(cx);
             session
-        }))
+        })
+    }
+
+    pub fn apply_remote(&mut self, tab: &crate::uplink::protocol::RemoteTab) -> bool {
+        let before = (
+            self.name.clone(),
+            self.color,
+            self.activity,
+            self.attention,
+            self.foreground.clone(),
+            self.running_agent.clone(),
+            self.exit,
+            self.remote.clone(),
+        );
+        self.name = Some(tab.title.clone()).filter(|title| !title.is_empty());
+        self.color = tab.color;
+        self.activity = tab.activity;
+        self.attention = tab.attention;
+        self.foreground = tab.program.clone();
+        self.running_agent = tab.agent.clone();
+        self.exit = (!tab.running).then_some(Some(u32::from(tab.failed)));
+        if let Some(remote) = &mut self.remote {
+            remote.cwd = tab.cwd.clone();
+            remote.branch = tab.branch.clone();
+        }
+        let after = (
+            self.name.clone(),
+            self.color,
+            self.activity,
+            self.attention,
+            self.foreground.clone(),
+            self.running_agent.clone(),
+            self.exit,
+            self.remote.clone(),
+        );
+        before != after
     }
 
     fn handle(&mut self, event: Event, cx: &mut Context<Self>) {
@@ -261,6 +348,7 @@ impl Session {
             color: self.color,
             conversation: self.conversation.clone(),
             cwd: self.cwd.clone(),
+            uplink: self.uplink,
         }
     }
 
