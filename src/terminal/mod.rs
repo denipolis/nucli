@@ -210,6 +210,7 @@ enum Backend {
     Mirror {
         requests: Box<dyn Fn(Request) + Send>,
         requested: Option<(usize, usize)>,
+        typed: bool,
     },
 }
 
@@ -301,7 +302,7 @@ impl Terminal {
         let terminal = Terminal {
             term,
             listener,
-            backend: Backend::Mirror { requests, requested: None },
+            backend: Backend::Mirror { requests, requested: None, typed: false },
             pid: None,
             anchor: Arc::new(AtomicBool::new(false)),
             activity,
@@ -331,7 +332,8 @@ impl Terminal {
     }
 
     pub fn write(&mut self, bytes: &[u8]) {
-        if let Backend::Mirror { requests, requested } = &mut self.backend {
+        if let Backend::Mirror { requests, requested, typed } = &mut self.backend {
+            *typed = true;
             let current = self.listener.size.lock().map(|size| (size.cols, size.rows)).ok();
             if let Some((cols, rows)) = *requested
                 && current != Some((cols, rows))
@@ -378,11 +380,15 @@ impl Terminal {
 
     pub fn resize(&mut self, size: GridSize) {
         match &mut self.backend {
-            Backend::Mirror { requests, requested } => {
+            Backend::Mirror { requests, requested, typed } => {
                 self.size = size;
                 if *requested != Some((size.cols, size.rows)) && size.cols >= 2 && size.rows >= 1 {
+                    let current = self.listener.size.lock().map(|size| (size.cols, size.rows)).ok();
+                    let owned = *typed && current == *requested;
                     *requested = Some((size.cols, size.rows));
-                    requests(Request::Resize { cols: size.cols, rows: size.rows });
+                    if owned {
+                        requests(Request::Resize { cols: size.cols, rows: size.rows });
+                    }
                 }
             }
             Backend::Pty { remote_size: true, .. } => {}
