@@ -731,7 +731,7 @@ mod tests {
         let started = SystemTime::now() - Duration::from_secs(60);
         let (year, month, day) = civil(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 / 86400);
         let rollout = home.join(format!("sessions/{year:04}/{month:02}/{day:02}/rollout-2025-c-9.jsonl"));
-        let cwd_text = cwd.to_string_lossy();
+        let cwd_text = cwd.to_string_lossy().replace('\\', "\\\\");
         write(
             &rollout,
             &format!(
