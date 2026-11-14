@@ -292,23 +292,26 @@ Uplink lets computers running Nucli control each other's tabs: run agents on one
 - Settings › Uplink starts with the **Uplink** toggle (`uplink.enabled`, off by default). Everything else on the page shows only while it is on. "Turn Uplink On or Off" in the palette does the same.
 - Off means off: no port is open, nothing is announced, every connection closes and every remote view closes at once.
 - On, Nucli listens on TCP port `uplink.port` (47100, the development build 47101) on every network interface and announces itself with multicast DNS (`_nucli-uplink._tcp`, with its name and public key) so devices on the same network find each other. On macOS the system asks once for Local Network access; on Windows the firewall asks once whether Nucli may accept connections. Turning Uplink off while its sidebar tab is shown shows Projects.
-- The page then lists, from top to bottom: the listening status and the latest event ("Paired with laptop.", "A device entered a wrong code. 2 attempts left."), Paired devices, Pair a new device, Join a device, Sharing, and This device (name, port, the addresses it can be reached at, and its fingerprint).
+- The toggle then shows the status (`On as laptop · port 47100 · 1 of 2 devices online`) and the latest event ("Paired with laptop.", "A device entered a wrong code. 2 attempts left."). Below it are **Devices** and **This computer**: name, Share tabs by default, port, the addresses it can be reached at, and its fingerprint.
 
 ### Pairing
 
 Two devices pair once; after that they find and connect to each other by themselves whenever both are on.
 
-- **Pair a new device** (on the computer to be reached, also "Uplink: Pair a Device…" in the palette): choose whether the new device can **control** or only **view** this computer's shared tabs, then `pair`. Nucli shows a one-time code of 8 letters and digits (`K7QM-4XRP`), a QR code and a "copy pairing link" button. The code works once, for 5 minutes, and pairing stops after 3 wrong codes; cancel stops it at once.
-- **Join a device** (on the other computer): nearby devices that are pairing are listed; click one (or type its name or address, `host`, `host:port`, an IP address), type the code, choose whether that device can control or only view this computer's shared tabs, and press `enter` or `join`. Codes ignore case and dashes, and `O`/`I`/`L` read as `0`/`1`. Pasting the pairing link (from the QR code or "copy pairing link") into the code field fills in the addresses too and pins the device's key, so it works across networks where multicast does not reach.
-- Both devices then list each other under Paired devices, each with the access chosen on its side; change it any time.
+- Choose **add device** under Devices on both computers (also "Uplink: Pair a Device…" in the palette). Each shows its own one-time code of 8 letters and digits (`K7QM-4XRP`), a QR code and a "copy pairing link" button, and a field for the code of the other computer. Typing the code of either computer into the other pairs them. A code works once, for 5 minutes, and pairing stops after 3 wrong codes; cancel stops it at once.
+- Nearby computers that are adding a device are listed under the field. With one, it is chosen; with several, click one. With none, type its name or address (`host`, `host:port`, an IP address) next to the code. Press `enter` or `join`. Codes ignore case and dashes, and `O`/`I`/`L` read as `0`/`1`. Pasting the pairing link (from the QR code or "copy pairing link") into the code field fills in the addresses too and pins the device's key, so it works across networks where multicast does not reach.
+- Both devices then list each other under Devices with control; change it any time. Adding a device stops on both computers once they are paired.
 
-### Paired devices
+### Devices
 
-Each paired device shows its system glyph, name, state (`online · address · watching N of your tabs`, `offline · seen 5 minutes ago · not reachable`, `blocked`), its fingerprint, and:
+Each paired device is one row: its system glyph, name, state (`online · address · watching N of your tabs`, `offline · seen 5 minutes ago · not reachable`, `blocked`) and what it **can** do with this computer's shared tabs:
 
-- **it can control / view your shared tabs**: control means typing into shared tabs, resizing them, clearing them and opening new tabs in shared projects. A device that can control a tab can run any command there. View means watching only; its keystrokes are ignored.
+- **control** means typing into shared tabs, resizing them, clearing them and opening new tabs in shared projects. A device that can control a tab can run any command there. **view** means watching only; its keystrokes are ignored.
+
+Clicking a row opens its details: the fingerprint, **also reach it at**, and the buttons below.
+
 - **disconnect** drops the connection (it reconnects later), **block** refuses it until **unblock**, **forget** (confirmed) removes the pairing on this side and, when the device is online, on its side too; the device must pair again to reconnect. A device forgotten while offline is refused when it calls (`it refused this device`) until it is forgotten there too.
-- **also try**: names or addresses to reach it by, comma separated, for networks without multicast. Nucli also remembers the last addresses that worked.
+- **also reach it at**: names or addresses, comma separated, for networks without multicast. Nucli also remembers the last addresses that worked.
 
 ### Sharing
 

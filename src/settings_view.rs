@@ -232,7 +232,8 @@ pub fn group(theme: &Theme) -> Div {
     div().flex().flex_col().border_1().border_color(theme.border).bg(theme.surface)
 }
 
-pub fn row(label: &'static str, hint: &'static str, control: impl IntoElement, theme: &Theme) -> Div {
+pub fn row(label: &'static str, hint: impl Into<SharedString>, control: impl IntoElement, theme: &Theme) -> Div {
+    let hint = hint.into();
     div()
         .flex()
         .items_center()

@@ -569,6 +569,9 @@ impl Uplink {
             self.join = Join::Done(name.clone());
         }
         self.note = Some(format!("Paired with {name}. It connects by itself from now on."));
+        if let Ok(mut pairing) = self.shared.pairing.lock() {
+            *pairing = None;
+        }
         self.dialing.remove(&key);
         self.save(cx);
         self.announce();
@@ -602,13 +605,19 @@ impl Uplink {
                     cx.notify();
                     return;
                 };
-                let nearby = self.nearby.iter().find(|nearby| {
-                    nearby.name == address.trim()
-                        || nearby.addresses.iter().any(|known| known.to_string() == address.trim())
-                });
+                let address = address.trim();
+                let paired: Vec<Key> = self.devices.iter().filter_map(Device::public).collect();
+                let waiting: Vec<&Nearby> =
+                    self.nearby.iter().filter(|nearby| nearby.pairing && !paired.contains(&nearby.key)).collect();
+                let nearby = match waiting.as_slice() {
+                    [only] if address.is_empty() => Some(*only),
+                    _ => self.nearby.iter().find(|nearby| {
+                        nearby.name == address || nearby.addresses.iter().any(|known| known.to_string() == address)
+                    }),
+                };
                 let addresses = match nearby {
                     Some(nearby) => nearby.addresses.iter().map(|known| known.to_string()).collect(),
-                    None => vec![address.trim().to_string()],
+                    None => vec![address.to_string()],
                 };
                 (addresses, code, nearby.map(|nearby| nearby.key))
             }

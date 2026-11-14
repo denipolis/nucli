@@ -22,8 +22,7 @@ pub struct Inputs {
     address: Entity<TextInput>,
     code: Entity<TextInput>,
     manual: Vec<(String, Entity<TextInput>)>,
-    access: Access,
-    join_access: Access,
+    open: Option<String>,
     subscriptions: Vec<Subscription>,
 }
 
@@ -41,18 +40,21 @@ fn with_uplink(cx: &mut App, change: impl FnOnce(&mut Uplink, &mut Context<Uplin
     }
 }
 
+fn page_inputs(view: &WorkspaceView) -> Option<&Inputs> {
+    view.settings.as_ref().and_then(|page| page.uplink.as_ref())
+}
+
 fn join(view: &mut WorkspaceView, cx: &mut Context<WorkspaceView>) {
-    let Some(inputs) = view.settings.as_ref().and_then(|page| page.uplink.as_ref()) else { return };
+    let Some(inputs) = page_inputs(view) else { return };
     let (address, code) = (inputs.address.read(cx).text.clone(), inputs.code.read(cx).text.clone());
-    let access = inputs.join_access;
-    with_uplink(cx, |uplink, cx| uplink.start_join(&address, &code, access, cx));
+    with_uplink(cx, |uplink, cx| uplink.start_join(&address, &code, Access::Control, cx));
 }
 
 pub fn ensure(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     let joined = super::uplink(cx).filter(|uplink| matches!(uplink.read(cx).join, Join::Done(_)));
     if let Some(uplink) = joined {
         uplink.update(cx, |uplink, _| uplink.finish_join());
-        if let Some(inputs) = view.settings.as_ref().and_then(|page| page.uplink.as_ref()) {
+        if let Some(inputs) = page_inputs(view) {
             let (address, code) = (inputs.address.clone(), inputs.code.clone());
             address.update(cx, |input, cx| input.clear(cx));
             code.update(cx, |input, cx| input.clear(cx));
@@ -63,7 +65,7 @@ pub fn ensure(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
         let config = settings::get(cx).uplink.clone();
         let name = input(&config.device_name(), &config.name, cx);
         let port = input(&UPLINK_PORT.to_string(), &config.port.to_string(), cx);
-        let address = input("device name or address", "", cx);
+        let address = input("its name or address", "", cx);
         let code = input("code or pairing link", "", cx);
         let subscriptions = vec![
             cx.subscribe_in(&name, window, |view, input, event, window, cx| match event {
@@ -89,41 +91,33 @@ pub fn ensure(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
                 InputEvent::Cancel => view.focus_current(window, cx),
                 _ => {}
             }),
+            cx.subscribe_in(&code, window, |view, _, event, window, cx| match event {
+                InputEvent::Submit => join(view, cx),
+                InputEvent::NextField => {
+                    if let Some(inputs) = page_inputs(view) {
+                        inputs.address.read(cx).focus(window);
+                    }
+                }
+                _ => cx.notify(),
+            }),
             cx.subscribe_in(&address, window, |view, _, event, window, cx| match event {
                 InputEvent::Submit => join(view, cx),
                 InputEvent::NextField => {
-                    if let Some(inputs) = view.settings.as_ref().and_then(|page| page.uplink.as_ref()) {
+                    if let Some(inputs) = page_inputs(view) {
                         inputs.code.read(cx).focus(window);
                     }
                 }
                 _ => cx.notify(),
             }),
-            cx.subscribe_in(&code, window, |view, _, event, _, cx| match event {
-                InputEvent::Submit => join(view, cx),
-                _ => cx.notify(),
-            }),
         ];
         let Some(page) = view.settings.as_mut() else { return };
-        page.uplink = Some(Inputs {
-            name,
-            port,
-            address,
-            code,
-            manual: Vec::new(),
-            access: Access::Control,
-            join_access: Access::Control,
-            subscriptions,
-        });
+        page.uplink = Some(Inputs { name, port, address, code, manual: Vec::new(), open: None, subscriptions });
     }
     let devices: Vec<Device> = super::uplink(cx).map(|uplink| uplink.read(cx).devices.clone()).unwrap_or_default();
-    let known: Vec<String> = view
-        .settings
-        .as_ref()
-        .and_then(|page| page.uplink.as_ref())
-        .map(|inputs| inputs.manual.iter().map(|(key, _)| key.clone()).collect())
-        .unwrap_or_default();
+    let known: Vec<String> =
+        page_inputs(view).map(|inputs| inputs.manual.iter().map(|(key, _)| key.clone()).collect()).unwrap_or_default();
     for device in devices.iter().filter(|device| !known.contains(&device.key)) {
-        let field = input("name or address used to reach it", &device.manual.join(", "), cx);
+        let field = input("names or addresses, comma separated", &device.manual.join(", "), cx);
         let Some(key) = device.public() else { continue };
         let subscription = cx.subscribe_in(&field, window, move |view, input, event, window, cx| match event {
             InputEvent::Submit | InputEvent::Cancel => {
@@ -153,6 +147,19 @@ fn segment(id: String, label: &'static str, active: bool, theme: &Theme) -> gpui
         .when(active, |this| this.bg(theme.accent).text_color(theme.on_accent))
         .when(!active, |this| this.text_color(theme.muted).hover(|style| style.text_color(theme.text)))
         .child(label)
+}
+
+fn header(title: &'static str, theme: &Theme) -> gpui::Div {
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(px(8.0))
+        .px(px(12.0))
+        .py(px(4.0))
+        .border_b_1()
+        .border_color(theme.border)
+        .child(div().text_color(theme.faint).child(title))
 }
 
 fn qr(text: &str, theme: &Theme) -> Option<AnyElement> {
@@ -187,140 +194,40 @@ fn countdown(left: std::time::Duration) -> String {
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
-fn this_device(inputs: &Inputs, uplink: &Uplink, theme: &Theme) -> AnyElement {
-    let listening = uplink.port();
-    let addresses = listening.map(invite::local_addresses).unwrap_or_default();
-    let reach = if addresses.is_empty() { "no network address found".to_string() } else { addresses.join("  ") };
-    group(theme)
-        .child(row("Name", "How your other devices list this one", field(&inputs.name, 220.0, theme), theme))
-        .child(row(
-            "Port",
-            "TCP port other devices connect to; press enter to apply",
-            field(&inputs.port, 90.0, theme),
-            theme,
-        ))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .px(px(12.0))
-                .py(px(8.0))
-                .border_b_1()
-                .border_color(theme.border)
-                .child("Reachable at")
-                .child(div().text_color(theme.faint).child(reach)),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .px(px(12.0))
-                .py(px(8.0))
-                .child(
-                    div()
-                        .flex()
-                        .gap(px(6.0))
-                        .child(div().text_color(theme.green).child(icons::LOCK))
-                        .child("Fingerprint"),
-                )
-                .child(div().text_color(theme.accent).child(wire::fingerprint(uplink.identity())))
-                .child(div().text_color(theme.faint).child(
-                    "Connections are end-to-end encrypted. The other device shows this fingerprint for this device.",
-                )),
-        )
-        .into_any_element()
-}
-
-fn sharing(current: &settings::Settings, cx: &App, theme: &Theme) -> AnyElement {
-    let store = crate::store::store(cx).read(cx);
-    let (mut total, mut shared) = (0, 0);
-    for workspace in store.workspaces.iter().filter(|workspace| !workspace.closed) {
-        for project in workspace.all_projects() {
-            for id in project.tabs.iter().chain(&project.terminals) {
-                if store.session(id).is_some() {
-                    total += 1;
-                    shared += usize::from(super::shared(id, cx));
-                }
-            }
-        }
-    }
-    group(theme)
-        .child(row(
-            "Share tabs by default",
-            "Off: only tabs and projects you share from their menu",
-            checkbox("uplink-share", current.uplink.share, |settings, on| settings.uplink.share = on, theme),
-            theme,
-        ))
-        .child(
-            div()
-                .px(px(12.0))
-                .py(px(8.0))
-                .text_color(theme.faint)
-                .child(format!(
-                    "{shared} of {total} open tabs are shared. Right-click a tab or project to change it. Paired devices see only shared tabs, and only devices with control can type into them."
-                )),
-        )
-        .into_any_element()
-}
-
-fn pairing(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme: &Theme) -> AnyElement {
-    let access = inputs.access;
-    let body = match uplink.pairing() {
-        None => {
-            div()
-                .flex()
-                .flex_wrap()
-                .items_center()
-                .justify_between()
-                .gap_x(px(16.0))
-                .gap_y(px(4.0))
-                .px(px(12.0))
-                .py(px(8.0))
-                .child(
-                    div().flex().flex_col().min_w_0().child("Pair a new device").child(
-                        div().text_color(theme.faint).child("Shows a one-time code to enter on the other device."),
-                    ),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.0))
-                        .child(div().text_color(theme.faint).child("it can"))
-                        .child(
-                            segment("uplink-pair-control".into(), "control", access == Access::Control, theme)
-                                .on_click(cx.listener(|view, _, _, cx| set_pair_access(view, Access::Control, cx))),
-                        )
-                        .child(
-                            segment("uplink-pair-view".into(), "view", access == Access::View, theme)
-                                .on_click(cx.listener(|view, _, _, cx| set_pair_access(view, Access::View, cx))),
-                        )
-                        .child(button("uplink-pair", "pair", theme).on_click(cx.listener(move |view, _, _, cx| {
-                            let access = view
-                                .settings
-                                .as_ref()
-                                .and_then(|page| page.uplink.as_ref())
-                                .map_or(Access::Control, |inputs| inputs.access);
-                            with_uplink(cx, |uplink, cx| uplink.start_pairing(access, cx));
-                        }))),
-                )
-        }
-        Some((code, left, attempts, access)) => {
-            let addresses = uplink.port().map(invite::local_addresses).unwrap_or_default();
-            let link = invite::link(&code, uplink.identity(), &addresses);
-            let copied = link.clone();
-            div()
-                .flex()
-                .gap(px(20.0))
-                .px(px(12.0))
-                .py(px(12.0))
-                .children(qr(&link, theme))
-                .child(
+fn adding(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme: &Theme) -> AnyElement {
+    let mut panel =
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            .px(px(12.0))
+            .py(px(8.0))
+            .border_b_1()
+            .border_color(theme.border)
+            .child(div().flex().items_center().justify_between().gap(px(8.0)).child("Add a device").child(
+                button("uplink-cancel-add", "cancel", theme).on_click(|_, _, cx| {
+                    with_uplink(cx, |uplink, cx| {
+                        uplink.finish_join();
+                        uplink.cancel_pairing(cx);
+                    })
+                }),
+            ))
+            .child(div().text_color(theme.faint).child(
+                "Choose add device on the other computer too, then type the code of one computer into the other.",
+            ));
+    if let Some((code, left, attempts, _)) = uplink.pairing() {
+        let addresses = uplink.port().map(invite::local_addresses).unwrap_or_default();
+        let link = invite::link(&code, uplink.identity(), &addresses);
+        let copied = link.clone();
+        panel =
+            panel.child(
+                div().flex().gap(px(16.0)).children(qr(&link, theme)).child(
                     div()
                         .flex()
                         .flex_col()
-                        .gap(px(6.0))
+                        .gap(px(4.0))
                         .min_w_0()
+                        .child(div().text_color(theme.faint).child("Code of this computer"))
                         .child(
                             div()
                                 .text_size(px(34.0))
@@ -329,84 +236,49 @@ fn pairing(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme:
                                 .child(wire::format_code(&code)),
                         )
                         .child(div().text_color(theme.faint).child(format!(
-                            "expires in {} · one device · {} · {} wrong tries left",
+                            "expires in {} · {} wrong tries left",
                             countdown(left),
-                            if access == Access::Control { "it can control" } else { "it can view" },
                             super::net::PAIRING_ATTEMPTS - attempts
                         )))
-                        .child(div().child(
-                            "On the other device open Settings › Uplink, choose this device under Join, then enter the code.",
-                        ))
-                        .child(div().text_color(theme.faint).child(
-                            "No other device nearby? Copy the pairing link and paste it into the code field there.",
-                        ))
-                        .child(
-                            div()
-                                .flex()
-                                .gap(px(8.0))
-                                .child(button("uplink-copy-link", "copy pairing link", theme).on_click(move |_, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()))
-                                }))
-                                .child(button("uplink-cancel-pair", "cancel", theme).on_click(|_, _, cx| {
-                                    with_uplink(cx, |uplink, cx| uplink.cancel_pairing(cx))
-                                })),
-                        ),
-                )
-        }
-    };
-    group(theme).child(body).into_any_element()
-}
-
-fn set_pair_access(view: &mut WorkspaceView, access: Access, cx: &mut Context<WorkspaceView>) {
-    if let Some(inputs) = view.settings.as_mut().and_then(|page| page.uplink.as_mut()) {
-        inputs.access = access;
+                        .child(div().flex().child(button("uplink-copy-link", "copy pairing link", theme).on_click(
+                            move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(copied.clone())),
+                        ))),
+                ),
+            );
     }
-    cx.notify();
-}
-
-fn set_join_access(view: &mut WorkspaceView, access: Access, cx: &mut Context<WorkspaceView>) {
-    if let Some(inputs) = view.settings.as_mut().and_then(|page| page.uplink.as_mut()) {
-        inputs.join_access = access;
-    }
-    cx.notify();
-}
-
-fn joining(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme: &Theme) -> AnyElement {
     let tick = cx.global::<crate::store::StoreHandle>().0.read(cx).tick_fast;
     let paired: Vec<Key> = uplink.devices.iter().filter_map(Device::public).collect();
     let typed = inputs.address.read(cx).text.trim().to_string();
-    let mut nearby = div().flex().flex_col();
     let waiting: Vec<_> =
         uplink.nearby.iter().filter(|nearby| nearby.pairing && !paired.contains(&nearby.key)).collect();
+    let mut nearby = div().flex().flex_wrap().items_center().gap(px(8.0));
+    if waiting.is_empty() {
+        nearby = nearby.child(div().text_color(theme.faint).child(
+            "No other computer nearby is adding a device. Type its name or address, or paste its pairing link.",
+        ));
+    } else {
+        nearby = nearby.child(div().text_color(theme.faint).child("Nearby"));
+    }
+    let single = waiting.len() == 1;
     for (index, device) in waiting.iter().enumerate() {
         let name = device.name.clone();
-        let selected = typed == name;
-        let address = device.addresses.first().map(|address| address.to_string()).unwrap_or_default();
+        let selected = typed == name || (typed.is_empty() && single);
         nearby = nearby.child(
             div()
                 .id(("uplink-nearby", index))
                 .flex()
-                .gap(px(8.0))
-                .px(px(12.0))
+                .gap(px(6.0))
+                .px(px(8.0))
                 .when(selected, |this| this.bg(theme.accent).text_color(theme.on_accent))
-                .when(!selected, |this| this.hover(|style| style.bg(theme.hover)))
+                .when(!selected, |this| this.text_color(theme.muted).hover(|style| style.text_color(theme.text)))
                 .child(icons::DEVICE)
-                .child(div().flex_1().child(device.name.clone()))
-                .child(div().text_color(if selected { theme.on_accent } else { theme.faint }).child(address))
+                .child(device.name.clone())
                 .on_click(cx.listener(move |view, _, window, cx| {
-                    if let Some(inputs) = view.settings.as_ref().and_then(|page| page.uplink.as_ref()) {
+                    if let Some(inputs) = page_inputs(view) {
                         inputs.address.update(cx, |input, cx| input.set_text(&name, cx));
                         inputs.code.read(cx).focus(window);
                     }
                 })),
-        );
-    }
-    if waiting.is_empty() {
-        nearby = nearby.child(
-            div()
-                .px(px(12.0))
-                .text_color(theme.faint)
-                .child("No device nearby is pairing. Start pairing on the other device, or type its address."),
         );
     }
     let status = match &uplink.join {
@@ -414,54 +286,23 @@ fn joining(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme:
         Join::Failed(reason) => Some((reason.clone(), theme.red)),
         Join::Idle | Join::Done(_) => None,
     };
-    group(theme)
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(4.0))
-                .py(px(8.0))
-                .border_b_1()
-                .border_color(theme.border)
-                .child(div().px(px(12.0)).child("Join a device"))
-                .child(nearby),
-        )
+    panel
+        .child(div().pt(px(4.0)).child("Code of the other computer"))
+        .child(nearby)
         .child(
             div()
                 .flex()
                 .items_center()
                 .gap(px(8.0))
-                .px(px(12.0))
-                .py(px(8.0))
-                .child(field(&inputs.address, 280.0, theme).min_w_0())
                 .child(field(&inputs.code, 220.0, theme).min_w_0())
+                .when(!single, |this| this.child(field(&inputs.address, 220.0, theme).min_w_0()))
                 .child(button("uplink-join", "join", theme).on_click(cx.listener(|view, _, _, cx| join(view, cx)))),
         )
-        .child(
-            div()
-                .flex()
-                .flex_wrap()
-                .items_center()
-                .gap_x(px(8.0))
-                .gap_y(px(4.0))
-                .px(px(12.0))
-                .pb(px(8.0))
-                .child(div().text_color(theme.faint).child("the device you join can"))
-                .child(
-                    segment("uplink-join-control".into(), "control", inputs.join_access == Access::Control, theme)
-                        .on_click(cx.listener(|view, _, _, cx| set_join_access(view, Access::Control, cx))),
-                )
-                .child(
-                    segment("uplink-join-view".into(), "view", inputs.join_access == Access::View, theme)
-                        .on_click(cx.listener(|view, _, _, cx| set_join_access(view, Access::View, cx))),
-                )
-                .child(div().text_color(theme.faint).child("this computer's shared tabs")),
-        )
-        .children(status.map(|(text, color)| div().px(px(12.0)).pb(px(8.0)).text_color(color).child(text)))
+        .children(status.map(|(text, color)| div().text_color(color).child(text)))
         .into_any_element()
 }
 
-fn device_card(
+fn device_row(
     device: &Device,
     inputs: &Inputs,
     uplink: &Uplink,
@@ -488,17 +329,16 @@ fn device_card(
             (text, theme.faint)
         }
     };
+    let open = inputs.open.as_deref() == Some(device.key.as_str());
     let manual = inputs.manual.iter().find(|(id, _)| *id == device.key).map(|(_, input)| input.clone());
     let access = device.access;
     let name = device.name.clone();
     let id = device.key.clone();
+    let toggle = id.clone();
     Some(
         div()
             .flex()
             .flex_col()
-            .gap(px(4.0))
-            .px(px(12.0))
-            .py(px(8.0))
             .border_b_1()
             .border_color(theme.border)
             .child(
@@ -506,84 +346,99 @@ fn device_card(
                     .flex()
                     .items_center()
                     .gap(px(8.0))
+                    .pr(px(12.0))
                     .child(
                         div()
-                            .text_color(if link.is_some() { theme.accent } else { theme.faint })
-                            .child(icons::os(&device.os)),
-                    )
-                    .child(div().child(device.name.clone()))
-                    .child(div().flex_1().min_w_0().truncate().text_color(state.1).child(state.0)),
-            )
-            .child(div().pl(px(22.0)).text_color(theme.faint).child(format!("fingerprint {}", wire::fingerprint(&key))))
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .justify_between()
-                    .gap_x(px(16.0))
-                    .gap_y(px(4.0))
-                    .pl(px(22.0))
-                    .child(
-                        div()
+                            .id(SharedString::from(format!("uplink-device-{id}")))
                             .flex()
-                            .flex_wrap()
-                            .items_center()
-                            .gap_x(px(8.0))
-                            .gap_y(px(4.0))
-                            .child(div().text_color(theme.faint).child("it can"))
-                            .child(
-                                segment(format!("uplink-control-{id}"), "control", access == Access::Control, theme)
-                                    .on_click(move |_, _, cx| {
-                                        with_uplink(cx, |uplink, cx| uplink.set_access(&key, Access::Control, cx))
-                                    }),
-                            )
-                            .child(
-                                segment(format!("uplink-view-{id}"), "view", access == Access::View, theme).on_click(
-                                    move |_, _, cx| {
-                                        with_uplink(cx, |uplink, cx| uplink.set_access(&key, Access::View, cx))
-                                    },
-                                ),
-                            )
-                            .child(div().text_color(theme.faint).child("your shared tabs")),
-                    )
-                    .child(
-                        div()
-                            .flex()
+                            .flex_1()
+                            .min_w_0()
                             .items_center()
                             .gap(px(8.0))
-                            .when(link.is_some(), |this| {
-                                this.child(button(format!("uplink-disconnect-{id}"), "disconnect", theme).on_click(
-                                    move |_, _, cx| with_uplink(cx, |uplink, cx| uplink.disconnect(&key, cx)),
-                                ))
-                            })
+                            .pl(px(12.0))
+                            .py(px(6.0))
+                            .hover(|style| style.bg(theme.hover))
+                            .child(div().text_color(theme.faint).child(if open {
+                                icons::CHEVRON_DOWN
+                            } else {
+                                icons::CHEVRON_RIGHT
+                            }))
                             .child(
-                                button(
-                                    format!("uplink-block-{id}"),
-                                    if device.blocked { "unblock" } else { "block" },
-                                    theme,
-                                )
-                                .on_click({
-                                    let blocked = device.blocked;
-                                    move |_, _, cx| with_uplink(cx, |uplink, cx| uplink.set_blocked(&key, !blocked, cx))
-                                }),
+                                div()
+                                    .text_color(if link.is_some() { theme.accent } else { theme.faint })
+                                    .child(icons::os(&device.os)),
                             )
-                            .child(
-                                button(format!("uplink-forget-{id}"), "forget", theme)
-                                    .on_click(cx.listener(move |_, _, window, cx| forget(key, &name, window, cx))),
-                            ),
-                    ),
+                            .child(div().flex_none().child(device.name.clone()))
+                            .child(div().flex_1().min_w_0().truncate().text_color(state.1).child(state.0))
+                            .on_click(cx.listener(move |view, _, _, cx| {
+                                if let Some(inputs) = view.settings.as_mut().and_then(|page| page.uplink.as_mut()) {
+                                    let open = inputs.open.as_deref() == Some(toggle.as_str());
+                                    inputs.open = (!open).then(|| toggle.clone());
+                                }
+                                cx.notify();
+                            })),
+                    )
+                    .child(div().text_color(theme.faint).child("can"))
+                    .child(
+                        segment(format!("uplink-control-{id}"), "control", access == Access::Control, theme).on_click(
+                            move |_, _, cx| with_uplink(cx, |uplink, cx| uplink.set_access(&key, Access::Control, cx)),
+                        ),
+                    )
+                    .child(segment(format!("uplink-view-{id}"), "view", access == Access::View, theme).on_click(
+                        move |_, _, cx| with_uplink(cx, |uplink, cx| uplink.set_access(&key, Access::View, cx)),
+                    )),
             )
-            .children(manual.map(|manual| {
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .pl(px(22.0))
-                    .child(div().text_color(theme.faint).child("also try"))
-                    .child(field(&manual, 300.0, theme).min_w_0())
-                    .child(div().text_color(theme.faint).child("[enter] save"))
-            }))
+            .when(open, |this| {
+                this.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.0))
+                        .pl(px(34.0))
+                        .pr(px(12.0))
+                        .pb(px(8.0))
+                        .child(div().text_color(theme.faint).child(format!("fingerprint {}", wire::fingerprint(&key))))
+                        .children(manual.map(|manual| {
+                            div()
+                                .flex()
+                                .flex_wrap()
+                                .items_center()
+                                .gap_x(px(8.0))
+                                .gap_y(px(4.0))
+                                .child(div().text_color(theme.faint).child("also reach it at"))
+                                .child(field(&manual, 300.0, theme).min_w_0())
+                                .child(div().text_color(theme.faint).child("[enter] save"))
+                        }))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_wrap()
+                                .gap(px(8.0))
+                                .when(link.is_some(), |this| {
+                                    this.child(button(format!("uplink-disconnect-{id}"), "disconnect", theme).on_click(
+                                        move |_, _, cx| with_uplink(cx, |uplink, cx| uplink.disconnect(&key, cx)),
+                                    ))
+                                })
+                                .child(
+                                    button(
+                                        format!("uplink-block-{id}"),
+                                        if device.blocked { "unblock" } else { "block" },
+                                        theme,
+                                    )
+                                    .on_click({
+                                        let blocked = device.blocked;
+                                        move |_, _, cx| {
+                                            with_uplink(cx, |uplink, cx| uplink.set_blocked(&key, !blocked, cx))
+                                        }
+                                    }),
+                                )
+                                .child(
+                                    button(format!("uplink-forget-{id}"), "forget", theme)
+                                        .on_click(cx.listener(move |_, _, window, cx| forget(key, &name, window, cx))),
+                                ),
+                        ),
+                )
+            })
             .into_any_element(),
     )
 }
@@ -605,40 +460,108 @@ fn forget(key: Key, name: &str, window: &mut Window, cx: &mut Context<WorkspaceV
 }
 
 fn devices(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme: &Theme) -> AnyElement {
-    let mut list = group(theme).child(
-        div()
-            .px(px(12.0))
-            .py(px(4.0))
-            .border_b_1()
-            .border_color(theme.border)
-            .text_color(theme.faint)
-            .child(format!("Paired devices {}", uplink.devices.len())),
-    );
-    if uplink.devices.is_empty() {
-        list = list
-            .child(div().px(px(12.0)).py(px(8.0)).text_color(theme.faint).child("None yet. Pair or join one below."));
+    let busy = uplink.pairing().is_some() || matches!(uplink.join, Join::Working | Join::Failed(_));
+    let mut list = group(theme).child(header("Devices", theme).when(!busy, |this| {
+        this.child(
+            button("uplink-add", "add device", theme)
+                .on_click(|_, _, cx| with_uplink(cx, |uplink, cx| uplink.start_pairing(Access::Control, cx))),
+        )
+    }));
+    if busy {
+        list = list.child(adding(inputs, uplink, cx, theme));
     }
-    let devices = uplink.devices.clone();
-    for device in &devices {
-        list = list.children(device_card(device, inputs, uplink, cx, theme));
+    if uplink.devices.is_empty() && !busy {
+        list = list.child(
+            div()
+                .px(px(12.0))
+                .py(px(8.0))
+                .text_color(theme.faint)
+                .child("None yet. Choose add device here and on the other computer."),
+        );
+    }
+    for device in &uplink.devices {
+        list = list.children(device_row(device, inputs, uplink, cx, theme));
     }
     list.into_any_element()
+}
+
+fn this_computer(
+    inputs: &Inputs,
+    uplink: &Uplink,
+    current: &settings::Settings,
+    cx: &App,
+    theme: &Theme,
+) -> AnyElement {
+    let store = crate::store::store(cx).read(cx);
+    let (mut total, mut shared) = (0, 0);
+    for workspace in store.workspaces.iter().filter(|workspace| !workspace.closed) {
+        for project in workspace.all_projects() {
+            for id in project.tabs.iter().chain(&project.terminals) {
+                if store.session(id).is_some() {
+                    total += 1;
+                    shared += usize::from(super::shared(id, cx));
+                }
+            }
+        }
+    }
+    let addresses = uplink.port().map(invite::local_addresses).unwrap_or_default();
+    let reach = if addresses.is_empty() { "no network address found".to_string() } else { addresses.join("  ") };
+    group(theme)
+        .child(header("This computer", theme))
+        .child(row("Name", "How your other devices list this one", field(&inputs.name, 220.0, theme), theme))
+        .child(row(
+            "Share tabs by default",
+            format!("{shared} of {total} open tabs shared. Right-click a tab or project to change it."),
+            checkbox("uplink-share", current.uplink.share, |settings, on| settings.uplink.share = on, theme),
+            theme,
+        ))
+        .child(row("Port", "Press enter to apply", field(&inputs.port, 90.0, theme), theme))
+        .child(row("Addresses", reach, div(), theme))
+        .child(row(
+            "Fingerprint",
+            "Other devices show it for this computer",
+            div()
+                .flex()
+                .gap(px(6.0))
+                .child(div().text_color(theme.green).child(icons::LOCK))
+                .child(div().text_color(theme.accent).child(wire::fingerprint(uplink.identity()))),
+            theme,
+        ))
+        .into_any_element()
 }
 
 pub fn render(view: &WorkspaceView, cx: &Context<WorkspaceView>) -> Vec<AnyElement> {
     let theme = ui::theme(cx);
     let current = settings::get(cx).clone();
     let Some(entity) = super::uplink(cx) else { return Vec::new() };
-    let mut pages = vec![
-        group(&theme)
-            .child(row(
-                "Uplink",
-                "Reach the agents and terminals of your other computers. Off: no port is open and nothing is announced.",
-                checkbox("uplink-enabled", current.uplink.enabled, |settings, on| settings.uplink.enabled = on, &theme),
-                &theme,
-            ))
-            .into_any_element(),
-    ];
+    let uplink = entity.read(cx);
+    let status = match (current.uplink.enabled, &uplink.error, uplink.port()) {
+        (false, _, _) => "Off: no port is open and nothing is announced.".to_string(),
+        (true, Some(_), _) => "On, but not listening.".to_string(),
+        (true, None, Some(port)) => format!(
+            "On as {} · port {port} · {} of {} devices online",
+            current.uplink.device_name(),
+            uplink.links.len(),
+            uplink.devices.len()
+        ),
+        (true, None, None) => "Starting…".to_string(),
+    };
+    let mut toggle = group(&theme).child(row(
+        "Uplink",
+        status,
+        checkbox("uplink-enabled", current.uplink.enabled, |settings, on| settings.uplink.enabled = on, &theme),
+        &theme,
+    ));
+    if current.uplink.enabled {
+        toggle = toggle
+            .children(
+                uplink.error.clone().map(|error| div().px(px(12.0)).py(px(6.0)).text_color(theme.red).child(error)),
+            )
+            .children(
+                uplink.note.clone().map(|note| div().px(px(12.0)).py(px(6.0)).text_color(theme.orange).child(note)),
+            );
+    }
+    let mut pages = vec![toggle.into_any_element()];
     if !current.uplink.enabled {
         pages.push(
             group(&theme)
@@ -661,28 +584,8 @@ pub fn render(view: &WorkspaceView, cx: &Context<WorkspaceView>) -> Vec<AnyEleme
         );
         return pages;
     }
-    let Some(inputs) = view.settings.as_ref().and_then(|page| page.uplink.as_ref()) else { return pages };
-    let uplink = entity.read(cx);
-    let online = uplink.links.len();
-    let status = match (&uplink.error, uplink.port()) {
-        (Some(error), _) => (error.clone(), theme.red),
-        (None, Some(port)) => {
-            (format!("listening on port {port} · {online} of {} devices online", uplink.devices.len()), theme.green)
-        }
-        (None, None) => ("starting…".to_string(), theme.faint),
-    };
-    pages.push(
-        div()
-            .flex()
-            .flex_col()
-            .child(div().text_color(status.1).child(status.0))
-            .children(uplink.note.clone().map(|note| div().text_color(theme.orange).child(note)))
-            .into_any_element(),
-    );
+    let Some(inputs) = page_inputs(view) else { return pages };
     pages.push(devices(inputs, uplink, cx, &theme));
-    pages.push(pairing(inputs, uplink, cx, &theme));
-    pages.push(joining(inputs, uplink, cx, &theme));
-    pages.push(sharing(&current, cx, &theme));
-    pages.push(this_device(inputs, uplink, &theme));
+    pages.push(this_computer(inputs, uplink, &current, cx, &theme));
     pages
 }
