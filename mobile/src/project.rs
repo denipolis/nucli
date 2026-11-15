@@ -46,10 +46,9 @@ impl Home {
             for (index, (glyph, label)) in PANELS.into_iter().enumerate() {
                 let panel = [Panel::Files, Panel::Changes, Panel::Log][index];
                 let path = project.to_string();
-                header =
-                    header.child(ui::button(label, glyph, theme).on_click(cx.listener(move |home, _, _, cx| {
-                        home.open_drawer(key, path.clone(), panel, String::new(), cx)
-                    })));
+                header = header.child(ui::button(SharedString::from(format!("open-{label}")), glyph, theme).on_click(
+                    cx.listener(move |home, _, _, cx| home.open_drawer(key, path.clone(), panel, String::new(), cx)),
+                ));
             }
         }
         let mut list = div().flex().flex_col().child(ui::hint(project.to_string(), theme).text_color(theme.faint));
@@ -244,6 +243,7 @@ impl Home {
             .absolute()
             .inset_0()
             .flex()
+            .occlude()
             .child(div().id("drawer-backdrop").flex_1().on_click(cx.listener(|home, _, _, cx| {
                 home.drawer = None;
                 cx.notify();
