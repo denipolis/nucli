@@ -58,8 +58,10 @@ Paths are under `src/` unless they start with `core/`.
 | `titlebar.rs` | Title bar: workspace name, menus on Linux and Windows, location, status messages and their list, Windows caption buttons. |
 | `statusbar.rs` | Status chips under the viewport: `Chip` ids and toggles, agent chips, their comboboxes and menus. |
 | `settings_view.rs` | Settings page in the viewport. |
-| `theme.rs`, `ui.rs` | Palettes, custom themes from the `themes` folder, derived UI colors, active theme. |
-| `icons.rs` | Nerd Font codepoints, file type glyphs. |
+| `core/src/theme.rs` | Palettes, custom themes (`load` reads a `themes` folder), derived UI colors, `ItemColor`. |
+| `theme.rs`, `ui.rs` | Re-export `core::theme`, reload custom themes from the config folder, active theme. |
+| `core/src/icons.rs` | Nerd Font codepoints, file type glyphs. |
+| `core/src/fonts.rs` | The bundled Maple Mono NF files. |
 | `settings.rs`, `paths.rs` | `settings.json`, platform folders, atomic writes. |
 | `devtools.rs` | Debug builds only: control file. |
 | `uplink/mod.rs` | `Uplink` (one global entity): settings, paired devices, live links, remote catalogs, host side rules (what is shared, view or control) and remote views (mirror sessions). |
@@ -69,7 +71,7 @@ Paths are under `src/` unless they start with `core/`.
 | `core/src/uplink/devices.rs` | `uplink.json`: the device key and the paired devices, written readable by the user only. |
 | `core/src/uplink/invite.rs` | Local addresses and the pairing link shown as a QR code. |
 | `core/src/terminal.rs` | The terminal `Feed` and `spawn_mirror`, the thread that rebuilds a remote terminal from its feeds. |
-| `core/src/session.rs`, `core/src/theme.rs` | Types the Uplink protocol carries: tab `Kind` and `Activity`, `ItemColor`. Desktop re-exports them, and `Feed`, from `session.rs`, `theme.rs` and `terminal/mod.rs`. |
+| `core/src/session.rs` | Tab `Kind` and `Activity`, carried by the Uplink protocol. Desktop re-exports them from `session.rs`, and `Feed` from `terminal/mod.rs`. |
 | `uplink/page.rs`, `uplink/sidebar.rs` | Settings › Uplink and the Uplink sidebar tab. |
 
 ## State

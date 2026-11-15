@@ -21,7 +21,6 @@ mod git;
 mod highlight;
 mod history;
 mod hold;
-mod icons;
 #[cfg(target_os = "macos")]
 mod import;
 mod menu;
@@ -56,7 +55,7 @@ mod uplink;
 mod watcher;
 mod window;
 
-use std::borrow::Cow;
+use nucli_core::icons;
 
 use gpui::{App, Application};
 
@@ -83,13 +82,7 @@ fn start_application() -> Application {
 }
 
 fn load_fonts(cx: &mut App) {
-    let fonts: Vec<Cow<'static, [u8]>> = vec![
-        Cow::Borrowed(include_bytes!("../assets/fonts/MapleMono-NF-Regular.ttf")),
-        Cow::Borrowed(include_bytes!("../assets/fonts/MapleMono-NF-Bold.ttf")),
-        Cow::Borrowed(include_bytes!("../assets/fonts/MapleMono-NF-Italic.ttf")),
-        Cow::Borrowed(include_bytes!("../assets/fonts/MapleMono-NF-BoldItalic.ttf")),
-    ];
-    if let Err(error) = cx.text_system().add_fonts(fonts) {
+    if let Err(error) = cx.text_system().add_fonts(nucli_core::fonts::bundled()) {
         eprintln!("fonts: {error}");
     }
 }
