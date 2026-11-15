@@ -258,10 +258,8 @@ pub fn empty(_view: &mut WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyE
         .items_center()
         .justify_center()
         .gap(px(20.0))
-        .child(div().text_color(theme.faint).child(LOGO))
+        .child(div().text_color(theme.faint).child(nucli_core::logo::TEXT))
         .child(div().flex().gap(px(16.0)).child(keys).child(labels))
         .child(div().text_color(theme.faint).child("or drop a folder here"))
         .into_any_element()
 }
-
-pub const LOGO: &str = "█▄ █ █ █ █▀▀ █   █\n█ ▀█ █▄█ █▄▄ █▄▄ █";

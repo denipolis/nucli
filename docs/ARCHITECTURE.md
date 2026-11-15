@@ -63,6 +63,7 @@ Paths are under `src/` unless they start with `core/`.
 | `theme.rs`, `ui.rs` | Re-export `core::theme`, reload custom themes from the config folder, active theme. |
 | `core/src/icons.rs` | Nerd Font codepoints, file type glyphs. |
 | `core/src/fonts.rs` | The bundled Maple Mono NF files. |
+| `core/src/logo.rs` | The Nucli logo as text and as the animated pixel logo of onboarding. |
 | `settings.rs`, `paths.rs` | `settings.json`, platform folders, atomic writes. |
 | `devtools.rs` | Debug builds only: control file. |
 | `uplink/mod.rs` | `Uplink` (one global entity): settings, paired devices, live links, remote catalogs, host side rules (what is shared, view or control) and remote views (mirror sessions). |

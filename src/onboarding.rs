@@ -17,6 +17,7 @@ use crate::settings::{self, Appearance, CursorShape, FONT, Settings};
 use crate::settings_view;
 use crate::theme::{CustomTheme, Theme};
 use crate::ui;
+use nucli_core::logo::{self, BLINK_MS};
 
 pub struct Active;
 
@@ -41,10 +42,7 @@ const STEPS: [(Step, &str, &str); 5] = [
 ];
 
 const PIXEL: f32 = 18.0;
-const ROWS: usize = 4;
-const COLUMN_MS: u128 = 50;
 const ACTIONS_MS: u128 = 1100;
-const BLINK_MS: u128 = 530;
 
 struct Import {
     source: String,
@@ -321,45 +319,6 @@ fn spinner(time: u128) -> &'static str {
     icons::SPINNER[(time / 110) as usize % icons::SPINNER.len()]
 }
 
-fn logo_columns() -> Vec<[bool; ROWS]> {
-    let lines: Vec<Vec<char>> = crate::overview::LOGO.lines().map(|line| line.chars().collect()).collect();
-    let width = lines.iter().map(Vec::len).max().unwrap_or(0);
-    (0..width)
-        .map(|column| {
-            std::array::from_fn(|row| {
-                let cell = lines.get(row / 2).and_then(|line| line.get(column)).copied().unwrap_or(' ');
-                if row % 2 == 0 { matches!(cell, '█' | '▀') } else { matches!(cell, '█' | '▄') }
-            })
-        })
-        .collect()
-}
-
-fn logo(time: u128, theme: &Theme) -> Div {
-    let columns = logo_columns();
-    let revealed = (time.saturating_sub(150) / COLUMN_MS) as usize;
-    let blink = revealed >= columns.len() && (time / BLINK_MS).is_multiple_of(2);
-    let column = |cells: [Option<Hsla>; ROWS]| {
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(2.0))
-            .children(cells.map(|color| div().size(px(PIXEL)).when_some(color, Div::bg)))
-    };
-    let mut row = div().flex().gap(px(2.0));
-    for (index, cells) in columns.iter().enumerate() {
-        let age = time.saturating_sub(150 + index as u128 * COLUMN_MS);
-        let color = if age < 200 { theme.text } else { theme.accent };
-        row = row.child(column(match index.cmp(&revealed) {
-            std::cmp::Ordering::Less => cells.map(|on| on.then_some(color)),
-            std::cmp::Ordering::Equal => [Some(theme.accent); ROWS],
-            std::cmp::Ordering::Greater => [None; ROWS],
-        }));
-    }
-    let mut underline = [None; ROWS];
-    underline[ROWS - 1] = blink.then_some(theme.accent);
-    row.child(column([None; ROWS])).child(column(underline)).child(column(underline))
-}
-
 fn terminal_preview(current: &Settings, time: u128, theme: &Theme) -> Div {
     let size = current.font_size();
     let line = px((size * current.line_height()).round());
@@ -547,7 +506,7 @@ impl Onboarding {
             .size_full()
             .flex()
             .flex_col()
-            .child(div().flex_1().flex().items_center().justify_center().child(logo(time, &theme)))
+            .child(div().flex_1().flex().items_center().justify_center().child(logo::pixels(time, PIXEL, &theme)))
             .when(time >= ACTIONS_MS, |this| this.child(bar))
             .into_any_element()
     }
