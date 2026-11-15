@@ -4,9 +4,8 @@ use gpui::{
     Styled, div, px, relative,
 };
 use nucli_core::icons;
-use nucli_core::session::Kind;
 use nucli_core::theme::Theme;
-use nucli_core::uplink::protocol::{RemoteTab, Response};
+use nucli_core::uplink::protocol::Response;
 use nucli_core::uplink::wire::Key;
 
 use crate::board::project_name;
@@ -37,7 +36,6 @@ impl Home {
         let time = self.shown.elapsed().as_millis();
         let link = self.link.read(cx);
         let control = link.control(&key);
-        let starting = link.is_opening(key) && time < 15000;
         let catalog = link.online.get(&key).map(|online| online.catalog.clone());
         let offline = catalog.is_none();
         let catalog = catalog.unwrap_or_default();
@@ -54,7 +52,6 @@ impl Home {
                     })));
             }
         }
-        let tabs: Vec<RemoteTab> = catalog.tabs.iter().filter(|tab| tab.project == project).cloned().collect();
         let mut list = div().flex().flex_col().child(ui::hint(project.to_string(), theme).text_color(theme.faint));
         if offline {
             list = list.child(ui::hint("The computer is offline.", theme));
@@ -71,60 +68,22 @@ impl Home {
                     .child(notice.clone()),
             );
         }
-        for (kind, title) in [(Kind::Agent, "agents"), (Kind::Shell, "shells")] {
-            let rows: Vec<&RemoteTab> =
-                tabs.iter().filter(|tab| (tab.kind == Kind::Agent) == (kind == Kind::Agent)).collect();
-            if rows.is_empty() {
-                continue;
-            }
-            list = list.child(ui::section(format!("{title} {}", rows.len()), theme));
-            for tab in rows {
-                let detail =
-                    [tab.branch.clone(), tab.notice.clone()].into_iter().flatten().collect::<Vec<_>>().join(" · ");
-                list = list.child(self.tab_row(key, tab, detail, theme, cx));
-            }
-        }
-        if tabs.is_empty() && !offline {
-            list = list.child(ui::hint("Nothing is running in this project.", theme).py(px(16.0)));
-        }
-        let actions = div()
-            .flex()
-            .flex_none()
-            .gap(px(8.0))
-            .px(px(16.0))
-            .py(px(10.0))
-            .border_t_1()
-            .border_color(theme.border)
-            .when(starting, |this| {
-                this.child(
-                    div()
-                        .flex()
-                        .flex_1()
-                        .items_center()
-                        .gap(px(8.0))
-                        .h(px(ui::ROW))
+        if control && !offline {
+            for (agent, glyph, label) in [(true, icons::ADD, "new agent"), (false, icons::TERMINAL, "new shell")] {
+                let path = project.to_string();
+                list = list.child(
+                    ui::row(label, theme)
                         .text_color(theme.accent)
-                        .child(ui::spinner(time))
-                        .child("starting…"),
-                )
-            })
-            .when(!starting, |this| {
-                this.child(ui::primary("new-agent", format!("{} new agent", icons::ADD), theme).flex_1().on_click(
-                    cx.listener(|home, _, _, cx| {
-                        home.sheet = Some(true);
-                        cx.notify();
-                    }),
-                ))
-                .child(
-                    ui::secondary("new-shell", format!("{} new shell", icons::TERMINAL), theme).flex_1().on_click(
-                        cx.listener(|home, _, _, cx| {
-                            home.sheet = Some(false);
-                            cx.notify();
-                        }),
-                    ),
-                )
-            });
-        let sheet = self.sheet.map(|agents| self.launchers(key, project, agents, theme, cx));
+                        .child(div().flex_none().w(px(18.0)).child(glyph))
+                        .child(label)
+                        .on_click(cx.listener(move |home, _, _, cx| home.new_tab(key, &path, agent, cx))),
+                );
+            }
+        }
+        for tab in catalog.tabs.iter().filter(|tab| tab.project == project) {
+            let detail = [tab.branch.clone(), tab.notice.clone()].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+            list = list.child(self.tab_row(key, tab, detail, theme, cx));
+        }
         let drawer = self.drawer.as_ref().map(|drawer| self.drawer_view(key, project, drawer, theme, cx));
         div()
             .flex_1()
@@ -134,60 +93,8 @@ impl Home {
             .relative()
             .child(header)
             .child(div().id("project").flex_1().min_h_0().overflow_y_scroll().child(list))
-            .when(control && !offline, |this| this.child(actions))
-            .children(sheet)
             .children(drawer)
             .into_any_element()
-    }
-
-    fn launchers(&self, key: Key, project: &str, agents: bool, theme: &Theme, cx: &mut Context<Self>) -> Div {
-        let catalog = self.link.read(cx).online.get(&key).map(|online| online.catalog.clone()).unwrap_or_default();
-        let mut sheet = div()
-            .flex()
-            .flex_col()
-            .bg(theme.background)
-            .border_t_1()
-            .border_color(theme.border)
-            .child(ui::section(if agents { "new agent" } else { "new shell" }, theme));
-        for launcher in catalog.launchers.iter().filter(|launcher| launcher.agent == agents) {
-            let (glyph, color) = if agents {
-                let (glyph, color) = icons::agent(&launcher.command);
-                (glyph, color.color(theme.dark))
-            } else {
-                (icons::TERMINAL, theme.muted)
-            };
-            let (project, name) = (project.to_string(), launcher.name.clone());
-            sheet = sheet.child(
-                ui::row(SharedString::from(format!("launcher:{}", launcher.name)), theme)
-                    .child(div().flex_none().w(px(18.0)).text_color(color).child(glyph))
-                    .child(div().flex_1().min_w_0().truncate().child(launcher.name.clone()))
-                    .child(
-                        div()
-                            .text_size(px(ui::SMALL))
-                            .text_color(theme.faint)
-                            .truncate()
-                            .child(launcher.command.clone()),
-                    )
-                    .on_click(cx.listener(move |home, _, _, cx| home.launch(key, &project, &name, cx))),
-            );
-        }
-        sheet =
-            sheet.child(ui::row("cancel-launch", theme).child(div().text_color(theme.muted).child("cancel")).on_click(
-                cx.listener(|home, _, _, cx| {
-                    home.sheet = None;
-                    cx.notify();
-                }),
-            ));
-        div()
-            .absolute()
-            .inset_0()
-            .flex()
-            .flex_col()
-            .child(div().id("sheet-backdrop").flex_1().on_click(cx.listener(|home, _, _, cx| {
-                home.sheet = None;
-                cx.notify();
-            })))
-            .child(sheet)
     }
 
     fn drawer_view(&self, key: Key, project: &str, drawer: &Drawer, theme: &Theme, cx: &mut Context<Self>) -> Div {

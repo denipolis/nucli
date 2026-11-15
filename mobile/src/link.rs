@@ -219,10 +219,6 @@ impl Link {
         }
     }
 
-    pub fn is_opening(&self, key: Key) -> bool {
-        self.opening == Some(key)
-    }
-
     pub fn disconnect(&mut self, key: &Key, cx: &mut Context<Self>) {
         if let Some(online) = self.online.remove(key) {
             online.outbox.close();

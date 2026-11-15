@@ -68,7 +68,6 @@ pub struct Home {
     pub folders: Option<Response>,
     pub view: Option<Response>,
     pub drawer: Option<Drawer>,
-    pub sheet: Option<bool>,
     pub notice: Option<String>,
     ticker: Option<Task<()>>,
 }
@@ -139,7 +138,6 @@ impl Home {
             folders: None,
             view: None,
             drawer: None,
-            sheet: None,
             notice: None,
             ticker: None,
         }
@@ -284,7 +282,6 @@ impl Home {
             self.drawer = None;
         }
         self.forgetting = None;
-        self.sheet = None;
         self.notice = None;
         self.history.push(std::mem::replace(&mut self.screen, screen));
         self.shown = Instant::now();
@@ -309,7 +306,6 @@ impl Home {
             self.link.update(cx, |link, _| link.unwatch(key, &tab));
         }
         self.forgetting = None;
-        self.sheet = None;
         self.notice = None;
         self.screen = self.history.pop().unwrap_or(Screen::Computers);
         if self.screen == Screen::Terminal && self.mirror.is_none() {
@@ -337,19 +333,22 @@ impl Home {
         let mirror = cx.new(|cx| Mirror::new(link, key, tab, cx));
         cx.observe(&mirror, |_, _, cx| cx.notify()).detach();
         self.mirror = Some(mirror);
-        self.sheet = None;
         if self.screen != Screen::Terminal {
             self.history.push(std::mem::replace(&mut self.screen, Screen::Terminal));
         }
         cx.notify();
     }
 
-    pub fn launch(&mut self, key: Key, project: &str, launcher: &str, cx: &mut Context<Self>) {
-        self.sheet = None;
-        self.notice = None;
-        self.shown = Instant::now();
-        self.link.update(cx, |link, _| link.open_tab(key, project, launcher));
-        cx.notify();
+    pub fn new_tab(&mut self, key: Key, project: &str, agent: bool, cx: &mut Context<Self>) {
+        let link = self.link.read(cx);
+        let launcher = link
+            .online
+            .get(&key)
+            .and_then(|online| online.catalog.launchers.iter().find(|launcher| launcher.agent == agent))
+            .map(|launcher| launcher.name.clone());
+        if let Some(launcher) = launcher {
+            self.link.update(cx, |link, _| link.open_tab(key, project, &launcher));
+        }
     }
 
     pub fn resume(
@@ -541,24 +540,6 @@ impl Home {
                     self.resume(key, id, project, window, cx);
                 }
             }
-            "sheet" => {
-                self.sheet = Some(rest != "shell");
-                cx.notify();
-            }
-            "screen" => {
-                let (what, name) = rest.split_once(' ').unwrap_or((rest, ""));
-                let key = self.computer_named(name, cx);
-                let screen = match what {
-                    "pair" => Some(Screen::Pair),
-                    "settings" => Some(Screen::Settings),
-                    "device" => key.map(Screen::Device),
-                    "folders" => key.map(Screen::Folders),
-                    _ => None,
-                };
-                if let Some(screen) = screen {
-                    self.go(screen, window, cx);
-                }
-            }
             "choose" => {
                 let key = self.link.read(cx).nearby.iter().find(|nearby| nearby.name == rest).map(|nearby| nearby.key);
                 if let Some(key) = key {
@@ -572,9 +553,9 @@ impl Home {
                 self.address.update(cx, |field, cx| field.set(address, cx));
                 self.pair_with_code(cx);
             }
-            "launch" => {
+            "new" => {
                 if let Screen::Project { key, project } = self.screen.clone() {
-                    self.launch(key, &project, rest, cx);
+                    self.new_tab(key, &project, rest != "shell", cx);
                 }
             }
             "focus" => {
@@ -616,10 +597,9 @@ impl Render for Home {
             Screen::Computer(_) if self.section == Section::History => self.conversations.is_none(),
             Screen::Folders(_) => self.folders.is_none(),
             Screen::File { .. } | Screen::Diff { .. } | Screen::Commit { .. } => self.view.is_none(),
-            Screen::Project { key, .. } => {
+            Screen::Project { .. } => {
                 self.any_working(cx)
                     || self.notice.is_some()
-                    || self.link.read(cx).is_opening(*key)
                     || self.drawer.as_ref().is_some_and(|drawer| drawer.data.is_none())
             }
             _ => self.any_working(cx),
