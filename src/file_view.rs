@@ -113,7 +113,7 @@ pub fn focus_active(view: &mut WorkspaceView, window: &mut Window, cx: &mut Cont
     };
     let editor = editor_for(view, &path, &file, cx);
     let focus = editor.read(cx).focus.clone();
-    window.focus(&focus);
+    window.focus(&focus, cx);
 }
 
 pub fn open_file(
@@ -149,7 +149,7 @@ pub fn open_file(
         });
     }
     let focus = editor.read(cx).focus.clone();
-    window.focus(&focus);
+    window.focus(&focus, cx);
     cx.notify();
 }
 

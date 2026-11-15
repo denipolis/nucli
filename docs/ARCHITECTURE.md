@@ -1,6 +1,6 @@
 # Architecture
 
-One Rust crate on GPUI. One window per open workspace. `docs/SPEC.md` describes the behavior; this file describes the code and its gotchas.
+One Rust crate on GPUI, used through `gpui-pre` and `gpui-pre-platform` (published snapshots of Zed's GPUI crates) pinned to one exact version, since any snapshot may change GPUI's API. One window per open workspace. `docs/SPEC.md` describes the behavior; this file describes the code and its gotchas.
 
 ## Files
 
@@ -136,7 +136,6 @@ Mirrors are `Session`s whose `Terminal` has no pty (`Backend::Mirror`). They sit
 
 ## Gotchas
 
-- `libc` is pinned to 0.2.189 in `Cargo.lock`. `gpui`'s `xattr` 0.2 dependency needs `libc::ENOATTR`, which later `libc` versions do not define on Linux, and `mdns-sd` needs at least 0.2.189. Do not run a plain `cargo update` without checking the Linux build.
 - Platforms consume shift for symbols, so `ctrl-shift-2` arrives as `ctrl-@`. `commands::shifted_alias` also binds the US layout's shifted form of every such key.
 - On Windows a native modal dialog pumps messages, so GPUI tasks run inside whatever update opened it and panic with `RefCell already borrowed`. Show one from its own thread, as `notify::alert` does.
 - `Window::handle_input` panics outside paint: call it from a `canvas` paint closure, not prepaint.
@@ -152,7 +151,6 @@ Mirrors are `Session`s whose `Terminal` has no pty (`Backend::Mirror`). They sit
   - macOS starts an `NSDraggingSession` from the current `mouseDragged` event, so it must run inside that event. GPUI reads only `NSFilenamesPboardType` on drop.
   - Windows takes the shell's data object of the file and runs `SHDoDragDrop`, which pumps messages until the drop, so it runs in a spawned task outside any update (see the modal dialog gotcha).
   - X11 runs the XDND source protocol on a thread with its own connection: it polls the pointer, finds the `XdndAware` window under it, sends enter, position, leave and drop, and answers the selection requests. GPUI keeps the implicit pointer grab, so the cursor shape does not change. Wayland would need GPUI's surface and the button serial, which GPUI does not expose, so nothing happens there.
-- `Window::dispatch_event` returns a private type, so input cannot be simulated with it from outside `gpui`.
 - GPUI does not paint while the macOS screen is locked, and window captures come back black. It also stops presenting while a window is fully covered, so captures of a window behind others show an old frame.
 - On X11 GPUI starts painting only after a window manager reports the window as visible, so a bare Xvfb stays black.
 - The snapshot cannot reproduce state that `alacritty_terminal` keeps private: the scroll region, tab stops, the saved cursor and charsets. Programs redraw these on their next full repaint. The primary screen is private too while a program uses the alternate screen (and `swap_alt` clears the alternate screen when swapping back), so a viewer that attached then is attached again with a fresh snapshot as soon as the program leaves it.

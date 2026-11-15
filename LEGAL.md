@@ -14,7 +14,7 @@ Direct dependencies, declared in `Cargo.toml`. Exact versions of everything, tra
 
 | Crate | License | Used for |
 |---|---|---|
-| [gpui](https://github.com/zed-industries/zed/tree/main/crates/gpui) | Apache-2.0 | UI framework: windows, layout, text, input, rendering |
+| [gpui-pre](https://crates.io/crates/gpui-pre), [gpui-pre-platform](https://crates.io/crates/gpui-pre-platform) | Apache-2.0 | UI framework: windows, layout, text, input, rendering. A published snapshot of [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui) and its platform crates from the Zed repository, pinned to one exact version |
 | [alacritty_terminal](https://github.com/alacritty/alacritty) | Apache-2.0 | Terminal emulation (parser, grid, selection, search) |
 | [portable-pty](https://github.com/wezterm/wezterm/tree/main/pty) | MIT | Pseudo terminals and child processes on every platform |
 | [dirs](https://github.com/dirs-dev/dirs-rs) | MIT OR Apache-2.0 | Platform config, data and cache folders |
@@ -47,7 +47,7 @@ Direct dependencies, declared in `Cargo.toml`. Exact versions of everything, tra
 
 Build-time only, not bundled: [create-dmg](https://github.com/create-dmg/create-dmg) (MIT) makes the macOS disk image in CI.
 
-Only `gpui` is used from its repository. The rest of that repository (its editor, terminal and UI crates) is GPL or AGPL licensed and must not be copied or depended on.
+Only GPUI and the Apache-2.0 crates it is built from (published as `gpui-pre-*`) are used from the Zed repository. The rest of that repository (its editor, terminal and UI crates) is GPL or AGPL licensed and must not be copied or depended on.
 
 Transitive crates are licensed under MIT, Apache-2.0 (some with the LLVM exception), BSD-2/3-Clause, ISC, Zlib, Unicode-3.0, NCSA, CC0-1.0, Unlicense or BSL-1.0, where a crate offers a choice the permissive option applies. Three crates are MPL-2.0 (`option-ext` linked unmodified, `cbindgen` used only at build time, `dwrote` listed in `Cargo.lock` but built for no supported target); MPL-2.0 is file-level copyleft and allows distribution in a larger MIT work as long as those files stay under MPL-2.0 and their source stays available (they are published unmodified on crates.io).
 

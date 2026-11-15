@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render, ScrollStrategy,
+    AppContext, Context, Entity, Focusable, InteractiveElement, IntoElement, ParentElement, Render, ScrollStrategy,
     StatefulInteractiveElement, Styled, Subscription, UniformListScrollHandle, Window, deferred, div, px, relative,
     uniform_list,
 };
@@ -81,15 +81,15 @@ impl FontPicker {
         let current = settings::get(cx).font.clone();
         self.highlighted = self.matches.iter().position(|&index| self.fonts[index] == current).unwrap_or(0);
         self.scroll.scroll_to_item(self.highlighted, ScrollStrategy::Center);
-        self.input.read(cx).focus(window);
+        window.focus(&self.input.focus_handle(cx), cx);
         cx.notify();
     }
 
     fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open = false;
         match self.previous.take() {
-            Some(focus) => window.focus(&focus),
-            None => window.blur(),
+            Some(focus) => window.focus(&focus, cx),
+            None => window.blur(cx),
         }
         cx.notify();
     }
@@ -166,7 +166,7 @@ impl Render for FontPicker {
                     .collect()
             }),
         )
-        .track_scroll(self.scroll.clone())
+        .track_scroll(&self.scroll)
         .h(line * count.clamp(1, VISIBLE_ROWS) as f32);
         let dropdown = div()
             .id("font-dropdown")

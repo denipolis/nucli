@@ -8,12 +8,12 @@ use alacritty_terminal::term::TermMode;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor, Rgb};
 use gpui::{
-    AnyElement, App, Bounds, ClipboardItem, Context, Corner, CursorStyle, Element, ElementId, ElementInputHandler,
+    Anchor, AnyElement, App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId, ElementInputHandler,
     Entity, EntityInputHandler, ExternalPaths, Font, FontFeatures, FontStyle, FontWeight, GlobalElementId, Hsla,
     InspectorElementId, InteractiveElement, IntoElement, KeyDownEvent, LayoutId, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, Rgba, ScrollDelta, ScrollWheelEvent,
-    ShapedLine, SharedString, Size, StrikethroughStyle, Style, Styled, TextRun, UTF16Selection, UnderlineStyle, Window,
-    anchored, deferred, div, fill, img, outline, point, px, relative, size,
+    MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, Rgba, ScrollDelta, ScrollEvent, ShapedLine,
+    SharedString, Size, StrikethroughStyle, Style, Styled, TextRun, UTF16Selection, UnderlineStyle, Window, anchored,
+    deferred, div, fill, img, outline, point, px, relative, size,
 };
 
 use crate::commands;
@@ -393,7 +393,7 @@ impl Element for TerminalElement {
                 window.paint_quad(quad);
             }
             for (origin, line) in frame.lines.drain(..) {
-                let _ = line.paint(origin, frame.cell.height, window, cx);
+                let _ = line.paint(origin, frame.cell.height, gpui::TextAlign::Left, None, window, cx);
             }
         });
     }
@@ -612,7 +612,7 @@ impl Session {
     }
 
     fn update_hover(&mut self, position: Point<Pixels>, modifiers: &gpui::Modifiers, cx: &mut Context<Self>) {
-        let hover = if modifiers.secondary() { self.link_at(position) } else { None };
+        let hover = if modifiers.secondary(cx) { self.link_at(position) } else { None };
         if hover != self.view.hover {
             self.view.preview = hover.as_ref().and_then(image_size);
             self.view.hover = hover;
@@ -635,7 +635,7 @@ impl Session {
         let down = fit(image, size(width, viewport.height - below - chrome));
         let up = fit(image, size(width, above - chrome));
         let (corner, y, shown) =
-            if down.height >= up.height { (Corner::TopLeft, below, down) } else { (Corner::BottomLeft, above, up) };
+            if down.height >= up.height { (Anchor::TopLeft, below, down) } else { (Anchor::BottomLeft, above, up) };
         if shown.height < px(1.0) {
             return None;
         }
@@ -651,10 +651,10 @@ impl Session {
     }
 
     fn mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        window.focus(&self.focus);
+        window.focus(&self.focus, cx);
         self.terminal.claim();
         if event.button == MouseButton::Left
-            && event.modifiers.secondary()
+            && event.modifiers.secondary(cx)
             && let Some(link) = self.link_at(event.position)
         {
             self.view.link_clicked = true;
@@ -749,7 +749,7 @@ impl Session {
         cx.notify();
     }
 
-    fn scroll_wheel(&mut self, event: &ScrollWheelEvent, _window: &mut Window, cx: &mut Context<Self>) {
+    fn scroll_wheel(&mut self, event: &ScrollEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let Some(cell) = self.cell_size() else { return };
         let lines = match event.delta {
             ScrollDelta::Pixels(delta) => f32::from(delta.y) / f32::from(cell.height),
@@ -843,7 +843,7 @@ impl Render for Session {
                     .on_mouse_up(MouseButton::Middle, cx.listener(Self::mouse_up))
                     .on_mouse_up(MouseButton::Right, cx.listener(Self::mouse_up))
                     .on_mouse_up_out(MouseButton::Left, cx.listener(Self::mouse_up))
-                    .on_scroll_wheel(cx.listener(Self::scroll_wheel))
+                    .on_scroll(cx.listener(Self::scroll_wheel))
                     .on_drop(cx.listener(Self::drop_paths))
                     .on_drop(cx.listener(|session, drag: &crate::file_ops::DraggedPath, _, cx| {
                         session.type_paths(std::slice::from_ref(&drag.path), cx)

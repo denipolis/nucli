@@ -14,7 +14,7 @@ pub fn start(cx: &mut App) {
             let lines: Vec<String> = text.lines().map(String::from).collect();
             for line in lines.iter().skip(done) {
                 let line = line.clone();
-                let _ = cx.update(|cx| run(&line, cx));
+                cx.update(|cx| run(&line, cx));
                 cx.background_executor().timer(Duration::from_millis(60)).await;
             }
             done = lines.len().max(done);
@@ -93,7 +93,7 @@ fn run(line: &str, cx: &mut App) {
     let _ = window.update(cx, |_, window, cx| match command {
         "keys" => {
             for key in rest.split_whitespace() {
-                if let Ok(keystroke) = Keystroke::parse(key) {
+                if let Ok(keystroke) = Keystroke::parse_with_os(key, cx.platform_info().os) {
                     window.dispatch_keystroke(keystroke, cx);
                 }
             }
@@ -136,7 +136,7 @@ fn run(line: &str, cx: &mut App) {
                 eprintln!("SCREEN {}", session.read(cx).terminal.screen_lines().join("|"));
             }
         }
-        "draw" => window.draw(cx).clear(),
+        "draw" => window.draw(cx).clear(cx),
         "activate" => {
             cx.activate(true);
             window.activate_window();

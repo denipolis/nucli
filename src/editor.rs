@@ -60,13 +60,11 @@ actions!(
 pub fn bindings() -> Vec<KeyBinding> {
     let c = Some("FileView");
     let mac = cfg!(target_os = "macos");
-    let primary = if mac { "cmd" } else { "ctrl" };
     let clipboard = [
-        KeyBinding::new(&format!("{primary}-c"), commands::Copy, c),
-        KeyBinding::new(&format!("{primary}-v"), commands::Paste, c),
-        KeyBinding::new(&format!("{primary}-a"), commands::SelectAll, c),
+        KeyBinding::new(commands::primary!("c"), commands::Copy, c),
+        KeyBinding::new(commands::primary!("v"), commands::Paste, c),
+        KeyBinding::new(commands::primary!("a"), commands::SelectAll, c),
     ];
-    let word = if mac { "alt" } else { "ctrl" };
     let mut keys = vec![
         KeyBinding::new("left", MoveLeft, c),
         KeyBinding::new("right", MoveRight, c),
@@ -76,10 +74,10 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("shift-right", SelectRight, c),
         KeyBinding::new("shift-up", SelectUp, c),
         KeyBinding::new("shift-down", SelectDown, c),
-        KeyBinding::new(&format!("{word}-left"), WordLeft, c),
-        KeyBinding::new(&format!("{word}-right"), WordRight, c),
-        KeyBinding::new(&format!("{word}-shift-left"), SelectWordLeft, c),
-        KeyBinding::new(&format!("{word}-shift-right"), SelectWordRight, c),
+        KeyBinding::new(commands::word!("left"), WordLeft, c),
+        KeyBinding::new(commands::word!("right"), WordRight, c),
+        KeyBinding::new(commands::word!("shift-left"), SelectWordLeft, c),
+        KeyBinding::new(commands::word!("shift-right"), SelectWordRight, c),
         KeyBinding::new("home", LineStart, c),
         KeyBinding::new("end", LineEnd, c),
         KeyBinding::new("shift-home", SelectLineStart, c),
@@ -88,7 +86,7 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("pagedown", PageDown, c),
         KeyBinding::new("backspace", Backspace, c),
         KeyBinding::new("delete", DeleteForward, c),
-        KeyBinding::new(&format!("{word}-backspace"), DeleteWordLeft, c),
+        KeyBinding::new(commands::word!("backspace"), DeleteWordLeft, c),
         KeyBinding::new("enter", Newline, c),
         KeyBinding::new("tab", Indent, c),
     ];
@@ -899,7 +897,7 @@ impl Render for Editor {
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(move |editor, event: &gpui::MouseDownEvent, window, cx| {
-                                    window.focus(&editor.focus);
+                                    window.focus(&editor.focus, cx);
                                     let pos = editor.pos_at(index, event.position.x, window, cx);
                                     if event.click_count == 2 {
                                         let start = editor.word_left_of(editor.right_of(pos));
@@ -924,7 +922,7 @@ impl Render for Editor {
                             .on_mouse_down(
                                 MouseButton::Right,
                                 cx.listener(move |editor, event: &gpui::MouseDownEvent, window, cx| {
-                                    window.focus(&editor.focus);
+                                    window.focus(&editor.focus, cx);
                                     let pos = editor.pos_at(index, event.position.x, window, cx);
                                     if !editor.selection().is_some_and(|(start, end)| start <= pos && pos <= end) {
                                         editor.cursor = pos;
@@ -1043,7 +1041,7 @@ impl Render for Editor {
         )
         .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
         .with_width_from_item(Some(widest))
-        .track_scroll(self.scroll.clone())
+        .track_scroll(&self.scroll)
         .absolute()
         .top_0()
         .left_0()

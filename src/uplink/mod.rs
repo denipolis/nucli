@@ -144,9 +144,7 @@ pub fn init(cx: &mut App) {
     let events_entity = entity.clone();
     cx.spawn(async move |cx| {
         while let Some(event) = received.next().await {
-            if events_entity.update(cx, |uplink, cx| uplink.handle(event, cx)).is_err() {
-                break;
-            }
+            events_entity.update(cx, |uplink, cx| uplink.handle(event, cx));
         }
     })
     .detach();
@@ -154,9 +152,7 @@ pub fn init(cx: &mut App) {
     cx.spawn(async move |cx| {
         loop {
             cx.background_executor().timer(Duration::from_secs(1)).await;
-            if ticking.update(cx, |uplink, cx| uplink.tick(cx)).is_err() {
-                break;
-            }
+            ticking.update(cx, |uplink, cx| uplink.tick(cx));
         }
     })
     .detach();

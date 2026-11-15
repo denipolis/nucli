@@ -166,7 +166,7 @@ pub fn paste(text: &str, mode: TermMode) -> Vec<u8> {
 mod tests {
     use super::*;
 
-    fn key(text: &str) -> Keystroke {
+    fn key(text: &'static str) -> Keystroke {
         Keystroke::parse(text).unwrap()
     }
 

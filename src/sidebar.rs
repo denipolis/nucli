@@ -472,7 +472,7 @@ fn tab_row(
         .child(gutter(link, true, info.loose, &theme))
         .child(inner)
         .on_click(cx.listener(move |view, event: &gpui::ClickEvent, window, cx| {
-            if event.modifiers().secondary() {
+            if event.modifiers().secondary(cx) {
                 crate::splits_view::toggle(view, &click_id, window, cx);
             } else if event.click_count() == 2 {
                 crate::actions::begin_rename(view, Rename::Tab(click_id.clone()), window, cx);

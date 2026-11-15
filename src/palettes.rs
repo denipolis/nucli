@@ -93,7 +93,7 @@ fn load_files(
     cx.spawn(async move |_, cx| {
         let dir = project.clone();
         let files = cx.background_executor().spawn(async move { list_files(&dir) }).await;
-        let _ = cx.update(|cx| {
+        cx.update(|cx| {
             store::finish_progress(progress, cx);
             palette.update(cx, |palette, cx| {
                 let mut extra = file_items(&project, &recent, &files, cx);
@@ -374,7 +374,7 @@ fn run_git(
     let progress = store::begin_progress(text, cx);
     cx.spawn(async move |cx| {
         let result = cx.background_executor().spawn(async move { action() }).await;
-        let _ = cx.update(|cx| {
+        cx.update(|cx| {
             store::finish_progress(progress, cx);
             if let Err(error) = result {
                 let _ = handle.update(cx, |_, window, cx| {

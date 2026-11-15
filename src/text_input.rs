@@ -39,8 +39,6 @@ actions!(
 
 pub fn bindings() -> Vec<KeyBinding> {
     let context = Some("TextInput");
-    let primary = if cfg!(target_os = "macos") { "cmd" } else { "ctrl" };
-    let word = if cfg!(target_os = "macos") { "alt" } else { "ctrl" };
     vec![
         KeyBinding::new("backspace", Backspace, context),
         KeyBinding::new("delete", Delete, context),
@@ -48,17 +46,17 @@ pub fn bindings() -> Vec<KeyBinding> {
         KeyBinding::new("right", Right, context),
         KeyBinding::new("shift-left", SelectLeft, context),
         KeyBinding::new("shift-right", SelectRight, context),
-        KeyBinding::new(&format!("{primary}-a"), SelectAll, context),
-        KeyBinding::new(&format!("{primary}-v"), Paste, context),
-        KeyBinding::new(&format!("{primary}-c"), Copy, context),
-        KeyBinding::new(&format!("{primary}-x"), Cut, context),
-        KeyBinding::new(&format!("{word}-backspace"), DeleteWord, context),
-        KeyBinding::new(&format!("{word}-left"), WordLeft, context),
-        KeyBinding::new(&format!("{word}-right"), WordRight, context),
+        KeyBinding::new(crate::commands::primary!("a"), SelectAll, context),
+        KeyBinding::new(crate::commands::primary!("v"), Paste, context),
+        KeyBinding::new(crate::commands::primary!("c"), Copy, context),
+        KeyBinding::new(crate::commands::primary!("x"), Cut, context),
+        KeyBinding::new(crate::commands::word!("backspace"), DeleteWord, context),
+        KeyBinding::new(crate::commands::word!("left"), WordLeft, context),
+        KeyBinding::new(crate::commands::word!("right"), WordRight, context),
         KeyBinding::new("home", Home, context),
         KeyBinding::new("end", End, context),
-        KeyBinding::new(&format!("{primary}-left"), Home, context),
-        KeyBinding::new(&format!("{primary}-right"), End, context),
+        KeyBinding::new(crate::commands::primary!("left"), Home, context),
+        KeyBinding::new(crate::commands::primary!("right"), End, context),
         KeyBinding::new("enter", Submit, context),
         KeyBinding::new("escape", Cancel, context),
         KeyBinding::new("shift-enter", Up, context),
@@ -132,10 +130,6 @@ impl TextInput {
 
     pub fn insert(&mut self, text: &str, cx: &mut Context<Self>) {
         self.replace(self.selected.clone(), text, cx);
-    }
-
-    pub fn focus(&self, window: &mut Window) {
-        window.focus(&self.focus);
     }
 
     fn cursor(&self) -> usize {
@@ -273,7 +267,7 @@ impl TextInput {
     }
 
     fn mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        window.focus(&self.focus);
+        window.focus(&self.focus, cx);
         let index = match (&self.layout, &self.bounds) {
             (Some(layout), Some(bounds)) if !self.text.is_empty() => {
                 layout.closest_index_for_x(event.position.x - bounds.left())
@@ -522,7 +516,7 @@ impl Element for InputElement {
             window.paint_quad(selection);
         }
         let Some(line) = prepaint.line.take() else { return };
-        let _ = line.paint(bounds.origin, window.line_height(), window, cx);
+        let _ = line.paint(bounds.origin, window.line_height(), gpui::TextAlign::Left, None, window, cx);
         if focus.is_focused(window)
             && let Some(cursor) = prepaint.cursor.take()
         {

@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, AppContext, Context, Div, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement,
-    SharedString, Stateful, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
+    AnyElement, App, AppContext, Context, Div, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    ParentElement, SharedString, Stateful, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
 };
 
 use crate::agents::{self, AgentProfile, ShellProfile};
@@ -180,12 +180,12 @@ fn build_rows(
         .collect()
 }
 
-fn focus_next_field(view: &WorkspaceView, input: &Entity<TextInput>, window: &mut Window, cx: &App) {
+fn focus_next_field(view: &WorkspaceView, input: &Entity<TextInput>, window: &mut Window, cx: &mut App) {
     let Some(page) = &view.settings else { return };
     let rows = if page.agents.iter().flatten().any(|field| field == input) { &page.agents } else { &page.shells };
     let fields: Vec<&Entity<TextInput>> = rows.iter().flatten().collect();
     let Some(position) = fields.iter().position(|field| *field == input) else { return };
-    fields[(position + 1) % fields.len()].read(cx).focus(window);
+    window.focus(&fields[(position + 1) % fields.len()].focus_handle(cx), cx);
 }
 
 fn sync_fields(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
@@ -207,7 +207,7 @@ fn sync_fields(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<W
 fn start_recording(view: &mut WorkspaceView, name: &'static str, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     let this = cx.entity().downgrade();
     let subscription = cx.intercept_keystrokes(move |event, _, cx| {
-        let key = event.keystroke.unparse();
+        let key = event.keystroke.unparse(cx.platform_info().os);
         let escape = event.keystroke.key == "escape";
         let _ = this.update(cx, |view, cx| finish_recording(view, (!escape).then_some(key.as_str()), cx));
         cx.stop_propagation();

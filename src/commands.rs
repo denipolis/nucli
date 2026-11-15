@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui::{
-    Action, App, DummyKeyboardMapper, Global, KeyBinding, KeyBindingContextPredicate, Menu, MenuItem, NoAction,
-    SystemMenuType, actions,
+    Action, App, Global, KeyBinding, KeyBindingContextPredicate, Menu, MenuItem, NoAction, SystemMenuType, actions,
 };
 
 use crate::paths;
@@ -129,6 +128,20 @@ macro_rules! command {
         }
     };
 }
+
+macro_rules! primary {
+    ($key:literal) => {
+        if cfg!(target_os = "macos") { concat!("cmd-", $key) } else { concat!("ctrl-", $key) }
+    };
+}
+
+macro_rules! word {
+    ($key:literal) => {
+        if cfg!(target_os = "macos") { concat!("alt-", $key) } else { concat!("ctrl-", $key) }
+    };
+}
+
+pub(crate) use {primary, word};
 
 pub const COMMANDS: &[Command] = &[
     command!("new_workspace", "New Workspace", NewWorkspace, "cmd-n", "ctrl-shift-n"),
@@ -375,17 +388,17 @@ pub fn shifted_alias(key: &str) -> Option<String> {
     Some(modifiers.join("-"))
 }
 
-fn bindings_for(key: &str, action: fn() -> Box<dyn Action>, context: Option<&str>) -> Vec<KeyBinding> {
+fn bindings_for(key: &str, action: fn() -> Box<dyn Action>, context: Option<&str>, cx: &App) -> Vec<KeyBinding> {
     let alias = shifted_alias(key);
-    std::iter::once(key).chain(alias.as_deref()).filter_map(|key| binding(key, action(), context)).collect()
+    std::iter::once(key).chain(alias.as_deref()).filter_map(|key| binding(key, action(), context, cx)).collect()
 }
 
-pub fn binding(key: &str, action: Box<dyn Action>, context: Option<&str>) -> Option<KeyBinding> {
+pub fn binding(key: &str, action: Box<dyn Action>, context: Option<&str>, cx: &App) -> Option<KeyBinding> {
     let predicate = match context {
         Some(context) => Some(Rc::new(KeyBindingContextPredicate::parse(context).ok()?)),
         None => None,
     };
-    KeyBinding::load(key, action, predicate, false, None, &DummyKeyboardMapper).ok()
+    KeyBinding::load(key, action, predicate, false, None, cx).ok()
 }
 
 pub fn apply(cx: &mut App, extra: Vec<KeyBinding>) {
@@ -397,7 +410,7 @@ pub fn apply(cx: &mut App, extra: Vec<KeyBinding>) {
         let key = default_key(command);
         if !key.is_empty() {
             keys.by_name.insert(command.name, key.to_string());
-            bindings.extend(bindings_for(key, command.action, command.context));
+            bindings.extend(bindings_for(key, command.action, command.context, cx));
         }
     }
     match read_overrides() {
@@ -406,12 +419,12 @@ pub fn apply(cx: &mut App, extra: Vec<KeyBinding>) {
                 match name.as_deref().and_then(find) {
                     Some(command) => {
                         keys.by_name.insert(command.name, key.clone());
-                        bindings.extend(bindings_for(&key, command.action, command.context));
+                        bindings.extend(bindings_for(&key, command.action, command.context, cx));
                     }
                     None => {
                         keys.by_name.retain(|_, bound| *bound != key);
                         for context in [None, Some("Terminal"), Some("FileView")] {
-                            bindings.extend(bindings_for(&key, || Box::new(NoAction), context));
+                            bindings.extend(bindings_for(&key, || Box::new(NoAction), context, cx));
                         }
                     }
                 }
@@ -532,9 +545,13 @@ pub fn menus() -> Vec<Menu> {
         names
             .iter()
             .map(|name| match find(name) {
-                Some(command) => {
-                    MenuItem::Action { name: command.title.into(), action: (command.action)(), os_action: None }
-                }
+                Some(command) => MenuItem::Action {
+                    name: command.title.into(),
+                    action: (command.action)(),
+                    os_action: None,
+                    checked: false,
+                    disabled: false,
+                },
                 None => MenuItem::separator(),
             })
             .collect()
@@ -547,11 +564,12 @@ pub fn menus() -> Vec<Menu> {
                 .chain([MenuItem::os_submenu("Services", SystemMenuType::Services), MenuItem::separator()])
                 .chain(items(&["hide", "hide_others", "show_all", "-", "quit"]))
                 .collect(),
+            disabled: false,
         },
-        Menu { name: "File".into(), items: items(FILE_MENU) },
-        Menu { name: "Edit".into(), items: items(EDIT_MENU) },
-        Menu { name: "View".into(), items: items(VIEW_MENU) },
-        Menu { name: "Window".into(), items: items(WINDOW_MENU) },
+        Menu { name: "File".into(), items: items(FILE_MENU), disabled: false },
+        Menu { name: "Edit".into(), items: items(EDIT_MENU), disabled: false },
+        Menu { name: "View".into(), items: items(VIEW_MENU), disabled: false },
+        Menu { name: "Window".into(), items: items(WINDOW_MENU), disabled: false },
     ]
 }
 

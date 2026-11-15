@@ -450,7 +450,7 @@ fn ref_label(reference: &GitRef, lane: Hsla, theme: &crate::theme::Theme) -> imp
         GitRef::Remote(name) => (format!("{} {name}", icons::CLOUD), lane),
     };
     div()
-        .flex_shrink()
+        .flex_shrink(1.)
         .min_w_0()
         .max_w(px(140.0))
         .truncate()
@@ -676,7 +676,7 @@ impl Render for CommitsPanel {
                                     this.child(
                                         div()
                                             .flex()
-                                            .flex_shrink()
+                                            .flex_shrink(1.)
                                             .min_w_0()
                                             .max_w(relative(0.5))
                                             .gap(px(4.0))

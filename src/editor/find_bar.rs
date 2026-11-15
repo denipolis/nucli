@@ -3,8 +3,8 @@ use std::ops::Range;
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, AppContext, Context, Div, Entity, InteractiveElement, IntoElement, ParentElement, ScrollStrategy,
-    Stateful, StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, App, AppContext, Context, Div, Entity, Focusable, InteractiveElement, IntoElement, ParentElement,
+    ScrollStrategy, Stateful, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
 use super::{Editor, FindState, Pos, Row};
@@ -248,9 +248,9 @@ impl Editor {
         if replace && !text.is_empty() {
             let current = replacement.read(cx).text.clone();
             replacement.update(cx, |input, cx| input.set_text(&current, cx));
-            replacement.read(cx).focus(window);
+            window.focus(&replacement.focus_handle(cx), cx);
         } else {
-            input.read(cx).focus(window);
+            window.focus(&input.focus_handle(cx), cx);
         }
         self.search(true, cx);
     }
@@ -259,9 +259,9 @@ impl Editor {
         let Some(find) = self.find.as_mut() else { return };
         find.show_replace = !find.show_replace;
         if find.show_replace {
-            find.replacement.read(cx).focus(window);
+            window.focus(&find.replacement.focus_handle(cx), cx);
         } else {
-            find.input.read(cx).focus(window);
+            window.focus(&find.input.focus_handle(cx), cx);
         }
         cx.notify();
     }
@@ -302,15 +302,15 @@ impl Editor {
     fn focus_find_field(&mut self, to_replacement: bool, window: &mut Window, cx: &mut Context<Self>) {
         let Some(find) = self.find.as_ref() else { return };
         if to_replacement && find.show_replace {
-            find.replacement.read(cx).focus(window);
+            window.focus(&find.replacement.focus_handle(cx), cx);
         } else {
-            find.input.read(cx).focus(window);
+            window.focus(&find.input.focus_handle(cx), cx);
         }
     }
 
     pub(super) fn close_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.find = None;
-        window.focus(&self.focus);
+        window.focus(&self.focus, cx);
         cx.notify();
     }
 

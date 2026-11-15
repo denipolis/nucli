@@ -235,14 +235,14 @@ impl WorkspaceView {
 
     pub fn focus_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(page) = &self.settings {
-            window.focus(&page.focus);
+            window.focus(&page.focus, cx);
         } else if let Some(session) = self.selected_session(cx) {
             let focus = session.read(cx).focus.clone();
-            window.focus(&focus);
+            window.focus(&focus, cx);
         } else if self.file_shown(cx) {
             crate::file_view::focus_active(self, window, cx);
         } else {
-            window.focus(&self.focus);
+            window.focus(&self.focus, cx);
         }
     }
 
@@ -283,7 +283,7 @@ impl WorkspaceView {
         });
         if let Some(session) = self.store(cx).session(id) {
             let focus = session.read(cx).focus.clone();
-            window.focus(&focus);
+            window.focus(&focus, cx);
         }
     }
 
@@ -316,7 +316,7 @@ impl WorkspaceView {
         })
         .detach();
         let focus = palette.read(cx).input.read(cx).focus_handle(cx);
-        window.focus(&focus);
+        window.focus(&focus, cx);
         self.palette = Some(palette);
         cx.notify();
     }
@@ -467,7 +467,7 @@ impl Render for WorkspaceView {
                 Some(position) => backdrop.child(
                     gpui::anchored()
                         .position(position)
-                        .anchor(gpui::Corner::BottomLeft)
+                        .anchor(gpui::Anchor::BottomLeft)
                         .snap_to_window_with_margin(px(8.0))
                         .child(content),
                 ),

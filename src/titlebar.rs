@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, Context, Corner, Div, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    Anchor, AnyElement, App, Context, Div, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement,
     StatefulInteractiveElement, Styled, Window, WindowControlArea, anchored, deferred, div, point, px,
 };
 
@@ -43,7 +43,7 @@ fn location(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement
         .flex()
         .items_center()
         .gap(px(8.0))
-        .flex_shrink()
+        .flex_shrink(1.)
         .min_w_0()
         .w(px(LOCATION_WIDTH))
         .overflow_hidden()
@@ -203,7 +203,7 @@ fn dropdown(
     }
     deferred(
         anchored()
-            .anchor(Corner::TopRight)
+            .anchor(Anchor::TopRight)
             .offset(point(px(0.0), px(1.0)))
             .snap_to_window_with_margin(px(8.0))
             .child(list),

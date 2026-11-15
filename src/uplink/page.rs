@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, AppContext, Bounds, ClipboardItem, Context, Entity, InteractiveElement, IntoElement,
+    AnyElement, App, AppContext, Bounds, ClipboardItem, Context, Entity, Focusable, InteractiveElement, IntoElement,
     ParentElement, PromptLevel, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, canvas, div,
     fill, point, px, size,
 };
@@ -95,7 +95,7 @@ pub fn ensure(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
                 InputEvent::Submit => join(view, cx),
                 InputEvent::NextField => {
                     if let Some(inputs) = page_inputs(view) {
-                        inputs.address.read(cx).focus(window);
+                        window.focus(&inputs.address.focus_handle(cx), cx);
                     }
                 }
                 _ => cx.notify(),
@@ -104,7 +104,7 @@ pub fn ensure(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
                 InputEvent::Submit => join(view, cx),
                 InputEvent::NextField => {
                     if let Some(inputs) = page_inputs(view) {
-                        inputs.code.read(cx).focus(window);
+                        window.focus(&inputs.code.focus_handle(cx), cx);
                     }
                 }
                 _ => cx.notify(),
@@ -277,7 +277,7 @@ fn adding(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme: 
                 .on_click(cx.listener(move |view, _, window, cx| {
                     if let Some(inputs) = page_inputs(view) {
                         inputs.address.update(cx, |input, cx| input.set_text(&name, cx));
-                        inputs.code.read(cx).focus(window);
+                        window.focus(&inputs.code.focus_handle(cx), cx);
                     }
                 })),
         );
@@ -454,7 +454,7 @@ fn forget(key: Key, name: &str, window: &mut Window, cx: &mut Context<WorkspaceV
     );
     cx.spawn(async move |_, cx| {
         if answer.await == Ok(0) {
-            let _ = cx.update(|cx| with_uplink(cx, |uplink, cx| uplink.forget(&key, cx)));
+            cx.update(|cx| with_uplink(cx, |uplink, cx| uplink.forget(&key, cx)));
         }
     })
     .detach();

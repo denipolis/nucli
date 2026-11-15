@@ -130,7 +130,7 @@ impl Onboarding {
             true
         });
         let focus = cx.focus_handle();
-        window.focus(&focus);
+        window.focus(&focus, cx);
         let ticker = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(Duration::from_millis(40)).await;

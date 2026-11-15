@@ -66,7 +66,7 @@ use crate::settings::Settings;
 fn start_application() -> Application {
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
-    let started = std::panic::catch_unwind(Application::new);
+    let started = std::panic::catch_unwind(gpui_platform::application);
     std::panic::set_hook(hook);
     started.unwrap_or_else(|panic| {
         let reason = panic
@@ -126,16 +126,16 @@ fn watch_config(cx: &mut App) {
             let keys_now = modified(paths::keybindings_file());
             if settings_now != settings_time {
                 settings_time = settings_now;
-                let _ = cx.update(settings::reload);
+                cx.update(settings::reload);
             }
             let themes_now = stamp();
             if themes_now != themes_stamp {
                 themes_stamp = themes_now;
-                let _ = cx.update(theme::reload);
+                cx.update(theme::reload);
             }
             if keys_now != keys_time {
                 keys_time = keys_now;
-                let _ = cx.update(apply_keys);
+                cx.update(apply_keys);
             }
         }
     })
@@ -156,7 +156,7 @@ fn quit_on_terminate(cx: &mut App) {
         loop {
             cx.background_executor().timer(std::time::Duration::from_millis(200)).await;
             if TERMINATING.load(Ordering::Relaxed) {
-                let _ = cx.update(|cx| cx.quit());
+                cx.update(|cx| cx.quit());
                 break;
             }
         }
@@ -284,7 +284,7 @@ fn main() {
         cx.spawn(async move |cx| {
             use futures::StreamExt;
             while let Some(folders) = opened_events.next().await {
-                let _ = cx.update(|cx| open_folders(folders, cx));
+                cx.update(|cx| open_folders(folders, cx));
             }
         })
         .detach();

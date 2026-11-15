@@ -176,7 +176,7 @@ impl ChangesPanel {
             let Ok(answer) = answer else { return };
             cx.spawn(async move |cx| {
                 if answer.await == Ok(0) {
-                    let _ = panel.update(cx, |panel, cx| {
+                    panel.update(cx, |panel, cx| {
                         let root = panel.root.clone();
                         panel.run("discarding changes", move |_| discard(&root, &changes), |_, _| {}, cx);
                     });

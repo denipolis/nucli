@@ -334,7 +334,7 @@ pub fn new_terminal_in(view: &mut WorkspaceView, path: &Path, window: &mut Windo
         && let Some(session) = view.store(cx).session(&id)
     {
         let focus = session.read(cx).focus.clone();
-        window.focus(&focus);
+        window.focus(&focus, cx);
     }
     cx.notify();
 }
@@ -504,7 +504,7 @@ pub fn begin_rename(view: &mut WorkspaceView, target: Rename, window: &mut Windo
         _ => {}
     })
     .detach();
-    input.read(cx).focus(window);
+    window.focus(&input.focus_handle(cx), cx);
     let focus = input.read(cx).focus_handle(cx);
     cx.on_blur(&focus, window, |view, window, cx| finish_rename(view, true, window, cx)).detach();
     view.rename = Some((target, input));
@@ -981,7 +981,7 @@ pub fn request_quit(cx: &mut App) {
         if choice == 2 {
             return;
         }
-        let _ = cx.update(|cx| {
+        cx.update(|cx| {
             if choice == 0 {
                 for handle in dirty {
                     let _ = handle.update(cx, |view, _, cx| crate::file_view::save_all(view, cx));
@@ -1031,7 +1031,7 @@ pub fn close_workspace_window(id: &str, window: &mut Window, cx: &mut App) {
             if choice == 2 {
                 return;
             }
-            let _ = cx.update(|cx| {
+            cx.update(|cx| {
                 if choice == 0
                     && let Some(view) = view
                 {
@@ -1247,7 +1247,7 @@ pub fn detect(cx: &mut App, agents_only: bool) {
                     (if agents_only { agents::detect_agents() } else { Vec::new() }, agents::detect_shells())
                 })
                 .await;
-        let _ = cx.update(|cx| {
+        cx.update(|cx| {
             crate::store::finish_progress(progress, cx);
             settings::update(cx, |settings| {
                 for profile in agents {
@@ -1355,7 +1355,7 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         }))
         .on_action(cx.listener(|view, _: &FilterSidebar, window, cx| {
             show_sidebar_tab(view, view.store(cx).ui.sidebar_tab, cx);
-            view.filter.read(cx).focus(window);
+            window.focus(&view.filter.focus_handle(cx), cx);
         }))
         .on_action(cx.listener(|view, _: &ShowProjects, _, cx| show_sidebar_tab(view, SidebarTab::Projects, cx)))
         .on_action(cx.listener(|view, _: &ShowAgents, _, cx| show_sidebar_tab(view, SidebarTab::Agents, cx)))

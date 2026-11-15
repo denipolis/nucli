@@ -4,7 +4,7 @@ use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Column, Direction, Line, Point as GridPoint};
 use alacritty_terminal::term::search::{RegexIter, RegexSearch};
 use gpui::{
-    AnyElement, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement,
+    AnyElement, AppContext, Context, Entity, Focusable, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, Window, div, px,
 };
 
@@ -36,7 +36,7 @@ pub fn escape(query: &str) -> String {
 impl Session {
     pub fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(find) = &self.view.find {
-            find.input.read(cx).focus(window);
+            window.focus(&find.input.focus_handle(cx), cx);
             return;
         }
         let selected = self.terminal.selection_text().filter(|text| !text.contains('\n'));
@@ -55,14 +55,14 @@ impl Session {
             InputEvent::NextField => {}
         })
         .detach();
-        input.read(cx).focus(window);
+        window.focus(&input.focus_handle(cx), cx);
         self.view.find = Some(Find { input, matches: Vec::new(), current: 0, searched: Instant::now() });
         self.run_search(true, cx);
     }
 
     pub fn close_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.view.find = None;
-        window.focus(&self.focus);
+        window.focus(&self.focus, cx);
         cx.notify();
     }
 

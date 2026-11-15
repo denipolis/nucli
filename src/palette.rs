@@ -363,7 +363,7 @@ impl Render for Palette {
                     .collect()
             }),
         )
-        .track_scroll(self.scroll.clone())
+        .track_scroll(&self.scroll)
         .h(line * (count.clamp(1, 14) as f32));
         let mut body = div()
             .w(px(if self.anchor.is_some() { 520.0 } else { 640.0 }))

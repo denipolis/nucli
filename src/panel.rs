@@ -124,7 +124,7 @@ pub fn terminal_panel(
     let mut tabs = div()
         .id("terminal-tabs")
         .flex()
-        .flex_shrink()
+        .flex_shrink(1.)
         .min_w_0()
         .items_center()
         .gap(px(2.0))
@@ -200,7 +200,7 @@ pub fn terminal_panel(
                     });
                     if let Some(session) = view.store(cx).session(&select_id) {
                         let focus = session.read(cx).focus.clone();
-                        window.focus(&focus);
+                        window.focus(&focus, cx);
                     }
                 }))
                 .on_mouse_down(
@@ -260,7 +260,7 @@ fn toggle_terminal_panel(view: &mut WorkspaceView, shown: bool, window: &mut Win
         .and_then(|project| project.active_terminal.clone().or_else(|| project.terminals.first().cloned()));
     if let Some(session) = active.and_then(|id| view.store(cx).session(&id).cloned()) {
         let focus = session.read(cx).focus.clone();
-        window.focus(&focus);
+        window.focus(&focus, cx);
     }
     cx.notify();
 }
@@ -311,7 +311,7 @@ pub fn toggle_terminal(view: &mut WorkspaceView, window: &mut Window, cx: &mut C
     let id = project.active_terminal.or_else(|| project.terminals.first().cloned());
     if let Some(session) = id.and_then(|id| view.store(cx).session(&id).cloned()) {
         let focus = session.read(cx).focus.clone();
-        window.focus(&focus);
+        window.focus(&focus, cx);
     }
     cx.notify();
 }

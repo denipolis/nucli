@@ -271,7 +271,7 @@ fn session_chips(
     if Chip::Folder.shown(cx) {
         chips.push(
             clickable(chip("status-folder", icons::FOLDER, theme), Chip::Folder, theme, cx)
-                .flex_shrink()
+                .flex_shrink(1.)
                 .min_w_0()
                 .child(div().min_w_0().truncate().child(paths::display(&folder)))
                 .on_click(cx.listener(move |view, event: &gpui::ClickEvent, _, cx| {
@@ -396,7 +396,7 @@ fn mirror_chips(
         let copy = folder.clone();
         chips.push(
             clickable(chip("status-folder", icons::FOLDER, theme), Chip::Folder, theme, cx)
-                .flex_shrink()
+                .flex_shrink(1.)
                 .min_w_0()
                 .child(div().min_w_0().truncate().child(folder))
                 .on_click(cx.listener(move |view, event: &gpui::ClickEvent, _, cx| {
