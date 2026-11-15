@@ -187,8 +187,13 @@ impl Home {
     pub fn pair_with_code(&mut self, cx: &mut Context<Self>) {
         let code = self.code.read(cx).text.clone();
         let address = self.address.read(cx).text.clone();
+        let choose = address.trim().is_empty() && !self.link.read(cx).pairable().is_empty();
         match self.target(cx) {
             Some(key) => self.link.update(cx, |link, cx| link.join_nearby(key, &code, cx)),
+            None if choose => self.link.update(cx, |link, cx| {
+                link.note = Some("Choose the computer above, or type its name or address.".into());
+                cx.notify();
+            }),
             None => self.link.update(cx, |link, cx| link.join_code(&code, &address, cx)),
         }
     }
@@ -199,6 +204,12 @@ impl Home {
         }
         prefs::update(cx, |prefs| prefs.onboarded = true);
         self.pair_with_link(url, cx);
+    }
+
+    pub fn choose(&mut self, key: Key, cx: &mut Context<Self>) {
+        self.chosen = Some(key);
+        self.link.update(cx, |link, _| link.note = None);
+        cx.notify();
     }
 
     pub fn pair_with_link(&mut self, text: &str, cx: &mut Context<Self>) {
@@ -235,14 +246,21 @@ impl Home {
             ("back", _) => self.back(window, cx),
             ("start", _) => self.start(window, cx),
             ("screen", _) => {
-                let key = self.link.read(cx).devices.first().and_then(|device| device.public());
+                let (rest, name) = rest.split_once(' ').unwrap_or((rest, ""));
+                let link = self.link.read(cx);
+                let key = link
+                    .devices
+                    .iter()
+                    .find(|device| name.is_empty() || device.name == name)
+                    .and_then(|device| device.public());
                 let screen = match rest {
                     "pair" => Some(Screen::Pair),
                     "settings" => Some(Screen::Settings),
                     "device" => key.map(Screen::Device),
-                    "launch" => self.link.read(cx).online.iter().find_map(|(key, online)| {
-                        let project = online.catalog.projects.first()?;
-                        Some(Screen::Launch { key: *key, project: project.path.clone() })
+                    "launch" => key.and_then(|key| {
+                        let projects = &link.online.get(&key)?.catalog.projects;
+                        let project = projects.iter().find(|project| !project.name.is_empty())?;
+                        Some(Screen::Launch { key, project: project.path.clone() })
                     }),
                     _ => None,
                 };
@@ -258,6 +276,12 @@ impl Home {
             ("board", _) => {
                 self.board = if rest == "computers" { Board::Computers } else { Board::Agents };
                 cx.notify();
+            }
+            ("choose", _) => {
+                let key = self.link.read(cx).nearby.iter().find(|nearby| nearby.name == rest).map(|nearby| nearby.key);
+                if let Some(key) = key {
+                    self.choose(key, cx);
+                }
             }
             ("pairlink", _) => self.pair_with_link(rest, cx),
             ("code", _) => {

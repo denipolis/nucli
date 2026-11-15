@@ -83,9 +83,8 @@ impl Home {
                 )
                 .child(div().text_size(px(ui::SMALL)).text_color(theme.green).child("adding a device"))
                 .on_click(cx.listener(move |home, _, window, cx| {
-                    home.chosen = Some(key);
+                    home.choose(key, cx);
                     window.focus(&home.code.focus_handle(cx), cx);
-                    cx.notify();
                 })),
             );
         }

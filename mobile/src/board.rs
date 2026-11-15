@@ -180,6 +180,7 @@ impl Home {
                 found.push((*key, tab.clone(), detail));
             }
         }
+        found.sort_by(|(_, a, a_detail), (_, b, b_detail)| (a_detail, &a.title).cmp(&(b_detail, &b.title)));
         let online = link.online.len();
         let mut list = div().flex().flex_col();
         if found.is_empty() {
