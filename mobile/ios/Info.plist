@@ -2,10 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleIdentifier</key><string>uk.polishch.nucli.mobile</string>
-  <key>CFBundleExecutable</key><string>nucli-mobile</string>
-  <key>CFBundleName</key><string>Nucli</string>
-  <key>CFBundleDisplayName</key><string>Nucli</string>
+  <key>CFBundleIdentifier</key><string>uk.polishch.nucli.uplink</string>
+  <key>CFBundleExecutable</key><string>nucli-uplink</string>
+  <key>CFBundleName</key><string>Nucli Uplink</string>
+  <key>CFBundleDisplayName</key><string>Nucli Uplink</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
@@ -14,6 +14,9 @@
   <key>UILaunchScreen</key><dict/>
   <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
   <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+  <key>NSCameraUsageDescription</key><string>Nucli scans the pairing QR code your computer shows.</string>
+  <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>uk.polishch.nucli.pairing</string><key>CFBundleURLSchemes</key><array><string>nucli-uplink</string></array></dict></array>
+  <key>NSBonjourServices</key><array><string>_nucli-uplink._tcp</string></array>
   <key>NSLocalNetworkUsageDescription</key><string>Nucli connects to the computers you paired on your network.</string>
 </dict>
 </plist>

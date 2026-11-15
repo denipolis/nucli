@@ -6,12 +6,12 @@ use alacritty_terminal::event::VoidListener;
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::test::TermSize;
-use alacritty_terminal::term::{Config, Term};
+use alacritty_terminal::term::{Config, Term, TermMode};
 use futures::StreamExt;
 use gpui::{
     App, Bounds, Context, ElementInputHandler, Entity, EntityInputHandler, FocusHandle, InteractiveElement,
-    IntoElement, KeyDownEvent, Keystroke, Modifiers, ParentElement, Pixels, Point, Render, Size,
-    StatefulInteractiveElement, Styled, UTF16Selection, Window, canvas, div, point, px, size,
+    IntoElement, KeyDownEvent, Keystroke, Modifiers, ParentElement, Pixels, Point, Render, ScrollDelta, ScrollEvent,
+    Size, StatefulInteractiveElement, Styled, UTF16Selection, Window, canvas, div, point, px, size,
 };
 use nucli_core::fonts::FAMILY;
 use nucli_core::terminal::render::{self, Frame, Look};
@@ -19,8 +19,8 @@ use nucli_core::terminal::{keys, spawn_mirror};
 use nucli_core::uplink::wire::Key;
 
 use crate::link::Link;
+use crate::ui;
 
-const FONT_SIZE: f32 = 13.0;
 const LINE_HEIGHT: f32 = 1.3;
 
 pub struct Mirror {
@@ -34,6 +34,7 @@ pub struct Mirror {
     held: bool,
     pub ctrl: bool,
     grid: Option<(Point<Pixels>, Size<Pixels>)>,
+    scroll: f32,
 }
 
 impl Mirror {
@@ -72,6 +73,7 @@ impl Mirror {
             held: false,
             ctrl: false,
             grid: None,
+            scroll: 0.0,
         }
     }
 
@@ -104,7 +106,56 @@ impl Mirror {
         self.send(text.as_bytes(), cx);
     }
 
+    pub fn control(&self, cx: &App) -> bool {
+        self.link.read(cx).online.get(&self.key).is_some_and(|online| online.catalog.control)
+    }
+
+    pub fn focused(&self, window: &Window) -> bool {
+        self.focus.is_focused(window)
+    }
+
+    pub fn toggle_keyboard(&self, window: &mut Window, cx: &mut App) {
+        if self.focus.is_focused(window) {
+            window.blur(cx);
+        } else {
+            window.focus(&self.focus, cx);
+        }
+    }
+
+    pub fn paste(&mut self, cx: &mut Context<Self>) {
+        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else { return };
+        let mode = *self.term.lock().mode();
+        self.send(&keys::paste(&text, mode), cx);
+    }
+
+    fn scrolled(&mut self, event: &ScrollEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let Some((_, cell)) = self.grid else { return };
+        let lines = match event.delta {
+            ScrollDelta::Pixels(delta) => f32::from(delta.y) / f32::from(cell.height),
+            ScrollDelta::Lines(delta) => delta.y,
+        };
+        self.scroll += lines;
+        let whole = self.scroll.trunc() as i32;
+        if whole == 0 {
+            return;
+        }
+        self.scroll -= whole as f32;
+        let mode = *self.term.lock().mode();
+        if mode.contains(TermMode::ALT_SCREEN) && mode.contains(TermMode::ALTERNATE_SCROLL) {
+            let key = if whole > 0 { "up" } else { "down" };
+            for _ in 0..whole.unsigned_abs().min(10) {
+                self.press(key, cx);
+            }
+        } else {
+            self.term.lock().scroll_display(Scroll::Delta(whole));
+            cx.notify();
+        }
+    }
+
     fn send(&mut self, bytes: &[u8], cx: &mut Context<Self>) {
+        if !self.control(cx) {
+            return;
+        }
         let size = {
             let mut term = self.term.lock();
             term.scroll_display(Scroll::Bottom);
@@ -126,11 +177,12 @@ impl Mirror {
 }
 
 fn layout(mirror: &Entity<Mirror>, bounds: Bounds<Pixels>, focused: bool, window: &mut Window, cx: &mut App) -> Frame {
-    let theme = crate::theme(window);
+    let theme = ui::theme(window, cx);
+    let font_size = crate::prefs::get(cx).font_size;
     let font_id = window.text_system().resolve_font(&render::font(FAMILY, false, false, true));
-    let full = px(FONT_SIZE);
+    let full = px(font_size);
     let advance = f32::from(window.text_system().advance(font_id, full, 'm').map_or(full * 0.6, |size| size.width));
-    let line = (FONT_SIZE * LINE_HEIGHT).round();
+    let line = (font_size * LINE_HEIGHT).round();
     let width = f32::from(bounds.size.width);
     let fit =
         ((width / advance).floor().max(2.0) as usize, (f32::from(bounds.size.height) / line).floor().max(1.0) as usize);
@@ -169,7 +221,7 @@ fn layout(mirror: &Entity<Mirror>, bounds: Bounds<Pixels>, focused: bool, window
 
 impl Render for Mirror {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = crate::theme(window);
+        let theme = ui::theme(window, cx);
         let focused = self.focus.is_focused(window);
         let (laying, painting, focus) = (cx.entity(), cx.entity(), self.focus.clone());
         div()
@@ -179,6 +231,7 @@ impl Render for Mirror {
             .bg(theme.background)
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::key_down))
+            .on_scroll(cx.listener(Self::scrolled))
             .on_click(cx.listener(|mirror, _, window, cx| mirror.focus(window, cx)))
             .child(
                 canvas(

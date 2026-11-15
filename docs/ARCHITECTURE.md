@@ -1,6 +1,6 @@
 # Architecture
 
-A Cargo workspace on GPUI: the desktop app at the root (`src/`), `core/` (`nucli-core`), the code shared with the mobile app, and `mobile/` (`nucli-mobile`), the iOS remote control (see Mobile). GPUI is used through `gpui-pre` and `gpui-pre-platform` (published snapshots of Zed's GPUI crates) pinned to one exact version, since any snapshot may change GPUI's API. One window per open workspace. `docs/SPEC.md` describes the behavior; this file describes the code and its gotchas.
+A Cargo workspace on GPUI: the desktop app at the root (`src/`), `core/` (`nucli-core`), the code shared with the mobile app, and `mobile/` (`nucli-uplink`), the iOS remote control (see Mobile). GPUI is used through `gpui-pre` and `gpui-pre-platform` (published snapshots of Zed's GPUI crates) pinned to one exact version, since any snapshot may change GPUI's API. One window per open workspace. `docs/SPEC.md` describes the behavior; this file describes the code and its gotchas.
 
 ## Files
 
@@ -148,20 +148,26 @@ Mirrors are `Session`s whose `Terminal` has no pty (`Backend::Mirror`). They sit
 
 ## Mobile
 
-`mobile/` is a GPUI app on Zed's own iOS platform (`gpui_ios`, pulled in by `gpui-pre-platform` for `target_os = "ios"`): a plain Rust `main` that `gpui_platform::application()` runs inside UIKit. On desktop targets the same binary opens a phone-sized window for development.
+`mobile/` is Nucli Uplink (`nucli-uplink`), a GPUI app on Zed's own iOS platform (`gpui_ios`, pulled in by `gpui-pre-platform` for `target_os = "ios"`): a plain Rust `main` that `gpui_platform::application()` runs inside UIKit. On desktop targets the same binary opens a phone-sized window for development.
 
 | File | Role |
 |---|---|
-| `mobile/src/main.rs` | Fonts, theme from the system appearance, the window. |
-| `mobile/src/link.rs` | `Link` (one entity): the Uplink client. Loads `uplink.json` from its own data folder, dials paired devices with backoff, joins with a pairing link, keeps each online device's catalog and the watched tabs, and rewatches them after `Stop::Behind` or a reconnect. Its `Hello` has port 0: it never listens. |
-| `mobile/src/mirror.rs` | `Mirror`: a remote tab. An `alacritty_terminal` `Term` fed by `core::terminal::spawn_mirror` and drawn by `core::terminal::render`, IME input and keys through `core::terminal::keys`. |
-| `mobile/src/home.rs` | `Home`: the device list and the terminal screen with its key bar. |
-| `mobile/src/devtools.rs` | `NUCLI_CONTROL` file commands for tests: `open <title>`, `focus`, `type <text>`, `key <name>`, `back`. |
-| `mobile/ios/Info.plist` | The app bundle's plist (`uk.polishch.nucli.mobile`). |
+| `mobile/src/main.rs` | Fonts, preferences, the window, pairing links opened by the system (`on_open_urls`). |
+| `mobile/src/prefs.rs` | `settings.json` in the app's data folder: phone name, appearance, theme, font size, whether onboarding ran. |
+| `mobile/src/link.rs` | `Link` (one entity): the Uplink client. Loads `uplink.json` from the data folder, dials paired computers with backoff (nearby addresses first), joins with a pairing link, a code and address, or a code and a nearby computer, keeps each online computer's catalog and the watched tabs and rewatches them after `Stop::Behind` or a reconnect, opens tabs with `Message::Open`, forgets and disconnects. Its `Hello` has port 0: it never listens. |
+| `mobile/src/nearby/` | Finds `_nucli-uplink._tcp` computers and posts `NetEvent::Nearby` and `Gone`. iOS uses DNS-SD (`DNSServiceBrowse`, resolve and address lookups on the main queue) because raw multicast needs an entitlement; other targets use core's `Discovery`. The resolve stays open, so a computer that starts or stops adding a device updates its `pairing` flag. |
+| `mobile/src/scanner/` | `[scan qr code]`: on iOS a full-screen `AVCaptureSession` with a metadata output for QR codes, presented over the GPUI view controller; it reports the first `nucli-uplink://` link. Elsewhere it reports that there is no camera. |
+| `mobile/src/home.rs` | `Home`: the screen stack (welcome, home, add a computer, computer, settings, new tab, terminal), the text fields, the spinner timer and the test commands. |
+| `mobile/src/welcome.rs`, `board.rs`, `pair.rs`, `device.rs`, `settings.rs`, `launch.rs`, `terminal.rs` | One screen each. `board.rs` has the agents board and computers view. |
+| `mobile/src/mirror.rs` | `Mirror`: a remote tab. An `alacritty_terminal` `Term` fed by `core::terminal::spawn_mirror` and drawn by `core::terminal::render`, with IME input, keys through `core::terminal::keys`, scrolling and paste. |
+| `mobile/src/field.rs` | `Field`: a one-line text field with IME and the iOS keyboard's return action. |
+| `mobile/src/ui.rs` | The active theme (and the iOS status bar style), buttons, rows, sections and tabs. |
+| `mobile/src/devtools.rs` | `NUCLI_CONTROL` file commands for tests, run by `Home::control`: `open <title>`, `back`, `start`, `screen pair|settings|device|launch`, `board agents|computers`, `pairlink <link>`, `code <code> [address]`, `launch <launcher>`, `focus`, `type <text>`, `key <name>`. |
+| `mobile/ios/Info.plist` | The bundle (`uk.polishch.nucli.uplink`): the `nucli-uplink` URL scheme, Bonjour service, local network and camera descriptions. |
 
-A mirror draws at the remote terminal's size, scaled down to the view's width, until it sends input. Before the first input, and whenever the view's size in cells changes after that, it asks the computer to resize the terminal to the cells that fit at full size, so the phone holds the size the way a desktop remote view does.
+A mirror draws at the remote terminal's size, scaled down to the view's width, until it sends input. Before the first input, and whenever the view's size in cells changes after that, it asks the computer to resize the terminal to the cells that fit at the phone's font size, so the phone holds the size the way a desktop remote view does.
 
-`NUCLI_PAIR=<pairing link>` pairs at startup. Pass it to a simulator as `SIMCTL_CHILD_NUCLI_PAIR`, and `NUCLI_CONTROL` as `SIMCTL_CHILD_NUCLI_CONTROL`; simulator apps read host paths. Capture with `xcrun simctl io <udid> screenshot`. Always name the simulator by its id: `booted` picks any booted one, including simulators the user has open for other work. Without `xcode-select` pointing at Xcode, set `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (the script does).
+`NUCLI_PAIR=<pairing link>` pairs at startup. Pass it to a simulator as `SIMCTL_CHILD_NUCLI_PAIR`, and `NUCLI_CONTROL` as `SIMCTL_CHILD_NUCLI_CONTROL`; simulator apps read host paths. Capture with `xcrun simctl io <udid> screenshot`, and read the app's stderr with `xcrun simctl launch --console-pty <udid> uk.polishch.nucli.uplink`. Always name the simulator by its id: `booted` picks any booted one, including simulators the user has open for other work. Without `xcode-select` pointing at Xcode, set `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (the script does). `xcrun simctl openurl` asks "Open in …?" first, and the simulator cannot be tapped from a script, so test links with `pairlink` instead. The simulator has no camera. A fake agent that desktop shows as Claude must be a binary named `claude` that writes `~/.claude/sessions/<pid>.json`; a shell script runs as `sh` and gets no status.
 
 ## Gotchas
 

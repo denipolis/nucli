@@ -342,15 +342,23 @@ Clicking a row opens its details: the fingerprint, **also reach it at**, and the
 - The computer that runs a tab enforces every rule itself: what is shared, view or control, blocking. A device can only open tabs with the agent and shell profiles already configured there, in projects that are shared.
 - Limits keep a misbehaving peer from using up resources: 16 handshakes at a time, 10 seconds per handshake, 64 nearby devices, 16 MB per message, a terminal size of at most 500 × 200, a remote view that opens midway gets at most 8 MB of the newest scrollback, and output for a slow viewer is dropped and resent as a fresh copy of the screen once 8 MB wait.
 
-## Mobile
+## Nucli Uplink
 
-Nucli Mobile is a remote control for the computers running Nucli. It runs no terminals of its own: everything it shows runs on a paired computer, over Uplink.
+Nucli Uplink is the phone app: a remote control for the computers running Nucli. It runs no terminals of its own; everything it shows runs on a paired computer, over Uplink. Look and wording follow the desktop app: one monospace font, square corners, inverted blocks for the active choice, bracketed buttons.
 
-- Pairing: on the computer, Settings › Uplink › add device › copy pairing link; on the phone, `[paste pairing link]`. The phone reads the link from the clipboard and pairs with that code. It then connects to the computer by itself whenever both are on and reachable (same network or a private network such as a VPN).
-- The home screen lists paired computers (`online`, `offline` or why it is not reachable) and, under each online one, its shared tabs: glyph, title, project and status (working, waiting, done, exited).
-- Tapping a tab opens it: the full terminal, live. Until the phone types, the terminal keeps the computer's size and is scaled to fit the screen width. Typing gives the terminal the phone's size, as typing on another computer does, and it keeps following the phone's screen and keyboard while the phone holds it.
-- The software keyboard types into the terminal. A key bar adds `ctrl` (applies to the next key), `esc`, `tab`, the arrows and enter.
-- `‹ back` closes the remote view; the tab keeps running on its computer. The title bar says `offline` or `closed` when the computer goes away or the tab ends.
+- **Welcome**: on first launch, the animated pixel logo, three steps (run Nucli, turn on Uplink, pair this phone) and `[get started]`, which opens Add a computer.
+- **Add a computer** (also `+` on the home screen): the computer shows its pairing QR code and code under Settings › Uplink › add device. The phone pairs by any of:
+  - `[scan qr code]`: a full-screen camera view that closes as soon as it sees a Nucli pairing code; tap to cancel. The system Camera app works too: its link opens Nucli Uplink and pairs.
+  - `[paste pairing link]`: reads the link from the clipboard.
+  - its code: the phone looks for computers on the same network that are adding a device (multicast DNS) and lists them; with one it is chosen, otherwise tap one. Only the code is left to type. With none found, type the computer's name or address next to the code.
+  - While pairing a spinner shows; a wrong code or an unreachable computer shows why. When paired, the home screen opens on the computers view.
+- After pairing, the phone connects to each computer by itself whenever both are on and reachable: addresses it finds on the network first, then the ones under "also reach it at", then the ones that worked before. Computers never dial the phone.
+- **Home**: `agents` and `computers`, the active one inverted.
+  - `agents`: every agent tab on online computers, grouped like the desktop Agents board (waiting, done, working, idle), with `device · project` and its status.
+  - `computers`: each paired computer (`online`, `offline` or why it is not reachable; tap for its details) with its shared projects and their tabs, and tabs outside projects. `+` on a project starts one of the computer's agents or shells there (control only) and opens it.
+- **Terminal**: tapping a tab opens it live. Until the phone types, the terminal keeps its computer's size, scaled to fit the screen width. Typing gives the terminal the phone's size at the phone's font size, as typing on another computer does, and the size follows the screen and the keyboard while the phone holds it. Dragging scrolls the scrollback (or sends arrow keys to full-screen apps that ask for them). The key bar has `ctrl` (applies to the next key), `esc`, `tab`, the arrows, enter, paste and a keyboard toggle; it hides when the phone can only view. The title bar shows the tab, `device · project` and its status, or `offline`, `closed` or `view only`.
+- **Computer details**: state and address, number of shared tabs, system, fingerprint, when it was paired, "also reach it at" (names or addresses, comma separated), `[disconnect]` and `[forget]` (tap twice; the computer forgets the phone too when online).
+- **Settings**: this phone's name (shown on computers), its fingerprint, appearance (system, light, dark), theme (the desktop themes), terminal font size, the computers, and about.
 - iOS suspends apps in the background, so the phone is connected only while the app is open.
 
 ## Settings

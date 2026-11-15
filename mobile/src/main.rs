@@ -1,43 +1,60 @@
+mod board;
+mod device;
 mod devtools;
+mod field;
 mod home;
+mod launch;
 mod link;
 mod mirror;
+mod nearby;
+mod pair;
+mod prefs;
+mod scanner;
+mod settings;
+mod terminal;
+mod ui;
+mod welcome;
 
-use gpui::{App, AppContext, Window, WindowAppearance, WindowBounds, WindowOptions};
-use nucli_core::theme::{self, Theme};
+use futures::StreamExt;
+use gpui::{App, AppContext, WindowBounds, WindowOptions};
 
 fn main() {
-    gpui_platform::application().run(|cx: &mut App| {
+    let application = gpui_platform::application();
+    let (opened, mut urls) = futures::channel::mpsc::unbounded::<Vec<String>>();
+    application.on_open_urls(move |list| {
+        let _ = opened.unbounded_send(list);
+    });
+    application.run(|cx: &mut App| {
         if let Err(error) = cx.text_system().add_fonts(nucli_core::fonts::bundled()) {
             eprintln!("fonts: {error}");
         }
-        let link = link::start(cx);
+        let prefs = prefs::load();
+        let link = link::start(prefs.name.clone(), cx);
+        cx.set_global(prefs);
         let options = WindowOptions { window_bounds: bounds(cx), ..Default::default() };
-        if let Err(error) = cx.open_window(options, |window, cx| {
+        let window = cx.open_window(options, |window, cx| {
             let home = cx.new(|cx| home::Home::new(link, window, cx));
             devtools::start(home.clone(), window, cx);
             home
-        }) {
-            eprintln!("window: {error}");
+        });
+        match window {
+            Ok(window) => {
+                cx.spawn(async move |cx| {
+                    while let Some(list) = urls.next().await {
+                        let _ = window.update(cx, |home, _, cx| {
+                            if let Some(url) = list.first() {
+                                home.open_url(url, cx);
+                            }
+                        });
+                    }
+                })
+                .detach();
+            }
+            Err(error) => eprintln!("window: {error}"),
         }
         cx.activate(true);
     });
 }
-
-pub fn theme(window: &Window) -> Theme {
-    let dark = matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark);
-    status_bar(dark);
-    theme::resolve("nucli", dark, &[])
-}
-
-#[cfg(target_os = "ios")]
-fn status_bar(dark: bool) {
-    use gpui_ios::StatusBarContentStyle::{Dark, Light};
-    gpui_ios::ios::set_status_bar_style(if dark { Light } else { Dark });
-}
-
-#[cfg(not(target_os = "ios"))]
-fn status_bar(_: bool) {}
 
 #[cfg(target_os = "ios")]
 fn bounds(_: &App) -> Option<WindowBounds> {

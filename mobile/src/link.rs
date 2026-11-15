@@ -9,14 +9,15 @@ use gpui::{App, AppContext, Context, Entity};
 use nucli_core::terminal::Feed;
 use nucli_core::uplink::devices::{self, Access, Device};
 use nucli_core::uplink::invite;
-use nucli_core::uplink::net::{self, Connection, NetEvent, Outbox, Routes, Shared};
+use nucli_core::uplink::net::{self, Connection, Nearby, NetEvent, Outbox, Routes, Shared};
 use nucli_core::uplink::protocol::{Catalog, Hello, Message, Stop};
-use nucli_core::uplink::wire::Key;
+use nucli_core::uplink::wire::{self, Key};
 
 const PORT: u16 = 47100;
 
 pub struct Online {
     conn: u64,
+    address: String,
     outbox: Outbox,
     routes: Routes,
     pub catalog: Catalog,
@@ -38,19 +39,20 @@ pub struct Link {
     watched: HashMap<(Key, String), Sender<Feed>>,
     pub joining: bool,
     pub note: Option<String>,
+    pub paired: Option<Key>,
+    pub opened: Option<(Key, String)>,
+    opening: Option<Key>,
+    pub nearby: Vec<Nearby>,
+    _browser: Option<crate::nearby::Browser>,
 }
 
-pub fn start(cx: &mut App) -> Entity<Link> {
-    let path = data_dir().join("uplink.json");
+pub fn start(name: String, cx: &mut App) -> Entity<Link> {
+    let path = crate::prefs::dir().join("uplink.json");
     let (identity, devices) = devices::load(&path);
     let (events, mut received) = futures::channel::mpsc::unbounded();
-    let hello = Hello {
-        name: if cfg!(target_os = "ios") { "iPhone" } else { "Nucli Mobile" }.into(),
-        os: std::env::consts::OS.into(),
-        version: env!("CARGO_PKG_VERSION").into(),
-        port: 0,
-    };
+    let hello = Hello { name, os: std::env::consts::OS.into(), version: env!("CARGO_PKG_VERSION").into(), port: 0 };
     let shared = Shared::new(identity, hello, events);
+    let browser = crate::nearby::start(&shared);
     let link = cx.new(|_| Link {
         shared,
         path,
@@ -60,6 +62,11 @@ pub fn start(cx: &mut App) -> Entity<Link> {
         watched: HashMap::new(),
         joining: false,
         note: None,
+        paired: None,
+        opened: None,
+        opening: None,
+        nearby: Vec::new(),
+        _browser: browser,
     });
     let handling = link.clone();
     cx.spawn(async move |cx| {
@@ -82,18 +89,129 @@ pub fn start(cx: &mut App) -> Entity<Link> {
     link
 }
 
-fn data_dir() -> PathBuf {
-    let folder = if cfg!(debug_assertions) { "Nucli Mobile Dev" } else { "Nucli Mobile" };
-    dirs::data_dir().unwrap_or_else(std::env::temp_dir).join(folder)
-}
-
 fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs())
 }
 
 impl Link {
+    pub fn device(&self, key: &Key) -> Option<&Device> {
+        self.devices.iter().find(|device| device.public().as_ref() == Some(key))
+    }
+
+    fn device_mut(&mut self, key: &Key) -> Option<&mut Device> {
+        self.devices.iter_mut().find(|device| device.public().as_ref() == Some(key))
+    }
+
     pub fn device_error(&self, key: &Key) -> Option<&str> {
         self.dialing.get(key).and_then(|dialing| dialing.error.as_deref())
+    }
+
+    pub fn fingerprint(&self) -> String {
+        wire::fingerprint(&self.shared.identity.public)
+    }
+
+    pub fn address(&self, key: &Key) -> Option<String> {
+        self.online.get(key).map(|online| online.address.clone())
+    }
+
+    pub fn rename(&mut self, name: &str) {
+        let hello = match self.shared.hello.lock() {
+            Ok(mut hello) => {
+                hello.name = name.to_string();
+                hello.clone()
+            }
+            Err(_) => return,
+        };
+        for online in self.online.values() {
+            online.outbox.send(&Message::Hello(hello.clone()));
+        }
+    }
+
+    pub fn join_code(&mut self, code: &str, address: &str, cx: &mut Context<Self>) {
+        let Some(code) = wire::normalize_code(code) else {
+            self.note = Some(format!("A pairing code has {} letters and digits.", wire::CODE_LEN));
+            cx.notify();
+            return;
+        };
+        let address = address.trim();
+        if address.is_empty() {
+            self.note = Some("Type the computer's name or address.".into());
+            cx.notify();
+            return;
+        }
+        self.joining = true;
+        self.note = None;
+        net::join(vec![address.to_string()], code, None, Access::View, PORT, &self.shared);
+        cx.notify();
+    }
+
+    pub fn pairable(&self) -> Vec<&Nearby> {
+        self.nearby.iter().filter(|nearby| nearby.pairing && self.device(&nearby.key).is_none()).collect()
+    }
+
+    pub fn join_nearby(&mut self, key: Key, code: &str, cx: &mut Context<Self>) {
+        let Some(code) = wire::normalize_code(code) else {
+            self.note = Some(format!("A pairing code has {} letters and digits.", wire::CODE_LEN));
+            cx.notify();
+            return;
+        };
+        let addresses: Vec<String> = self
+            .nearby
+            .iter()
+            .filter(|nearby| nearby.key == key)
+            .flat_map(|nearby| nearby.addresses.iter().map(|address| address.to_string()))
+            .collect();
+        self.joining = true;
+        self.note = None;
+        net::join(addresses, code, Some(key), Access::View, PORT, &self.shared);
+        cx.notify();
+    }
+
+    pub fn open_tab(&mut self, key: Key, project: &str, launcher: &str) {
+        if let Some(online) = self.online.get(&key) {
+            self.opening = Some(key);
+            online.outbox.send(&Message::Open { project: project.to_string(), launcher: launcher.to_string() });
+        }
+    }
+
+    pub fn is_opening(&self, key: Key) -> bool {
+        self.opening == Some(key)
+    }
+
+    pub fn disconnect(&mut self, key: &Key, cx: &mut Context<Self>) {
+        if let Some(online) = self.online.remove(key) {
+            online.outbox.close();
+        }
+        if let Some(dialing) = self.dialing.get_mut(key) {
+            dialing.next = Instant::now() + Duration::from_secs(30);
+        }
+        cx.notify();
+    }
+
+    pub fn forget(&mut self, key: &Key, cx: &mut Context<Self>) {
+        if let Some(online) = self.online.remove(key) {
+            online.outbox.send(&Message::Unpair);
+            online.outbox.close();
+        }
+        self.devices.retain(|device| device.public().as_ref() != Some(key));
+        self.dialing.remove(key);
+        self.watched.retain(|(watched, _), _| watched != key);
+        self.save();
+        cx.notify();
+    }
+
+    pub fn set_manual(&mut self, key: &Key, text: &str, cx: &mut Context<Self>) {
+        let addresses: Vec<String> =
+            text.split(',').map(str::trim).filter(|address| !address.is_empty()).map(String::from).collect();
+        if let Some(device) = self.device_mut(key) {
+            device.manual = addresses;
+        }
+        if let Some(dialing) = self.dialing.get_mut(key) {
+            dialing.next = Instant::now();
+            dialing.backoff = Duration::from_secs(2);
+        }
+        self.save();
+        cx.notify();
     }
 
     pub fn pair(&mut self, text: &str, cx: &mut Context<Self>) {
@@ -156,7 +274,12 @@ impl Link {
                 error: None,
             });
             let mut addresses = device.manual.clone();
+            for nearby in self.nearby.iter().filter(|nearby| nearby.key == key) {
+                addresses.extend(nearby.addresses.iter().map(|address| address.to_string()));
+            }
             addresses.extend(device.addresses.iter().cloned());
+            let mut seen = std::collections::HashSet::new();
+            addresses.retain(|address| seen.insert(address.clone()));
             if dialing.busy || dialing.next > now || addresses.is_empty() {
                 continue;
             }
@@ -183,7 +306,21 @@ impl Link {
                 self.joining = false;
                 self.note = Some(reason);
             }
-            NetEvent::Input(..) | NetEvent::PairingFailed { .. } | NetEvent::Nearby(_) | NetEvent::Gone(_) => return,
+            NetEvent::Nearby(found) => {
+                if let Some(dialing) = self.dialing.get_mut(&found.key)
+                    && !dialing.busy
+                {
+                    dialing.next = Instant::now();
+                    dialing.backoff = Duration::from_secs(2);
+                }
+                self.nearby.retain(|nearby| nearby.fullname != found.fullname && nearby.key != found.key);
+                if self.nearby.len() < 64 {
+                    self.nearby.push(found);
+                }
+                self.dial();
+            }
+            NetEvent::Gone(fullname) => self.nearby.retain(|nearby| nearby.fullname != fullname),
+            NetEvent::Input(..) | NetEvent::PairingFailed { .. } => return,
         }
         cx.notify();
     }
@@ -209,6 +346,7 @@ impl Link {
         device.os = connection.hello.os.clone();
         let online = Online {
             conn: connection.id,
+            address: connection.address.to_string(),
             outbox: connection.outbox,
             routes: connection.routes,
             catalog: Catalog::default(),
@@ -242,6 +380,11 @@ impl Link {
             Message::Stop { tab, .. } => {
                 self.watched.remove(&(key, tab));
             }
+            Message::Opened { tab } => {
+                if self.opening.take() == Some(key) {
+                    self.opened = Some((key, tab));
+                }
+            }
             Message::Hello(hello) => {
                 if let Some(device) = self.devices.iter_mut().find(|device| device.public().as_ref() == Some(&key)) {
                     device.name = hello.name.chars().take(64).collect();
@@ -264,7 +407,7 @@ impl Link {
         let name: String = hello.name.chars().take(64).collect();
         self.devices.retain(|device| device.public().as_ref() != Some(&key));
         let mut device = Device {
-            key: nucli_core::uplink::wire::encode_key(&key),
+            key: wire::encode_key(&key),
             name: name.clone(),
             os: hello.os,
             access,
@@ -278,6 +421,7 @@ impl Link {
         self.devices.push(device);
         self.joining = false;
         self.note = Some(format!("Paired with {name}."));
+        self.paired = Some(key);
         self.dialing.remove(&key);
         self.save();
         self.dial();
