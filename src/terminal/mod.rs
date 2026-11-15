@@ -627,32 +627,17 @@ fn spawn_mirror(
     listener: Listener,
     activity: Arc<Activity>,
 ) -> std::sync::mpsc::Sender<Feed> {
-    let (feeds, received) = channel::<Feed>();
-    std::thread::spawn(move || {
-        let mut reader: Processor = Processor::new();
-        let mut local: Processor = Processor::new();
-        while let Ok(feed) = received.recv() {
-            let mut term = term.lock();
-            match feed {
-                Feed::Start { cols, rows } => {
-                    resize_mirror(&mut term, &listener, cols, rows);
-                    reader = Processor::new();
-                    local = Processor::new();
-                    reader.advance(&mut *term, b"\x1bc");
-                }
-                Feed::Bytes { local: true, data } => local.advance(&mut *term, &data),
-                Feed::Bytes { local: false, data } => {
-                    activity.last_output.store(now_ms(), Ordering::Release);
-                    reader.advance(&mut *term, &data);
-                }
-                Feed::Size { cols, rows } => resize_mirror(&mut term, &listener, cols, rows),
-                Feed::Flush => reader.stop_sync(&mut *term),
+    let sizing = listener.clone();
+    nucli_core::terminal::spawn_mirror(
+        term,
+        move |term, cols, rows| resize_mirror(term, &sizing, cols, rows),
+        move |output| {
+            if output {
+                activity.last_output.store(now_ms(), Ordering::Release);
             }
-            drop(term);
             listener.wakeup();
-        }
-    });
-    feeds
+        },
+    )
 }
 
 fn resize_mirror(term: &mut Term<Listener>, listener: &Listener, cols: usize, rows: usize) {

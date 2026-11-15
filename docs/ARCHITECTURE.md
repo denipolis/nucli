@@ -68,7 +68,8 @@ Paths are under `src/` unless they start with `core/`.
 | `core/src/uplink/protocol.rs` | Messages (JSON) and terminal frames (binary) between devices. |
 | `core/src/uplink/devices.rs` | `uplink.json`: the device key and the paired devices, written readable by the user only. |
 | `core/src/uplink/invite.rs` | Local addresses and the pairing link shown as a QR code. |
-| `core/src/session.rs`, `core/src/terminal.rs`, `core/src/theme.rs` | Types the Uplink protocol carries: tab `Kind` and `Activity`, the terminal `Feed`, `ItemColor`. Desktop re-exports them from `session.rs`, `terminal/mod.rs` and `theme.rs`. |
+| `core/src/terminal.rs` | The terminal `Feed` and `spawn_mirror`, the thread that rebuilds a remote terminal from its feeds. |
+| `core/src/session.rs`, `core/src/theme.rs` | Types the Uplink protocol carries: tab `Kind` and `Activity`, `ItemColor`. Desktop re-exports them, and `Feed`, from `session.rs`, `theme.rs` and `terminal/mod.rs`. |
 | `uplink/page.rs`, `uplink/sidebar.rs` | Settings › Uplink and the Uplink sidebar tab. |
 
 ## State

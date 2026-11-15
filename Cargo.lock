@@ -3442,6 +3442,7 @@ dependencies = [
 name = "nucli-core"
 version = "0.1.0"
 dependencies = [
+ "alacritty_terminal",
  "futures",
  "getrandom 0.3.4",
  "gpui-pre",

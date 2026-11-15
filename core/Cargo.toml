@@ -6,6 +6,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
+alacritty_terminal = "0.26.0"
 futures = "0.3"
 getrandom = "0.3.4"
 gpui.workspace = true
