@@ -464,9 +464,12 @@ impl Uplink {
         } else {
             std::net::SocketAddr::new(connection.address.ip(), connection.hello.port.max(1))
         };
+        let listens = connection.initiator || connection.hello.port > 0;
         if let Some(device) = self.device_mut(&key) {
             device.seen = now();
-            device.learn(address.to_string());
+            if listens {
+                device.learn(address.to_string());
+            }
             if !connection.hello.name.is_empty() {
                 device.name = connection.hello.name.chars().take(64).collect();
             }

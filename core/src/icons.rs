@@ -55,6 +55,8 @@ pub fn os(name: &str) -> &'static str {
         "macos" => "\u{f0035}",
         "linux" => "\u{f033d}",
         "windows" => "\u{f05b3}",
+        "ios" => "\u{f011c}",
+        "android" => "\u{f0032}",
         _ => DEVICE,
     }
 }
