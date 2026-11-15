@@ -1,0 +1,14 @@
+[package]
+name = "nucli-mobile"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+alacritty_terminal = "0.26.0"
+dirs = "7"
+futures = "0.3"
+gpui.workspace = true
+gpui_platform.workspace = true
+nucli-core = { path = "../core" }

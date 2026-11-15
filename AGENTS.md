@@ -28,11 +28,12 @@ The full behavior is specified in `docs/SPEC.md`. Keep it in sync with the code.
 
 ## Tech
 
-- Rust (edition 2024) and GPUI. Cargo workspace: the desktop app at the root and `core/` (`nucli-core`), the code shared with the mobile app. Build: `cargo build`; run: `cargo run`; test: `cargo test --workspace`. A debug build is the development variant: it is called "Nucli Dev" and uses its own config, data and cache folders, so it is safe to run next to an installed Nucli.
+- Rust (edition 2024) and GPUI. Cargo workspace: the desktop app at the root, `core/` (`nucli-core`), the code shared with the mobile app, and `mobile/` (`nucli-mobile`), the remote control app for iOS. Build: `cargo build`; run: `cargo run`; test: `cargo test --workspace`. A debug build is the development variant: it is called "Nucli Dev" and uses its own config, data and cache folders, so it is safe to run next to an installed Nucli.
 - Terminal: `alacritty_terminal` for emulation, `portable-pty` for the pseudo terminal.
 - Git: shell out to `git`. File watching: `notify`. Syntax highlighting: tree-sitter.
 - Persistence: JSON files in the platform's config and data folders (see `docs/SPEC.md`).
 - Packaging: `scripts/package.sh [target]` builds the release archive for a platform into `dist/` (`.dmg`, `.tar.gz`, `.zip`). `scripts/icon.py` regenerates the app icons except `Assets.car`, which Xcode's `actool` compiles from `assets/icon/AppIcon.icon`. CI builds macOS, Linux and Windows (`.github/workflows/build.yml`).
+- Mobile: `scripts/mobile.sh [target]` builds `Nucli.app` for the iOS simulator (default) or a device; with `SIMULATOR=<udid>` it installs and launches it there. On a desktop target `cargo run -p nucli-mobile` opens the same app in a phone-sized window.
 - Architecture and file map: `docs/ARCHITECTURE.md`.
 
 ## Code rules

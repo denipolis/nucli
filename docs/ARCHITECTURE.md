@@ -1,6 +1,6 @@
 # Architecture
 
-A Cargo workspace on GPUI: the desktop app at the root (`src/`) and `core/` (`nucli-core`), the code shared with the mobile app. GPUI is used through `gpui-pre` and `gpui-pre-platform` (published snapshots of Zed's GPUI crates) pinned to one exact version, since any snapshot may change GPUI's API. One window per open workspace. `docs/SPEC.md` describes the behavior; this file describes the code and its gotchas.
+A Cargo workspace on GPUI: the desktop app at the root (`src/`), `core/` (`nucli-core`), the code shared with the mobile app, and `mobile/` (`nucli-mobile`), the iOS remote control (see Mobile). GPUI is used through `gpui-pre` and `gpui-pre-platform` (published snapshots of Zed's GPUI crates) pinned to one exact version, since any snapshot may change GPUI's API. One window per open workspace. `docs/SPEC.md` describes the behavior; this file describes the code and its gotchas.
 
 ## Files
 
@@ -145,6 +145,23 @@ Requests carry an id that the `Message::Response` repeats. A project in a reques
 All rules are checked on the host on every request: shared (`uplink::shared`), the device's access, blocked, and that the connection watches the tab. `Uplink::enforce` runs after every store change, stops watchers of tabs that stop being shared and pushes changed catalogs. A `Watch` for a tab the connection already watches is ignored; a viewer watches again only after `Stop::Behind`, which ends the old watcher first. A tap returns false to remove itself: when its connection closes, when the watcher is stopped, or when more than 8 MB wait on the connection, in which case the host sends `Stop::Behind` and the viewer watches again with a fresh snapshot.
 
 Mirrors are `Session`s whose `Terminal` has no pty (`Backend::Mirror`). They sit in `Store.sessions` under `uplink:<key prefix>:<tab id>` and are selected like tabs, but belong to no project: `Store::shower_of` finds the window showing one, `remove_tab` closes them, and the status poll skips them because they have no process.
+
+## Mobile
+
+`mobile/` is a GPUI app on Zed's own iOS platform (`gpui_ios`, pulled in by `gpui-pre-platform` for `target_os = "ios"`): a plain Rust `main` that `gpui_platform::application()` runs inside UIKit. On desktop targets the same binary opens a phone-sized window for development.
+
+| File | Role |
+|---|---|
+| `mobile/src/main.rs` | Fonts, theme from the system appearance, the window. |
+| `mobile/src/link.rs` | `Link` (one entity): the Uplink client. Loads `uplink.json` from its own data folder, dials paired devices with backoff, joins with a pairing link, keeps each online device's catalog and the watched tabs, and rewatches them after `Stop::Behind` or a reconnect. Its `Hello` has port 0: it never listens. |
+| `mobile/src/mirror.rs` | `Mirror`: a remote tab. An `alacritty_terminal` `Term` fed by `core::terminal::spawn_mirror` and drawn by `core::terminal::render`, IME input and keys through `core::terminal::keys`. |
+| `mobile/src/home.rs` | `Home`: the device list and the terminal screen with its key bar. |
+| `mobile/src/devtools.rs` | `NUCLI_CONTROL` file commands for tests: `open <title>`, `focus`, `type <text>`, `key <name>`, `back`. |
+| `mobile/ios/Info.plist` | The app bundle's plist (`uk.polishch.nucli.mobile`). |
+
+A mirror draws at the remote terminal's size, scaled down to the view's width, until it sends input. Before the first input, and whenever the view's size in cells changes after that, it asks the computer to resize the terminal to the cells that fit at full size, so the phone holds the size the way a desktop remote view does.
+
+`NUCLI_PAIR=<pairing link>` pairs at startup. Pass it to a simulator as `SIMCTL_CHILD_NUCLI_PAIR`, and `NUCLI_CONTROL` as `SIMCTL_CHILD_NUCLI_CONTROL`; simulator apps read host paths. Capture with `xcrun simctl io <udid> screenshot`. Always name the simulator by its id: `booted` picks any booted one, including simulators the user has open for other work. Without `xcode-select` pointing at Xcode, set `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (the script does).
 
 ## Gotchas
 

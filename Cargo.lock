@@ -3456,6 +3456,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nucli-mobile"
+version = "0.1.0"
+dependencies = [
+ "alacritty_terminal",
+ "dirs 7.0.0",
+ "futures",
+ "gpui-pre",
+ "gpui-pre-platform",
+ "nucli-core",
+]
+
+[[package]]
 name = "num"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

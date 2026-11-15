@@ -342,6 +342,17 @@ Clicking a row opens its details: the fingerprint, **also reach it at**, and the
 - The computer that runs a tab enforces every rule itself: what is shared, view or control, blocking. A device can only open tabs with the agent and shell profiles already configured there, in projects that are shared.
 - Limits keep a misbehaving peer from using up resources: 16 handshakes at a time, 10 seconds per handshake, 64 nearby devices, 16 MB per message, a terminal size of at most 500 × 200, a remote view that opens midway gets at most 8 MB of the newest scrollback, and output for a slow viewer is dropped and resent as a fresh copy of the screen once 8 MB wait.
 
+## Mobile
+
+Nucli Mobile is a remote control for the computers running Nucli. It runs no terminals of its own: everything it shows runs on a paired computer, over Uplink.
+
+- Pairing: on the computer, Settings › Uplink › add device › copy pairing link; on the phone, `[paste pairing link]`. The phone reads the link from the clipboard and pairs with that code. It then connects to the computer by itself whenever both are on and reachable (same network or a private network such as a VPN).
+- The home screen lists paired computers (`online`, `offline` or why it is not reachable) and, under each online one, its shared tabs: glyph, title, project and status (working, waiting, done, exited).
+- Tapping a tab opens it: the full terminal, live. Until the phone types, the terminal keeps the computer's size and is scaled to fit the screen width. Typing gives the terminal the phone's size, as typing on another computer does, and it keeps following the phone's screen and keyboard while the phone holds it.
+- The software keyboard types into the terminal. A key bar adds `ctrl` (applies to the next key), `esc`, `tab`, the arrows and enter.
+- `‹ back` closes the remote view; the tab keeps running on its computer. The title bar says `offline` or `closed` when the computer goes away or the tab ends.
+- iOS suspends apps in the background, so the phone is connected only while the app is open.
+
 ## Settings
 
 - `⌘,` shows the settings page in the viewport, with vertical tabs by category. The last category is remembered. Every change applies at once and is written to the same files. `esc` or selecting a tab or file closes it.
