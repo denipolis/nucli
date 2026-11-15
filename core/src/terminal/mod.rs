@@ -1,3 +1,5 @@
+pub mod keys;
+
 use std::sync::Arc;
 use std::sync::mpsc::{Sender, channel};
 

@@ -17,7 +17,7 @@ Paths are under `src/` unless they start with `core/`.
 | `session.rs` | `Session` entity, one per tab: its `Terminal`, title, color, status, command line and environment. |
 | `terminal/mod.rs` | `Terminal`: pty, `alacritty_terminal` grid, reader, parser and waiter threads, prompt anchoring, OSC notification scanning. |
 | `terminal/view.rs` | Grid element, mouse, selection, links, IME and focus reporting. `impl Render for Session`. |
-| `terminal/keys.rs` | Keystroke to bytes: legacy sequences and the kitty protocol. |
+| `core/src/terminal/keys.rs` | Keystroke to bytes: legacy sequences and the kitty protocol. |
 | `terminal/boxes.rs` | Box and block characters as rectangles. |
 | `terminal/links.rs` | Finding URLs and `path:line:col` under the mouse. |
 | `terminal/find.rs` | Terminal find bar. |
@@ -70,7 +70,7 @@ Paths are under `src/` unless they start with `core/`.
 | `core/src/uplink/protocol.rs` | Messages (JSON) and terminal frames (binary) between devices. |
 | `core/src/uplink/devices.rs` | `uplink.json`: the device key and the paired devices, written readable by the user only. |
 | `core/src/uplink/invite.rs` | Local addresses and the pairing link shown as a QR code. |
-| `core/src/terminal.rs` | The terminal `Feed` and `spawn_mirror`, the thread that rebuilds a remote terminal from its feeds. |
+| `core/src/terminal/mod.rs` | The terminal `Feed` and `spawn_mirror`, the thread that rebuilds a remote terminal from its feeds. |
 | `core/src/session.rs` | Tab `Kind` and `Activity`, carried by the Uplink protocol. Desktop re-exports them from `session.rs`, and `Feed` from `terminal/mod.rs`. |
 | `uplink/page.rs`, `uplink/sidebar.rs` | Settings › Uplink and the Uplink sidebar tab. |
 

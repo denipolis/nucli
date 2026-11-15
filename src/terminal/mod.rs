@@ -1,6 +1,6 @@
 pub mod boxes;
 pub mod find;
-pub mod keys;
+pub use nucli_core::terminal::keys;
 pub mod links;
 pub mod snapshot;
 pub mod view;
