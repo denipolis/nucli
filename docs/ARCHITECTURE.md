@@ -74,6 +74,7 @@ Paths are under `src/` unless they start with `core/`.
 | `core/src/uplink/invite.rs` | Local addresses and the pairing link shown as a QR code. |
 | `core/src/terminal/mod.rs` | The terminal `Feed` and `spawn_mirror`, the thread that rebuilds a remote terminal from its feeds. |
 | `core/src/session.rs` | Tab `Kind` and `Activity`, carried by the Uplink protocol. Desktop re-exports them from `session.rs`, and `Feed` from `terminal/mod.rs`. |
+| `uplink/host.rs` | Answers `Message::Request` from paired devices: files, file contents, git changes, diffs, log and commits of shared projects on the background executor, conversation history, and with control folder browsing, adding projects and resuming conversations. |
 | `uplink/page.rs`, `uplink/sidebar.rs` | Settings › Uplink and the Uplink sidebar tab. |
 
 ## State
@@ -137,6 +138,8 @@ Security lives in `wire.rs`: SPAKE2 turns the 40-bit code into a key that authen
 A remote view mirrors the terminal byte stream instead of drawing cells: the host's `Terminal` has taps (`terminal::Tap`) that receive exactly what its own `Term` processes, under the same lock, so a viewer's `Term` of the same size stays identical and scrollback, selection, find and links work unchanged. `Feed` carries the bytes of both parsers (the reader thread's and the main thread's own, for anchoring and clears), resizes and parser flushes in order. A new viewer is attached by the reader thread between chunks and outside a synchronized update: `Start` resets the viewer (`ESC c` plus the size) and `snapshot.rs` sends the current state, then the live stream continues. The viewer never answers terminal queries (the host's terminal does) and never times out synchronized updates itself; it waits for the host's `Flush`.
 
 The terminal has one size: `resize_remote` marks a host terminal as sized by a viewer, which makes the local view's own resizes no-ops until local input (`Terminal::claim`). A mirror's view sends a resize request when its own size changes while it holds the size (the terminal has the size it asked for last), and before input when the terminal has another size, so opening or showing a remote tab never takes the size.
+
+Requests carry an id that the `Message::Response` repeats. A project in a request is its path as in the catalog and must be a shared project that is not the home folder; relative paths in it are joined to the project and canonicalized, so neither `..` nor a symbolic link can leave it. A peer that does not know requests ignores them as `Message::Unknown`, so the asking side times out.
 
 All rules are checked on the host on every request: shared (`uplink::shared`), the device's access, blocked, and that the connection watches the tab. `Uplink::enforce` runs after every store change, stops watchers of tabs that stop being shared and pushes changed catalogs. A `Watch` for a tab the connection already watches is ignored; a viewer watches again only after `Stop::Behind`, which ends the old watcher first. A tap returns false to remove itself: when its connection closes, when the watcher is stopped, or when more than 8 MB wait on the connection, in which case the host sends `Stop::Behind` and the viewer watches again with a fresh snapshot.
 

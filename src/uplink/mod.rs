@@ -1,3 +1,4 @@
+mod host;
 pub mod page;
 pub mod sidebar;
 
@@ -866,7 +867,8 @@ impl Uplink {
                     store::store(cx).update(cx, |store, cx| store.update_badge(cx));
                 }
             }
-            Message::Ping | Message::Unknown => {}
+            Message::Request { id, request } => self.host_request(key, id, request, cx),
+            Message::Response { .. } | Message::Ping | Message::Unknown => {}
         }
     }
 

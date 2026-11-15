@@ -112,10 +112,106 @@ pub enum Message {
     Seen {
         tab: String,
     },
+    Request {
+        id: u64,
+        request: Request,
+    },
+    Response {
+        id: u64,
+        response: Response,
+    },
     Unpair,
     Ping,
     #[serde(other)]
     Unknown,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Request {
+    History,
+    Resume { conversation: String },
+    Folders { path: String },
+    AddProject { path: String },
+    Files { project: String, folder: String },
+    File { project: String, path: String },
+    Changes { project: String },
+    Diff { project: String, path: String, commit: Option<String> },
+    Log { project: String },
+    Commit { project: String, hash: String },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Response {
+    History { conversations: Vec<RemoteConversation> },
+    Folders { path: String, folders: Vec<String> },
+    Files { entries: Vec<RemoteEntry> },
+    File { text: String, truncated: bool, binary: bool },
+    Changes { branch: String, changes: Vec<RemoteChange> },
+    Diff { lines: Vec<RemoteLine> },
+    Log { commits: Vec<RemoteCommit> },
+    Commit { date: String, message: String, stats: String, changes: Vec<RemoteChange> },
+    Done,
+    Failed { reason: String },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct RemoteConversation {
+    pub id: String,
+    pub title: String,
+    pub modified: u64,
+    pub agent: String,
+    pub profile: String,
+    pub cwd: String,
+    pub project: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct RemoteEntry {
+    pub name: String,
+    pub folder: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct RemoteChange {
+    pub path: String,
+    pub status: String,
+    pub staged: bool,
+    pub added: usize,
+    pub removed: usize,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LineKind {
+    #[default]
+    Context,
+    Added,
+    Removed,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct RemoteLine {
+    pub kind: LineKind,
+    pub text: String,
+    pub old: Option<usize>,
+    pub new: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct RemoteCommit {
+    pub hash: String,
+    pub parents: Vec<String>,
+    pub refs: Vec<String>,
+    pub author: String,
+    pub time: i64,
+    pub subject: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -222,6 +318,14 @@ mod tests {
         assert!(matches!(decode(&message(&hello)), Some(Frame::Message(decoded)) if decoded == hello));
         let catalog = Message::Catalog(Catalog { tabs: vec![RemoteTab::default()], ..Default::default() });
         assert!(matches!(decode(&message(&catalog)), Some(Frame::Message(decoded)) if decoded == catalog));
+        let request = Message::Request {
+            id: 7,
+            request: Request::Diff { project: "/p".into(), path: "a.rs".into(), commit: None },
+        };
+        assert!(matches!(decode(&message(&request)), Some(Frame::Message(decoded)) if decoded == request));
+        let lines = vec![RemoteLine { kind: LineKind::Added, text: "x".into(), old: None, new: Some(1) }];
+        let response = Message::Response { id: 7, response: Response::Diff { lines } };
+        assert!(matches!(decode(&message(&response)), Some(Frame::Message(decoded)) if decoded == response));
         let start = feed("tab", &Feed::Start { cols: 80, rows: 24 });
         assert!(matches!(decode(&start), Some(Frame::Feed(tab, Feed::Start { cols: 80, rows: 24 })) if tab == "tab"));
         let bytes = feed("t", &Feed::Bytes { local: true, data: b"hi".to_vec() });

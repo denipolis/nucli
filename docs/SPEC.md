@@ -320,6 +320,8 @@ Clicking a row opens its details: the fingerprint, **also reach it at**, and the
 - `[x] Share over Uplink` in a project's menu shares or excludes the whole project; the same item in a tab's menu overrides its project. Both are saved with the workspace.
 - Stopping sharing, changing a device to view, blocking or forgetting it applies at once: open remote views of tabs that stop being shared close.
 - A tab being watched from another device shows an eye glyph in the sidebar, and the Uplink status chip names the devices watching it.
+- A paired device can also ask for more than the tabs of shared projects: their files and file contents (up to 1 MB per file), git changes and diffs, git history and commit details, and the agent conversations that ran in them. This works with view or control. Paths cannot leave the project, symbolic links included.
+- With control it can also browse folders and add one as a project, and resume a conversation of a shared project in a new tab.
 
 ### Remote tabs
 
