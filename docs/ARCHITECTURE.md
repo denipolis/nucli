@@ -1,8 +1,10 @@
 # Architecture
 
-One Rust crate on GPUI, used through `gpui-pre` and `gpui-pre-platform` (published snapshots of Zed's GPUI crates) pinned to one exact version, since any snapshot may change GPUI's API. One window per open workspace. `docs/SPEC.md` describes the behavior; this file describes the code and its gotchas.
+A Cargo workspace on GPUI: the desktop app at the root (`src/`) and `core/` (`nucli-core`), the code shared with the mobile app. GPUI is used through `gpui-pre` and `gpui-pre-platform` (published snapshots of Zed's GPUI crates) pinned to one exact version, since any snapshot may change GPUI's API. One window per open workspace. `docs/SPEC.md` describes the behavior; this file describes the code and its gotchas.
 
 ## Files
+
+Paths are under `src/` unless they start with `core/`.
 
 | File | Role |
 |---|---|
@@ -61,11 +63,12 @@ One Rust crate on GPUI, used through `gpui-pre` and `gpui-pre-platform` (publish
 | `settings.rs`, `paths.rs` | `settings.json`, platform folders, atomic writes. |
 | `devtools.rs` | Debug builds only: control file. |
 | `uplink/mod.rs` | `Uplink` (one global entity): settings, paired devices, live links, remote catalogs, host side rules (what is shared, view or control) and remote views (mirror sessions). |
-| `uplink/wire.rs` | Keys, codes, SPAKE2 pairing, Noise handshakes and the encrypted, fragmented frame stream. |
-| `uplink/net.rs` | Threads: listener, handshakes, dialing, joining, per connection reader and writer, multicast DNS discovery. Events go to the main thread over one channel. |
-| `uplink/protocol.rs` | Messages (JSON) and terminal frames (binary) between devices. |
-| `uplink/devices.rs` | `uplink.json`: the device key and the paired devices, written readable by the user only. |
-| `uplink/invite.rs` | Local addresses and the pairing link shown as a QR code. |
+| `core/src/uplink/wire.rs` | Keys, codes, SPAKE2 pairing, Noise handshakes and the encrypted, fragmented frame stream. |
+| `core/src/uplink/net.rs` | Threads: listener, handshakes, dialing, joining, per connection reader and writer, multicast DNS discovery. Events go to the main thread over one channel. |
+| `core/src/uplink/protocol.rs` | Messages (JSON) and terminal frames (binary) between devices. |
+| `core/src/uplink/devices.rs` | `uplink.json`: the device key and the paired devices, written readable by the user only. |
+| `core/src/uplink/invite.rs` | Local addresses and the pairing link shown as a QR code. |
+| `core/src/session.rs`, `core/src/terminal.rs`, `core/src/theme.rs` | Types the Uplink protocol carries: tab `Kind` and `Activity`, the terminal `Feed`, `ItemColor`. Desktop re-exports them from `session.rs`, `terminal/mod.rs` and `theme.rs`. |
 | `uplink/page.rs`, `uplink/sidebar.rs` | Settings › Uplink and the Uplink sidebar tab. |
 
 ## State

@@ -1,10 +1,7 @@
-pub mod devices;
-pub mod invite;
-pub mod net;
 pub mod page;
-pub mod protocol;
 pub mod sidebar;
-pub mod wire;
+
+pub use nucli_core::uplink::{devices, invite, net, protocol, wire};
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -113,7 +110,7 @@ pub struct Uplink {
 }
 
 pub fn init(cx: &mut App) {
-    let path = devices::file();
+    let path = crate::paths::data_dir().join("uplink.json");
     let (identity, list) = devices::load(&path);
     let (events, mut received) = futures::channel::mpsc::unbounded();
     let shared = Shared::new(identity, Hello::default(), events);

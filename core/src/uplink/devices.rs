@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -44,10 +44,6 @@ struct DeviceFile {
     secret: String,
     public: String,
     devices: Vec<Device>,
-}
-
-pub fn file() -> PathBuf {
-    crate::paths::data_dir().join("uplink.json")
 }
 
 pub fn load(path: &Path) -> (Identity, Vec<Device>) {

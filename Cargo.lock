@@ -3397,23 +3397,19 @@ dependencies = [
  "embed-resource",
  "fancy-regex",
  "futures",
- "getrandom 0.3.4",
  "gpui-pre",
  "gpui-pre-platform",
- "if-addrs",
  "image",
  "libc",
- "mdns-sd",
  "notify",
  "notify-rust",
+ "nucli-core",
  "objc",
  "plist",
  "portable-pty",
  "qrcode",
  "serde",
  "serde_json",
- "snow",
- "spake2",
  "sysinfo 0.40.1",
  "trash",
  "tree-sitter",
@@ -3440,6 +3436,22 @@ dependencies = [
  "uuid",
  "windows 0.61.3",
  "x11rb",
+]
+
+[[package]]
+name = "nucli-core"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "getrandom 0.3.4",
+ "gpui-pre",
+ "if-addrs",
+ "mdns-sd",
+ "serde",
+ "serde_json",
+ "snow",
+ "spake2",
+ "uuid",
 ]
 
 [[package]]

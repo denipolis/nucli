@@ -52,12 +52,12 @@ jobs:
           key: ${{ matrix.target }}
       - name: Check formatting
         if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: cargo fmt --check
+        run: cargo fmt --all --check
       - name: Clippy
-        run: cargo clippy --locked --release --target ${{ matrix.target }} -- -D warnings
+        run: cargo clippy --workspace --locked --release --target ${{ matrix.target }} -- -D warnings
       - name: Test
         if: matrix.target != 'x86_64-apple-darwin'
-        run: cargo test --locked --release --target ${{ matrix.target }}
+        run: cargo test --workspace --locked --release --target ${{ matrix.target }}
       - name: Package
         shell: bash
         run: ./scripts/package.sh ${{ matrix.target }}

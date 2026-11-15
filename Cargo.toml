@@ -7,13 +7,21 @@ description = "A cross-platform terminal built for AI coding agents"
 repository = "https://github.com/denipolis/nucli"
 publish = false
 
+[workspace]
+members = ["core"]
+
+[workspace.dependencies]
+gpui = { package = "gpui-pre", version = "=0.3.10" }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.10", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+
 [dependencies]
+nucli-core = { path = "core" }
 alacritty_terminal = "0.26.0"
 anyhow = "1"
 dirs = "7"
 futures = "0.3"
-gpui = { package = "gpui-pre", version = "=0.3.10" }
-gpui_platform = { package = "gpui-pre-platform", version = "=0.3.10", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui.workspace = true
+gpui_platform.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sysinfo = "0.40.1"
@@ -44,12 +52,7 @@ notify = "8"
 portable-pty = "0.9.0"
 uuid = { version = "1", features = ["v4"] }
 fancy-regex = "0.20.0"
-snow = "0.10.0"
-spake2 = "0.4.0"
-mdns-sd = { version = "0.21.7", default-features = false }
 qrcode = { version = "0.14.1", default-features = false }
-getrandom = "0.3.4"
-if-addrs = "0.15.0"
 
 [profile.release]
 lto = "thin"

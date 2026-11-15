@@ -155,13 +155,7 @@ pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
-#[derive(Clone)]
-pub enum Feed {
-    Start { cols: usize, rows: usize },
-    Bytes { local: bool, data: Vec<u8> },
-    Size { cols: usize, rows: usize },
-    Flush,
-}
+pub use nucli_core::terminal::Feed;
 
 pub type Tap = Box<dyn FnMut(&Feed) -> bool + Send>;
 

@@ -10,7 +10,7 @@ Builds are not code signed for distribution (macOS builds are ad-hoc signed, not
 
 ## Rust dependencies
 
-Direct dependencies, declared in `Cargo.toml`. Exact versions of everything, transitive crates included, live in `Cargo.lock`. When a dependency is added or upgraded, update this table.
+Direct dependencies, declared in the workspace's `Cargo.toml` files (`Cargo.toml`, `core/Cargo.toml`). Exact versions of everything, transitive crates included, live in `Cargo.lock`. When a dependency is added or upgraded, update this table.
 
 | Crate | License | Used for |
 |---|---|---|

@@ -28,7 +28,7 @@ The full behavior is specified in `docs/SPEC.md`. Keep it in sync with the code.
 
 ## Tech
 
-- Rust (edition 2024) and GPUI. Cargo, one crate. Build: `cargo build`; run: `cargo run`. A debug build is the development variant: it is called "Nucli Dev" and uses its own config, data and cache folders, so it is safe to run next to an installed Nucli.
+- Rust (edition 2024) and GPUI. Cargo workspace: the desktop app at the root and `core/` (`nucli-core`), the code shared with the mobile app. Build: `cargo build`; run: `cargo run`; test: `cargo test --workspace`. A debug build is the development variant: it is called "Nucli Dev" and uses its own config, data and cache folders, so it is safe to run next to an installed Nucli.
 - Terminal: `alacritty_terminal` for emulation, `portable-pty` for the pseudo terminal.
 - Git: shell out to `git`. File watching: `notify`. Syntax highlighting: tree-sitter.
 - Persistence: JSON files in the platform's config and data folders (see `docs/SPEC.md`).
