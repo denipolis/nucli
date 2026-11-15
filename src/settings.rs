@@ -119,7 +119,7 @@ pub struct SettingsError(pub Option<String>);
 
 impl Global for SettingsError {}
 
-pub const FONT: &str = "Maple Mono NF";
+pub const FONT: &str = nucli_core::fonts::FAMILY;
 pub const NATURAL_LINE_HEIGHT: f32 = 1.3;
 
 impl Settings {

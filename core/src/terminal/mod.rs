@@ -1,4 +1,6 @@
+pub mod boxes;
 pub mod keys;
+pub mod render;
 
 use std::sync::Arc;
 use std::sync::mpsc::{Sender, channel};

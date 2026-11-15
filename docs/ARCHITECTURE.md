@@ -17,8 +17,9 @@ Paths are under `src/` unless they start with `core/`.
 | `session.rs` | `Session` entity, one per tab: its `Terminal`, title, color, status, command line and environment. |
 | `terminal/mod.rs` | `Terminal`: pty, `alacritty_terminal` grid, reader, parser and waiter threads, prompt anchoring, OSC notification scanning. |
 | `terminal/view.rs` | Grid element, mouse, selection, links, IME and focus reporting. `impl Render for Session`. |
+| `core/src/terminal/render.rs` | Turns a terminal grid into rectangles and shaped text runs (`layout`) and paints them (`paint`): colors, selection, find matches, links, cursor and IME text. |
 | `core/src/terminal/keys.rs` | Keystroke to bytes: legacy sequences and the kitty protocol. |
-| `terminal/boxes.rs` | Box and block characters as rectangles. |
+| `core/src/terminal/boxes.rs` | Box and block characters as rectangles. |
 | `terminal/links.rs` | Finding URLs and `path:line:col` under the mouse. |
 | `terminal/find.rs` | Terminal find bar. |
 | `terminal/snapshot.rs` | Serializes a terminal's state (scrollback, screen, styles, links, modes, cursor) into the bytes that rebuild it, for a remote view joining midway. |
