@@ -10,7 +10,7 @@ use nucli_core::terminal::Feed;
 use nucli_core::uplink::devices::{self, Access, Device};
 use nucli_core::uplink::invite;
 use nucli_core::uplink::net::{self, Connection, Nearby, NetEvent, Outbox, Routes, Shared};
-use nucli_core::uplink::protocol::{Catalog, Hello, Message, Stop};
+use nucli_core::uplink::protocol::{Catalog, Hello, Message, Request, Response, Stop};
 use nucli_core::uplink::wire::{self, Key};
 
 const PORT: u16 = 47100;
@@ -44,6 +44,8 @@ pub struct Link {
     opening: Option<Key>,
     pub nearby: Vec<Nearby>,
     _browser: Option<crate::nearby::Browser>,
+    asks: HashMap<u64, (Key, futures::channel::oneshot::Sender<Response>)>,
+    next_ask: u64,
 }
 
 pub fn start(name: String, cx: &mut App) -> Entity<Link> {
@@ -67,6 +69,8 @@ pub fn start(name: String, cx: &mut App) -> Entity<Link> {
         opening: None,
         nearby: Vec::new(),
         _browser: browser,
+        asks: HashMap::new(),
+        next_ask: 0,
     });
     let handling = link.clone();
     cx.spawn(async move |cx| {
@@ -143,6 +147,47 @@ impl Link {
         self.note = None;
         net::join(vec![address.to_string()], code, None, Access::View, PORT, &self.shared);
         cx.notify();
+    }
+
+    pub fn control(&self, key: &Key) -> bool {
+        self.online.get(key).is_some_and(|online| online.catalog.control)
+    }
+
+    pub fn ask(
+        &mut self,
+        key: Key,
+        request: Request,
+        cx: &mut Context<Self>,
+    ) -> futures::channel::oneshot::Receiver<Response> {
+        let (sender, receiver) = futures::channel::oneshot::channel();
+        let Some(online) = self.online.get(&key) else {
+            let _ = sender.send(Response::Failed { reason: "The computer is offline.".into() });
+            return receiver;
+        };
+        self.next_ask += 1;
+        let id = self.next_ask;
+        online.outbox.send(&Message::Request { id, request });
+        self.asks.insert(id, (key, sender));
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_secs(15)).await;
+            let _ = this.update(cx, |link, _| {
+                if let Some((_, sender)) = link.asks.remove(&id) {
+                    let reason = "No answer. Nucli on this computer may need an update.".to_string();
+                    let _ = sender.send(Response::Failed { reason });
+                }
+            });
+        })
+        .detach();
+        receiver
+    }
+
+    fn drop_asks(&mut self, key: Key) {
+        let ids: Vec<u64> = self.asks.iter().filter(|(_, (asked, _))| *asked == key).map(|(id, _)| *id).collect();
+        for id in ids {
+            if let Some((_, sender)) = self.asks.remove(&id) {
+                let _ = sender.send(Response::Failed { reason: "The computer went offline.".into() });
+            }
+        }
     }
 
     pub fn pairable(&self) -> Vec<&Nearby> {
@@ -292,7 +337,14 @@ impl Link {
         match event {
             NetEvent::Connected(connection) => self.connected(connection),
             NetEvent::Message(conn, message) => self.message(conn, message),
-            NetEvent::Closed(conn) => self.online.retain(|_, online| online.conn != conn),
+            NetEvent::Closed(conn) => {
+                let closed: Vec<Key> =
+                    self.online.iter().filter(|(_, online)| online.conn == conn).map(|(key, _)| *key).collect();
+                self.online.retain(|_, online| online.conn != conn);
+                for key in closed {
+                    self.drop_asks(key);
+                }
+            }
             NetEvent::DialFailed(key, error) => {
                 if let Some(dialing) = self.dialing.get_mut(&key) {
                     dialing.busy = false;
@@ -379,6 +431,11 @@ impl Link {
             }
             Message::Stop { tab, .. } => {
                 self.watched.remove(&(key, tab));
+            }
+            Message::Response { id, response } => {
+                if let Some((_, sender)) = self.asks.remove(&id) {
+                    let _ = sender.send(response);
+                }
             }
             Message::Opened { tab } => {
                 if self.opening.take() == Some(key) {

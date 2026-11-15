@@ -177,3 +177,7 @@ pub fn label_value(label: &'static str, value: impl IntoElement, theme: &Theme) 
         .child(div().flex_none().w(px(110.0)).text_color(theme.muted).child(label))
         .child(div().flex_1().min_w_0().child(value))
 }
+
+pub fn count(number: usize, noun: &str) -> String {
+    if number == 1 { format!("1 {noun}") } else { format!("{number} {noun}s") }
+}

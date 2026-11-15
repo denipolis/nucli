@@ -1,18 +1,22 @@
 mod board;
+mod computer;
+mod computers;
 mod device;
 mod devtools;
 mod field;
+mod folders;
 mod home;
-mod launch;
 mod link;
 mod mirror;
 mod nearby;
 mod pair;
 mod prefs;
+mod project;
 mod scanner;
 mod settings;
 mod terminal;
 mod ui;
+mod viewer;
 mod welcome;
 
 use futures::StreamExt;
