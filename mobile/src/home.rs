@@ -21,8 +21,9 @@ pub struct Home {
 }
 
 impl Home {
-    pub fn new(link: Entity<Link>, cx: &mut Context<Self>) -> Home {
+    pub fn new(link: Entity<Link>, window: &mut Window, cx: &mut Context<Self>) -> Home {
         cx.observe(&link, |_, _, cx| cx.notify()).detach();
+        cx.observe_window_appearance(window, |_, window, _| window.refresh()).detach();
         Home { link, mirror: None }
     }
 

@@ -14,7 +14,7 @@ fn main() {
         let link = link::start(cx);
         let options = WindowOptions { window_bounds: bounds(cx), ..Default::default() };
         if let Err(error) = cx.open_window(options, |window, cx| {
-            let home = cx.new(|cx| home::Home::new(link, cx));
+            let home = cx.new(|cx| home::Home::new(link, window, cx));
             devtools::start(home.clone(), window, cx);
             home
         }) {
@@ -26,8 +26,18 @@ fn main() {
 
 pub fn theme(window: &Window) -> Theme {
     let dark = matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark);
+    status_bar(dark);
     theme::resolve("nucli", dark, &[])
 }
+
+#[cfg(target_os = "ios")]
+fn status_bar(dark: bool) {
+    use gpui_ios::StatusBarContentStyle::{Dark, Light};
+    gpui_ios::ios::set_status_bar_style(if dark { Light } else { Dark });
+}
+
+#[cfg(not(target_os = "ios"))]
+fn status_bar(_: bool) {}
 
 #[cfg(target_os = "ios")]
 fn bounds(_: &App) -> Option<WindowBounds> {

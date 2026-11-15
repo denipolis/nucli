@@ -12,3 +12,6 @@ futures = "0.3"
 gpui.workspace = true
 gpui_platform.workspace = true
 nucli-core = { path = "../core" }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+gpui_ios.workspace = true

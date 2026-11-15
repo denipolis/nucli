@@ -14,7 +14,7 @@ Direct dependencies, declared in the workspace's `Cargo.toml` files (`Cargo.toml
 
 | Crate | License | Used for |
 |---|---|---|
-| [gpui-pre](https://crates.io/crates/gpui-pre), [gpui-pre-platform](https://crates.io/crates/gpui-pre-platform) | Apache-2.0 | UI framework: windows, layout, text, input, rendering. A published snapshot of [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui) and its platform crates from the Zed repository, pinned to one exact version |
+| [gpui-pre](https://crates.io/crates/gpui-pre), [gpui-pre-platform](https://crates.io/crates/gpui-pre-platform), [gpui-pre-ios](https://crates.io/crates/gpui-pre-ios) (mobile, iOS only) | Apache-2.0 | UI framework: windows, layout, text, input, rendering. A published snapshot of [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui) and its platform crates from the Zed repository, pinned to one exact version |
 | [alacritty_terminal](https://github.com/alacritty/alacritty) | Apache-2.0 | Terminal emulation (parser, grid, selection, search) |
 | [portable-pty](https://github.com/wezterm/wezterm/tree/main/pty) | MIT | Pseudo terminals and child processes on every platform |
 | [dirs](https://github.com/dirs-dev/dirs-rs) | MIT OR Apache-2.0 | Platform config, data and cache folders |
