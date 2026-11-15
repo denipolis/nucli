@@ -285,7 +285,7 @@ By default the row follows the focused pane or file group. With `status_chips` s
 
 ## Uplink
 
-Uplink lets computers running Nucli control each other's tabs: run agents on one machine and watch, type into and start them from another. A phone running Nucli Mobile is a paired device too: it shares no tabs and never listens, so it dials the computers it paired with and they never dial it. There is no server. Every computer is a peer that hosts its own tabs and connects straight to the computers it is paired with, over the local network or any private network the user sets up between them (for example a VPN that gives each machine an address).
+Uplink lets computers running Nucli control each other's tabs: run agents on one machine and watch, type into and start them from another. A phone running Nucli Uplink is a paired device too: it shares no tabs and never listens, so it dials the computers it paired with and they never dial it. There is no server. Every computer is a peer that hosts its own tabs and connects straight to the computers it is paired with, over the local network or any private network the user sets up between them (for example a VPN that gives each machine an address).
 
 ### Turning it on and off
 
