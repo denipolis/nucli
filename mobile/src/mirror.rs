@@ -186,18 +186,20 @@ fn layout(mirror: &Entity<Mirror>, bounds: Bounds<Pixels>, focused: bool, window
     let width = f32::from(bounds.size.width);
     let fit =
         ((width / advance).floor().max(2.0) as usize, (f32::from(bounds.size.height) / line).floor().max(1.0) as usize);
-    let (term, held, marked) = mirror.update(cx, |mirror, cx| {
-        if mirror.held && mirror.fit != fit {
+    let (term, marked) = mirror.update(cx, |mirror, cx| {
+        let control = mirror.control(cx);
+        if control && (!mirror.held || mirror.fit != fit) {
             mirror.link.read(cx).resize(mirror.key, &mirror.tab, fit.0, fit.1);
+            mirror.held = true;
         }
         mirror.fit = fit;
-        (mirror.term.clone(), mirror.held, mirror.marked.clone())
+        (mirror.term.clone(), mirror.marked.clone())
     });
     let (cols, rows) = {
         let term = term.lock();
         (term.columns(), term.screen_lines())
     };
-    let scale = if held { 1.0 } else { (width / (advance * cols as f32)).min(1.0) };
+    let scale = (width / (advance * cols as f32)).min(1.0);
     let cell = size(px(advance * scale), px(line * scale));
     let height = cell.height * rows as f32;
     let top = if height > bounds.size.height { bounds.bottom() - height } else { bounds.origin.y };
