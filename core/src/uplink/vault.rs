@@ -1,25 +1,23 @@
-use std::path::Path;
-
 const SERVICE: &str = "Nucli Uplink";
 
-fn entry(path: &Path) -> Option<keyring::Entry> {
+fn entry(account: &str) -> Option<keyring::Entry> {
     if cfg!(all(target_os = "macos", debug_assertions)) {
         return None;
     }
-    keyring::Entry::new(SERVICE, &path.to_string_lossy()).ok()
+    keyring::Entry::new(SERVICE, account).ok()
 }
 
-pub fn load(path: &Path) -> Option<String> {
-    entry(path)?.get_password().ok()
+pub fn load(account: &str) -> Option<String> {
+    entry(account)?.get_password().ok()
 }
 
-pub fn store(path: &Path, secret: &str) -> bool {
-    load(path).as_deref() == Some(secret) || entry(path).is_some_and(|entry| entry.set_password(secret).is_ok())
+pub fn store(account: &str, secret: &str) -> bool {
+    load(account).as_deref() == Some(secret) || entry(account).is_some_and(|entry| entry.set_password(secret).is_ok())
 }
 
 #[cfg(test)]
-pub fn forget(path: &Path) {
-    if let Some(entry) = entry(path) {
+pub fn forget(account: &str) {
+    if let Some(entry) = entry(account) {
         let _ = entry.delete_credential();
     }
 }

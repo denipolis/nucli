@@ -72,7 +72,7 @@ Paths are under `src/` unless they start with `core/`.
 | `core/src/uplink/net.rs` | Threads: listener, handshakes, dialing, joining, per connection reader and writer, multicast DNS discovery. Events go to the main thread over one channel. |
 | `core/src/uplink/protocol.rs` | Messages (JSON) and terminal frames (binary) between devices. |
 | `core/src/uplink/devices.rs` | `uplink.json`: the paired devices and the public key, written readable by the user only; the private key goes through `vault` and stays in the file only when the credential store refuses it. |
-| `core/src/uplink/vault.rs` | The private key in the system credential store through `keyring` (service "Nucli Uplink", account the path of `uplink.json`, so every data folder has its own). Off in macOS debug builds, which are signed anew on every build and would ask for Keychain access each time. |
+| `core/src/uplink/vault.rs` | The private key in the system credential store through `keyring` (service "Nucli Uplink", account the public key from `uplink.json`, so every identity has its own entry and it survives iOS moving the app's data folder on updates). Off in macOS debug builds, which are signed anew on every build and would ask for Keychain access each time. |
 | `core/src/uplink/invite.rs` | Local addresses and the pairing link shown as a QR code. |
 | `core/src/terminal/mod.rs` | The terminal `Feed` and `spawn_mirror`, the thread that rebuilds a remote terminal from its feeds. |
 | `core/src/session.rs` | Tab `Kind` and `Activity`, carried by the Uplink protocol. Desktop re-exports them from `session.rs`, and `Feed` from `terminal/mod.rs`. |

@@ -54,7 +54,7 @@ pub fn load(path: &Path) -> (Identity, Vec<Device>) {
             if let Some(stored) = stored
                 && let Some(public) = wire::decode_key(&stored.public)
                 && let Some(secret) = wire::decode_key(&stored.secret)
-                    .or_else(|| vault::load(path).and_then(|text| wire::decode_key(&text)))
+                    .or_else(|| vault::load(&stored.public).and_then(|text| wire::decode_key(&text)))
             {
                 let mut devices = stored.devices;
                 devices.retain(|device| device.public().is_some_and(|key| key != public));
@@ -82,9 +82,10 @@ fn set_aside(path: &Path) {
 
 pub fn save(path: &Path, identity: &Identity, devices: &[Device]) {
     let secret = wire::encode_key(&identity.secret);
+    let public = wire::encode_key(&identity.public);
     let file = DeviceFile {
-        secret: if vault::store(path, &secret) { String::new() } else { secret },
-        public: wire::encode_key(&identity.public),
+        secret: if vault::store(&public, &secret) { String::new() } else { secret },
+        public,
         devices: devices.to_vec(),
     };
     if let Ok(json) = serde_json::to_string_pretty(&file)
@@ -135,7 +136,7 @@ mod tests {
             let mode = std::fs::metadata(&path).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o600);
         }
-        vault::forget(&path);
+        vault::forget(&wire::encode_key(&identity.public));
         let _ = std::fs::remove_dir_all(folder);
     }
 }
