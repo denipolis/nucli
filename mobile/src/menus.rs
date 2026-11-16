@@ -8,7 +8,7 @@ use nucli_core::uplink::protocol::{
 use nucli_core::uplink::wire::Key;
 
 use crate::home::{Home, Panel, Screen};
-use crate::sheet::{Item, Sheet, action, ask, confirm, copy};
+use crate::sheet::{Item, Run, Sheet, action, ask, ask_first, confirm, copy};
 
 pub struct Clip {
     pub key: Key,
@@ -36,6 +36,40 @@ pub fn full(project: &str, path: &str) -> String {
 
 fn short(hash: &str) -> String {
     hash.chars().take(7).collect()
+}
+
+pub fn close_tab(key: Key, tab: &RemoteTab) -> Run {
+    let id = tab.id.clone();
+    let close = move |home: &mut Home, _: &mut gpui::Window, cx: &mut Context<Home>| {
+        home.tab_act(key, &id, TabAction::Close, cx)
+    };
+    if tab.kind == Kind::Agent && tab.running {
+        ask_first(format!("close {}?", tab.title), "The agent is still running and will be stopped.", "close", close)
+    } else {
+        std::rc::Rc::new(close)
+    }
+}
+
+pub fn delete_entry(key: Key, project: &str, path: &str) -> Run {
+    let (root, target) = (project.to_string(), path.to_string());
+    ask_first(format!("delete {}?", name(path)), "It is moved to the trash.", "delete", move |home, _, cx| {
+        home.act(key, &root, Action::Delete { path: target.clone() }, cx)
+    })
+}
+
+pub fn close_project(key: Key, project: &str, title: &str) -> Run {
+    let root = project.to_string();
+    ask_first(
+        format!("close {title}?"),
+        "Its tabs close and its running agents are stopped.",
+        "close",
+        move |home, window, cx| {
+            home.act(key, &root, Action::CloseProject, cx);
+            if matches!(&home.screen, Screen::Project { project, .. } if *project == root) {
+                home.back(window, cx);
+            }
+        },
+    )
 }
 
 impl Home {
@@ -256,10 +290,7 @@ impl Home {
                 home.act(key, &project, Action::Rename { from: from.clone(), to }, cx)
             }));
         }
-        let (root, target) = (project.to_string(), path.to_string());
-        items.push(confirm("delete", format!("delete {}?", name(path)), "It is moved to the trash.", "delete", {
-            move |home, _, cx| home.act(key, &root, Action::Delete { path: target.clone() }, cx)
-        }));
+        items.push(Item::Action { label: "delete…".into(), danger: true, run: delete_entry(key, project, path) });
         Sheet::Menu { title: path.to_string(), items }
     }
 
@@ -441,17 +472,9 @@ impl Home {
             items
                 .push(action("move out of project", move |home, _, cx| home.tab_act(key, &id, TabAction::MoveOut, cx)));
         }
-        if tab.kind == Kind::Agent && tab.running {
-            items.push(confirm(
-                "close tab",
-                format!("close {}?", tab.title),
-                "The agent is still running and will be stopped.",
-                "close",
-                move |home, _, cx| home.tab_act(key, &id, TabAction::Close, cx),
-            ));
-        } else {
-            items.push(action("close tab", move |home, _, cx| home.tab_act(key, &id, TabAction::Close, cx)));
-        }
+        let asks = tab.kind == Kind::Agent && tab.running;
+        let label = if asks { "close tab…" } else { "close tab" };
+        items.push(Item::Action { label: label.into(), danger: asks, run: close_tab(key, tab) });
         Sheet::Menu { title: tab.title.clone(), items }
     }
 
@@ -497,19 +520,11 @@ impl Home {
             }));
         }
         items.extend(self.location_items(key, project, "", false));
-        let root = project.to_string();
-        items.push(confirm(
-            "close project",
-            format!("close {}?", remote.name),
-            "Its tabs close and its running agents are stopped.",
-            "close",
-            move |home, window, cx| {
-                home.act(key, &root, Action::CloseProject, cx);
-                if matches!(&home.screen, Screen::Project { project, .. } if *project == root) {
-                    home.back(window, cx);
-                }
-            },
-        ));
+        items.push(Item::Action {
+            label: "close project…".into(),
+            danger: true,
+            run: close_project(key, project, &remote.name),
+        });
         Sheet::Menu { title: remote.name, items }
     }
 

@@ -57,21 +57,26 @@ pub fn confirm(
     button: &str,
     run: impl Fn(&mut Home, &mut Window, &mut Context<Home>) + 'static,
 ) -> Item {
+    Item::Action { label: format!("{label}…"), danger: true, run: ask_first(title, detail, button, run) }
+}
+
+pub fn ask_first(
+    title: impl Into<String>,
+    detail: impl Into<String>,
+    button: &str,
+    run: impl Fn(&mut Home, &mut Window, &mut Context<Home>) + 'static,
+) -> Run {
     let (title, detail, button, run): (String, String, String, Run) =
         (title.into(), detail.into(), button.into(), Rc::new(run));
-    Item::Action {
-        label: format!("{label}…"),
-        danger: true,
-        run: Rc::new(move |home, _, cx| {
-            home.sheet = Some(Sheet::Confirm {
-                title: title.clone(),
-                detail: detail.clone(),
-                button: button.clone(),
-                run: run.clone(),
-            });
-            cx.notify();
-        }),
-    }
+    Rc::new(move |home, _, cx| {
+        home.sheet = Some(Sheet::Confirm {
+            title: title.clone(),
+            detail: detail.clone(),
+            button: button.clone(),
+            run: run.clone(),
+        });
+        cx.notify();
+    })
 }
 
 impl Home {

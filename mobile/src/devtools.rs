@@ -20,14 +20,19 @@ pub fn start(home: Entity<Home>, window: &mut Window, cx: &mut App) {
             for line in lines {
                 if let Some(points) = line.strip_prefix("fling ") {
                     let numbers: Vec<f32> = points.split(' ').filter_map(|part| part.parse().ok()).collect();
-                    let [x, y, distance] = numbers[..] else { continue };
+                    let (x, y, dx, dy) = match numbers[..] {
+                        [x, y, dy] => (x, y, 0.0, dy),
+                        [x, y, dx, dy] => (x, y, dx, dy),
+                        _ => continue,
+                    };
                     for step in 0..=6 {
                         let phase = match step {
                             0 => TouchPhase::Started,
                             6 => TouchPhase::Ended,
                             _ => TouchPhase::Moved,
                         };
-                        let position = point(px(x), px(y + distance * step.min(5) as f32 / 5.0));
+                        let progress = step.min(5) as f32 / 5.0;
+                        let position = point(px(x + dx * progress), px(y + dy * progress));
                         let touch =
                             TouchEvent { id: TouchId(1), phase, position, predicted_position: None, force: None };
                         let _ =

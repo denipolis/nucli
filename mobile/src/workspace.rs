@@ -11,6 +11,7 @@ use nucli_core::uplink::wire::Key;
 
 use crate::board::{Group, group};
 use crate::home::{Home, Screen};
+use crate::menus::close_project;
 use crate::ui;
 
 pub fn workspaces(catalog: &Catalog) -> Vec<RemoteWorkspace> {
@@ -201,12 +202,13 @@ impl Home {
         control: bool,
         theme: &Theme,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> AnyElement {
         let tabs: Vec<&RemoteTab> = catalog.tabs.iter().filter(|tab| tab.project == project.path).collect();
         let (detail, state) = self.summary(&tabs, "nothing running", theme);
         let (path, held) = (project.path.clone(), project.path.clone());
         let color = project.color.map_or(theme.accent, |color| color.color(theme.dark));
-        ui::row(SharedString::from(format!("project:{}", project.path)), theme)
+        let id = SharedString::from(format!("project:{}", project.path));
+        let row = ui::row(id.clone(), theme)
             .child(div().flex_none().w(px(18.0)).text_color(color).child(icons::FOLDER))
             .child(
                 div()
@@ -227,6 +229,12 @@ impl Home {
                     let sheet = home.project_menu(key, &held, cx);
                     home.show(sheet, cx)
                 })))
-            })
+            });
+        if control {
+            let close = close_project(key, &project.path, &project.name);
+            self.swipeable(id, row, "close", close, theme, cx).into_any_element()
+        } else {
+            row.into_any_element()
+        }
     }
 }

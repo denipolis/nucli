@@ -1,5 +1,8 @@
 use gpui::prelude::FluentBuilder;
-use gpui::{Context, Div, Hsla, ParentElement, SharedString, Stateful, StatefulInteractiveElement, Styled, div, px};
+use gpui::{
+    AnyElement, Context, Div, Hsla, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, div,
+    px,
+};
 use nucli_core::icons;
 use nucli_core::session::{Activity, Kind};
 use nucli_core::theme::{ItemColor, Theme};
@@ -7,6 +10,7 @@ use nucli_core::uplink::protocol::{Catalog, RemoteTab};
 use nucli_core::uplink::wire::{self, Key};
 
 use crate::home::Home;
+use crate::menus::close_tab;
 use crate::ui;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -74,7 +78,7 @@ impl Home {
         detail: String,
         theme: &Theme,
         cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
+    ) -> AnyElement {
         let time = self.shown.elapsed().as_millis();
         let (glyph, color) = glyph(tab);
         let (state, state_color) = status(tab, time, theme);
@@ -85,33 +89,37 @@ impl Home {
             online.catalog.projects.iter().any(|project| project.path == tab.project && project.name.is_empty())
         });
         let held = tab.clone();
-        ui::row(SharedString::from(format!("tab:{}:{}", wire::encode_key(&key), tab.id)), theme)
-            .child(
-                div()
-                    .flex_none()
-                    .w(px(18.0))
-                    .text_color(color.map_or(theme.muted, |color| color.color(theme.dark)))
-                    .child(glyph),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .child(div().truncate().child(tab.title.clone()))
-                    .when(!detail.is_empty(), |this| {
-                        this.child(div().truncate().text_size(px(ui::SMALL)).text_color(theme.faint).child(detail))
-                    }),
-            )
-            .child(div().flex_none().text_size(px(ui::SMALL)).text_color(state_color).child(state))
-            .on_click(cx.listener(move |home, _, window, cx| home.open(key, tab_id.clone(), window, cx)))
-            .when(control, |this| {
-                this.child(ui::hold(cx.listener(move |home, _, _, cx| {
-                    let sheet = home.tab_menu(key, &held, scratch);
-                    home.show(sheet, cx)
-                })))
-            })
+        let id = SharedString::from(format!("tab:{}:{}", wire::encode_key(&key), tab.id));
+        let row =
+            ui::row(id.clone(), theme)
+                .child(
+                    div()
+                        .flex_none()
+                        .w(px(18.0))
+                        .text_color(color.map_or(theme.muted, |color| color.color(theme.dark)))
+                        .child(glyph),
+                )
+                .child(
+                    div().flex().flex_col().flex_1().min_w_0().child(div().truncate().child(tab.title.clone())).when(
+                        !detail.is_empty(),
+                        |this| {
+                            this.child(div().truncate().text_size(px(ui::SMALL)).text_color(theme.faint).child(detail))
+                        },
+                    ),
+                )
+                .child(div().flex_none().text_size(px(ui::SMALL)).text_color(state_color).child(state))
+                .on_click(cx.listener(move |home, _, window, cx| home.open(key, tab_id.clone(), window, cx)))
+                .when(control, |this| {
+                    this.child(ui::hold(cx.listener(move |home, _, _, cx| {
+                        let sheet = home.tab_menu(key, &held, scratch);
+                        home.show(sheet, cx)
+                    })))
+                });
+        if control {
+            self.swipeable(id, row, "close", close_tab(key, tab), theme, cx).into_any_element()
+        } else {
+            row.into_any_element()
+        }
     }
 
     pub fn agents_of(&self, key: Key, theme: &Theme, cx: &mut Context<Self>) -> Div {

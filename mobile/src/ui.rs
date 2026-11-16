@@ -151,6 +151,7 @@ pub fn scroll(id: impl Into<ElementId>, handle: &ScrollHandle) -> Stateful<Div> 
         .flex_1()
         .min_h_0()
         .overflow_y_scroll()
+        .restrict_scroll_to_axis()
         .track_scroll(handle)
         .child(canvas(move |_, _, _| SCROLL.set(Some(current)), |_, _, _, _| {}).absolute().inset_0())
 }

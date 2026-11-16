@@ -17,6 +17,7 @@ mod project;
 mod scanner;
 mod settings;
 mod sheet;
+mod swipe;
 mod terminal;
 mod transfers;
 mod ui;

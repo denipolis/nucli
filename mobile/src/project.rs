@@ -11,6 +11,7 @@ use nucli_core::uplink::wire::Key;
 use crate::board::project_name;
 use crate::device::age;
 use crate::home::{Drawer, Home, Panel, Screen};
+use crate::menus::delete_entry;
 use crate::sheet::Sheet;
 use crate::ui;
 
@@ -198,27 +199,32 @@ impl Home {
                     };
                     let (folder, root) = (entry.folder, project.to_string());
                     let held = (root.clone(), path.clone());
-                    list = list.child(
-                        ui::row(SharedString::from(format!("entry:{path}")), theme)
-                            .child(div().flex_none().w(px(18.0)).text_color(color).child(glyph))
-                            .child(div().flex_1().min_w_0().truncate().child(entry.name.clone()))
-                            .when(folder, |this| {
-                                this.child(div().flex_none().text_color(theme.faint).child(icons::CHEVRON_RIGHT))
-                            })
-                            .on_click(cx.listener(move |home, _, window, cx| {
-                                if folder {
-                                    home.open_drawer(key, root.clone(), Panel::Files, path.clone(), cx)
-                                } else {
-                                    home.go(Screen::File { key, project: root.clone(), path: path.clone() }, window, cx)
-                                }
-                            }))
-                            .when(control, |this| {
-                                this.child(ui::hold(cx.listener(move |home, _, _, cx| {
-                                    let sheet = home.entry_menu(key, &held.0, &held.1, folder);
-                                    home.show(sheet, cx)
-                                })))
-                            }),
-                    );
+                    let id = SharedString::from(format!("entry:{path}"));
+                    let delete = delete_entry(key, &root, &path);
+                    let row = ui::row(id.clone(), theme)
+                        .child(div().flex_none().w(px(18.0)).text_color(color).child(glyph))
+                        .child(div().flex_1().min_w_0().truncate().child(entry.name.clone()))
+                        .when(folder, |this| {
+                            this.child(div().flex_none().text_color(theme.faint).child(icons::CHEVRON_RIGHT))
+                        })
+                        .on_click(cx.listener(move |home, _, window, cx| {
+                            if folder {
+                                home.open_drawer(key, root.clone(), Panel::Files, path.clone(), cx)
+                            } else {
+                                home.go(Screen::File { key, project: root.clone(), path: path.clone() }, window, cx)
+                            }
+                        }))
+                        .when(control, |this| {
+                            this.child(ui::hold(cx.listener(move |home, _, _, cx| {
+                                let sheet = home.entry_menu(key, &held.0, &held.1, folder);
+                                home.show(sheet, cx)
+                            })))
+                        });
+                    list = if control {
+                        list.child(self.swipeable(id, row, "delete", delete, theme, cx))
+                    } else {
+                        list.child(row)
+                    };
                 }
                 list
             }

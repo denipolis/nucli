@@ -91,6 +91,7 @@ pub struct Home {
     moves: usize,
     shift: f32,
     swipe: f32,
+    pub slide: Option<crate::swipe::Slide>,
 }
 
 impl Home {
@@ -172,6 +173,7 @@ impl Home {
             moves: 0,
             shift: 0.0,
             swipe: 0.0,
+            slide: None,
         }
     }
 
@@ -320,6 +322,7 @@ impl Home {
         }
         self.forgetting = None;
         self.notice = None;
+        self.slide = None;
         self.history.push(std::mem::replace(&mut self.screen, screen));
         self.moved(true);
         self.shown = Instant::now();
@@ -352,6 +355,7 @@ impl Home {
         }
         self.forgetting = None;
         self.notice = None;
+        self.slide = None;
         self.screen = self.history.pop().unwrap_or(Screen::Computers);
         if self.screen == Screen::Terminal && self.mirror.is_none() {
             self.screen = self.history.pop().unwrap_or(Screen::Computers);
@@ -798,6 +802,7 @@ impl Render for Home {
             .when(!self.history.is_empty() || self.sheet.is_some() || self.drawer.is_some(), |this| {
                 this.on_back_gesture(cx.listener(Self::swiped))
             })
+            .capture_any_mouse_down(cx.listener(Self::tapped_outside))
             .child(ui::taps())
             .child(
                 div().flex_1().min_h_0().flex().flex_col().relative().left(window.viewport_size().width * swipe).child(
