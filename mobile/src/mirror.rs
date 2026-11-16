@@ -106,6 +106,10 @@ impl Mirror {
         self.send(text.as_bytes(), cx);
     }
 
+    fn document(&self) -> String {
+        format!(" {}", self.marked.as_deref().unwrap_or(""))
+    }
+
     pub fn control(&self, cx: &App) -> bool {
         self.link.read(cx).online.get(&self.key).is_some_and(|online| online.catalog.control)
     }
@@ -251,12 +255,19 @@ impl Render for Mirror {
 impl EntityInputHandler for Mirror {
     fn text_for_range(
         &mut self,
-        _range: Range<usize>,
-        _adjusted: &mut Option<Range<usize>>,
+        range: Range<usize>,
+        adjusted: &mut Option<Range<usize>>,
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<String> {
-        None
+        let units: Vec<u16> = self.document().encode_utf16().collect();
+        let range = range.start.min(units.len())..range.end.min(units.len());
+        *adjusted = Some(range.clone());
+        String::from_utf16(&units[range]).ok()
+    }
+
+    fn text_length_utf16(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> Option<usize> {
+        Some(self.document().encode_utf16().count())
     }
 
     fn selected_text_range(
@@ -265,11 +276,11 @@ impl EntityInputHandler for Mirror {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<UTF16Selection> {
-        Some(UTF16Selection { range: 0..0, reversed: false })
+        Some(UTF16Selection { range: 1..1, reversed: false })
     }
 
     fn marked_text_range(&self, _window: &mut Window, _cx: &mut Context<Self>) -> Option<Range<usize>> {
-        self.marked.as_ref().map(|text| 0..text.encode_utf16().count())
+        self.marked.as_ref().map(|text| 1..1 + text.encode_utf16().count())
     }
 
     fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -279,7 +290,7 @@ impl EntityInputHandler for Mirror {
 
     fn replace_text_in_range(
         &mut self,
-        _range: Option<Range<usize>>,
+        range: Option<Range<usize>>,
         text: &str,
         _window: &mut Window,
         cx: &mut Context<Self>,
@@ -287,6 +298,8 @@ impl EntityInputHandler for Mirror {
         self.marked = None;
         if !text.is_empty() {
             self.type_text(text, cx);
+        } else if range.is_some() {
+            self.press("backspace", cx);
         }
         cx.notify();
     }

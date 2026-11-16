@@ -42,6 +42,10 @@ impl Field {
     pub fn focus(&self, window: &mut Window, cx: &mut App) {
         window.focus(&self.focus, cx);
     }
+
+    fn shown(&self) -> String {
+        format!("{}{}", self.text, self.marked.as_deref().unwrap_or(""))
+    }
 }
 
 impl gpui::Focusable for Field {
@@ -73,7 +77,7 @@ impl Render for Field {
         let theme = ui::theme(window, cx);
         let focused = self.focus.is_focused(window);
         let (entity, focus) = (cx.entity(), self.focus.clone());
-        let shown = format!("{}{}", self.text, self.marked.as_deref().unwrap_or(""));
+        let shown = self.shown();
         div()
             .id("field")
             .relative()
@@ -105,6 +109,17 @@ impl Render for Field {
     }
 }
 
+fn byte_offset(text: &str, utf16: usize) -> usize {
+    let mut units = 0;
+    for (index, character) in text.char_indices() {
+        if units >= utf16 {
+            return index;
+        }
+        units += character.len_utf16();
+    }
+    text.len()
+}
+
 impl gpui::EntityInputHandler for Field {
     fn text_for_range(
         &mut self,
@@ -113,10 +128,14 @@ impl gpui::EntityInputHandler for Field {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<String> {
-        let units: Vec<u16> = self.text.encode_utf16().collect();
+        let units: Vec<u16> = self.shown().encode_utf16().collect();
         let range = range.start.min(units.len())..range.end.min(units.len());
         *adjusted = Some(range.clone());
         String::from_utf16(&units[range]).ok()
+    }
+
+    fn text_length_utf16(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> Option<usize> {
+        Some(self.shown().encode_utf16().count())
     }
 
     fn selected_text_range(
@@ -141,7 +160,7 @@ impl gpui::EntityInputHandler for Field {
 
     fn replace_text_in_range(
         &mut self,
-        _range: Option<Range<usize>>,
+        range: Option<Range<usize>>,
         text: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -151,7 +170,10 @@ impl gpui::EntityInputHandler for Field {
             window.blur(cx);
             cx.emit(FieldEvent::Submit);
         } else {
-            self.text.push_str(&text.replace('\n', " "));
+            let range = range.map_or(self.text.len()..self.text.len(), |range| {
+                byte_offset(&self.text, range.start)..byte_offset(&self.text, range.end)
+            });
+            self.text.replace_range(range, &text.replace('\n', " "));
         }
         cx.notify();
     }
