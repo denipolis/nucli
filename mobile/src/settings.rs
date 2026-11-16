@@ -131,10 +131,6 @@ impl Home {
             )
             .child(ui::section("about", theme))
             .child(ui::label_value("version", div().child(format!("Nucli Uplink {}", env!("CARGO_PKG_VERSION"))), theme))
-            .child(ui::hint(
-                "Talks only to the computers you paired, end-to-end encrypted. No account, no server, no telemetry. MIT license.",
-                theme,
-            ))
             .child(div().h(px(24.0)));
         div()
             .flex_1()
