@@ -462,10 +462,8 @@ impl Home {
         };
         let mut items = Vec::new();
         for launcher in &catalog.launchers {
-            let (root, name) = (project.to_string(), launcher.name.clone());
-            items.push(action(format!("new {name}"), move |home, _, cx| {
-                home.link.update(cx, |link, _| link.open_tab(key, &root, &name))
-            }));
+            let (root, name, agent) = (project.to_string(), launcher.name.clone(), launcher.agent);
+            items.push(action(format!("new {name}"), move |home, _, cx| home.launch(key, &root, &name, agent, cx)));
         }
         {
             let root = project.to_string();
@@ -513,6 +511,18 @@ impl Home {
             },
         ));
         Sheet::Menu { title: remote.name, items }
+    }
+
+    pub fn launcher_menu(&self, key: Key, project: &str, agent: bool, cx: &Context<Self>) -> Sheet {
+        let items = self
+            .launchers(key, agent, cx)
+            .into_iter()
+            .map(|name| {
+                let root = project.to_string();
+                action(name.clone(), move |home, _, cx| home.launch(key, &root, &name, agent, cx))
+            })
+            .collect();
+        Sheet::Menu { title: if agent { "new agent" } else { "new shell" }.into(), items }
     }
 
     pub fn conversation_menu(&self, key: Key, item: &RemoteConversation, control: bool) -> Sheet {

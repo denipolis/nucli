@@ -388,15 +388,23 @@ impl Home {
     }
 
     pub fn new_tab(&mut self, key: Key, project: &str, agent: bool, cx: &mut Context<Self>) {
-        let link = self.link.read(cx);
-        let launcher = link
-            .online
-            .get(&key)
-            .and_then(|online| online.catalog.launchers.iter().find(|launcher| launcher.agent == agent))
-            .map(|launcher| launcher.name.clone());
-        if let Some(launcher) = launcher {
-            self.link.update(cx, |link, _| link.open_tab(key, project, &launcher));
+        let prefs = prefs::get(cx);
+        let last = if agent { &prefs.agent } else { &prefs.shell };
+        let launchers = self.launchers(key, agent, cx);
+        if let Some(launcher) = launchers.iter().find(|name| *name == last).or(launchers.first()).cloned() {
+            self.launch(key, project, &launcher, agent, cx);
         }
+    }
+
+    pub fn launchers(&self, key: Key, agent: bool, cx: &Context<Self>) -> Vec<String> {
+        let link = self.link.read(cx);
+        let launchers = link.online.get(&key).map(|online| online.catalog.launchers.as_slice()).unwrap_or_default();
+        launchers.iter().filter(|launcher| launcher.agent == agent).map(|launcher| launcher.name.clone()).collect()
+    }
+
+    pub fn launch(&mut self, key: Key, project: &str, launcher: &str, agent: bool, cx: &mut Context<Self>) {
+        prefs::update(cx, |prefs| *if agent { &mut prefs.agent } else { &mut prefs.shell } = launcher.to_string());
+        self.link.update(cx, |link, _| link.open_tab(key, project, launcher));
     }
 
     pub fn resume(

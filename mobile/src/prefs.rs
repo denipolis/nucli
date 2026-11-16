@@ -20,6 +20,8 @@ pub struct Prefs {
     pub theme: String,
     pub font_size: f32,
     pub onboarded: bool,
+    pub agent: String,
+    pub shell: String,
 }
 
 impl Default for Prefs {
@@ -30,6 +32,8 @@ impl Default for Prefs {
             theme: "nucli".into(),
             font_size: 13.0,
             onboarded: false,
+            agent: String::new(),
+            shell: String::new(),
         }
     }
 }

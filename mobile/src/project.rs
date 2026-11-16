@@ -78,7 +78,14 @@ impl Home {
                         .text_color(theme.accent)
                         .child(div().flex_none().w(px(18.0)).child(glyph))
                         .child(label)
-                        .on_click(cx.listener(move |home, _, _, cx| home.new_tab(key, &path, agent, cx))),
+                        .on_click(cx.listener({
+                            let path = path.clone();
+                            move |home, _, _, cx| home.new_tab(key, &path, agent, cx)
+                        }))
+                        .child(ui::hold(cx.listener(move |home, _, _, cx| {
+                            let sheet = home.launcher_menu(key, &path, agent, cx);
+                            home.show(sheet, cx)
+                        }))),
                 );
             }
         }

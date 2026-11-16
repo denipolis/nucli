@@ -160,7 +160,7 @@ Mirrors are `Session`s whose `Terminal` has no pty (`Backend::Mirror`). They sit
 | File | Role |
 |---|---|
 | `mobile/src/main.rs` | Fonts, preferences, the window, pairing links opened by the system (`on_open_urls`). |
-| `mobile/src/prefs.rs` | `settings.json` in the app's data folder: phone name, appearance, theme, font size, whether onboarding ran. |
+| `mobile/src/prefs.rs` | `settings.json` in the app's data folder: phone name, appearance, theme, font size, whether onboarding ran, and the agent profile and shell last picked for a new tab. |
 | `mobile/src/transfers.rs` | `Link::download` (into `picker::downloads`) and `Link::upload`, without the 15 second limit of `ask`, and the running transfers the bottom line shows. |
 | `mobile/src/picker` | The file picker for uploads: GPUI's on the desktop, `UIDocumentPickerViewController` (copies of the picked files) on iOS; and where downloads go. |
 | `mobile/src/link.rs` | `Link` (one entity): the Uplink client. Loads `uplink.json` from the data folder, dials paired computers with backoff (nearby addresses first), pairs with a pairing link or by connecting to a nearby computer or an address (cancelled by `Shared::cancel_join`), keeps each online computer's catalog and the watched tabs and rewatches them after `Stop::Behind` or a reconnect, opens tabs with `Message::Open`, asks for files, git and history with `Message::Request` (answered by id, failed after 15 seconds or when the computer goes offline), forgets and disconnects. Its `Hello` has port 0: it never listens. |
