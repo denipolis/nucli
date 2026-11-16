@@ -33,7 +33,7 @@ The full behavior is specified in `docs/SPEC.md`. Keep it in sync with the code.
 - Git: shell out to `git`. File watching: `notify`. Syntax highlighting: tree-sitter.
 - Persistence: JSON files in the platform's config and data folders (see `docs/SPEC.md`).
 - Packaging: `scripts/package.sh [target]` builds the release archive for a platform into `dist/` (`.dmg`, `.tar.gz`, `.zip`). `scripts/icon.py` regenerates the app icons except `Assets.car`, which Xcode's `actool` compiles from `assets/icon/AppIcon.icon`. CI builds macOS, Linux and Windows (`.github/workflows/build.yml`).
-- Mobile: `scripts/mobile.sh [simulator|device]` builds `Nucli Uplink.app`. For the simulator (default), `SIMULATOR=<udid>` installs and launches it there. For a device it signs with the Xcode provisioning profile of `BUNDLE_ID`, and `DEVICE=<id>` installs it; the steps for users are in `mobile/README.md`. On a desktop target `cargo run -p nucli-uplink` opens the same app in a phone-sized window.
+- Mobile: `scripts/mobile.sh [simulator|device]` builds `Nucli Uplink.app` with the icon compiled from `assets/icon/AppIcon.icon`. For the simulator (default), `SIMULATOR=<udid>` installs and launches it there. For a device it signs with the Xcode provisioning profile of `BUNDLE_ID`, and `DEVICE=<id>` installs it; the steps for users are in `mobile/README.md`. On a desktop target `cargo run -p nucli-uplink` opens the same app in a phone-sized window.
 - Architecture and file map: `docs/ARCHITECTURE.md`.
 
 ## Code rules

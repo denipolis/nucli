@@ -3,8 +3,8 @@ set -e
 cd "$(dirname "$0")/.."
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 case "${1:-simulator}" in
-    simulator) TARGET=aarch64-apple-ios-sim BUILD=debug ;;
-    device) TARGET=aarch64-apple-ios BUILD=release ;;
+    simulator) TARGET=aarch64-apple-ios-sim BUILD=debug PLATFORM=iphonesimulator ;;
+    device) TARGET=aarch64-apple-ios BUILD=release PLATFORM=iphoneos ;;
     *) echo "usage: scripts/mobile.sh [simulator|device]" >&2; exit 1 ;;
 esac
 OUT="target/$TARGET/$BUILD"
@@ -19,6 +19,10 @@ rm -rf "$APP"
 mkdir -p "$APP"
 cp "$OUT/nucli-uplink" "$APP/"
 cp mobile/ios/Info.plist "$APP/"
+xcrun actool assets/icon/AppIcon.icon --compile "$APP" --platform "$PLATFORM" --app-icon AppIcon \
+    --minimum-deployment-target "$(plutil -extract MinimumOSVersion raw mobile/ios/Info.plist)" \
+    --target-device iphone --target-device ipad --output-partial-info-plist "$OUT/icon.plist" >/dev/null
+/usr/libexec/PlistBuddy -c "Merge $OUT/icon.plist" "$APP/Info.plist"
 
 if [ "$TARGET" = aarch64-apple-ios-sim ]; then
     codesign --force --sign - "$APP"
