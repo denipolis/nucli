@@ -74,7 +74,8 @@ Paths are under `src/` unless they start with `core/`.
 | `core/src/uplink/invite.rs` | Local addresses and the pairing link shown as a QR code. |
 | `core/src/terminal/mod.rs` | The terminal `Feed` and `spawn_mirror`, the thread that rebuilds a remote terminal from its feeds. |
 | `core/src/session.rs` | Tab `Kind` and `Activity`, carried by the Uplink protocol. Desktop re-exports them from `session.rs`, and `Feed` from `terminal/mod.rs`. |
-| `uplink/host.rs` | Answers `Message::Request` from paired devices: files, file contents, git changes, diffs, log and commits of shared projects on the background executor, conversation history, and with control folder browsing, adding projects and resuming conversations. |
+| `uplink/host.rs` | Answers `Message::Request` from paired devices: files, file contents, git changes, diffs, log, commits and branches of shared projects on the background executor, conversation history, and with control folder browsing, adding projects and resuming conversations. |
+| `uplink/act.rs` | `Request::Act` and `Request::Tab` with control: file operations and git on the background executor (through `file_ops`, `git` and `changes::discard`), project and tab changes on the main thread through the same helpers as the desktop's menus, without the desktop's confirmations. `target` keeps new paths inside the project, symbolic links included; names and hashes cannot start with `-`. |
 | `uplink/page.rs`, `uplink/sidebar.rs` | Settings › Uplink and the Uplink sidebar tab. |
 
 ## State

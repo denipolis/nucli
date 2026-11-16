@@ -37,7 +37,7 @@ fn name(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }
 
-fn free_name(path: &Path) -> PathBuf {
+pub(crate) fn free_name(path: &Path) -> PathBuf {
     if path.symlink_metadata().is_err() {
         return path.to_path_buf();
     }
@@ -52,7 +52,7 @@ fn free_name(path: &Path) -> PathBuf {
         .unwrap_or_else(|| path.to_path_buf())
 }
 
-fn copy_all(from: &Path, to: &Path) -> io::Result<()> {
+pub(crate) fn copy_all(from: &Path, to: &Path) -> io::Result<()> {
     if !from.symlink_metadata()?.is_dir() {
         return std::fs::copy(from, to).map(drop);
     }
@@ -64,7 +64,7 @@ fn copy_all(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn move_path(from: &Path, to: &Path) -> io::Result<()> {
+pub(crate) fn move_path(from: &Path, to: &Path) -> io::Result<()> {
     match std::fs::rename(from, to) {
         Err(error) if error.kind() == io::ErrorKind::CrossesDevices => {
             copy_all(from, to)?;
@@ -74,7 +74,7 @@ fn move_path(from: &Path, to: &Path) -> io::Result<()> {
     }
 }
 
-fn exists_error(path: &str) -> io::Error {
+pub(crate) fn exists_error(path: &str) -> io::Error {
     io::Error::other(format!("{path} already exists"))
 }
 
@@ -105,18 +105,7 @@ fn create(root: &Path, relative: String, folder: bool, window: &mut Window, cx: 
     let (root, path) = (root.to_path_buf(), root.join(&relative));
     let shown = relative.clone();
     run(
-        move || {
-            if path.symlink_metadata().is_ok() {
-                return Err(exists_error(&shown));
-            }
-            if folder {
-                return std::fs::create_dir_all(&path);
-            }
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::OpenOptions::new().write(true).create_new(true).open(&path).map(drop)
-        },
+        move || create_path(&path, &shown, folder),
         move |(), view, window, cx| {
             if !folder {
                 file_view::open_file(view, &root, &relative, None, window, cx);
@@ -125,6 +114,19 @@ fn create(root: &Path, relative: String, folder: bool, window: &mut Window, cx: 
         window,
         cx,
     );
+}
+
+pub(crate) fn create_path(path: &Path, shown: &str, folder: bool) -> io::Result<()> {
+    if path.symlink_metadata().is_ok() {
+        return Err(exists_error(shown));
+    }
+    if folder {
+        return std::fs::create_dir_all(path);
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::OpenOptions::new().write(true).create_new(true).open(path).map(drop)
 }
 
 fn rename(root: &Path, from: String, to: String, window: &mut Window, cx: &mut Context<WorkspaceView>) {

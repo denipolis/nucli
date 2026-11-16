@@ -3,10 +3,12 @@ use std::time::UNIX_EPOCH;
 
 use gpui::{App, Context};
 
+use super::act;
 use super::devices::Access;
 use super::net::Outbox;
 use super::protocol::{
-    LineKind, Message, RemoteChange, RemoteCommit, RemoteConversation, RemoteEntry, RemoteLine, Request, Response,
+    Action, LineKind, Message, RemoteChange, RemoteCommit, RemoteConversation, RemoteEntry, RemoteLine, Request,
+    Response,
 };
 use super::wire::Key;
 use super::{Uplink, project_key};
@@ -16,6 +18,7 @@ use crate::{actions, history, settings, store};
 const FILE_LIMIT: usize = 1048576;
 const HISTORY_LIMIT: usize = 150;
 const LOG_LIMIT: usize = 300;
+const BRANCH_LIMIT: usize = 100;
 
 fn failed(reason: impl Into<String>) -> Response {
     Response::Failed { reason: reason.into() }
@@ -34,7 +37,7 @@ fn shared_projects(cx: &App) -> Vec<(PathBuf, String)> {
         .collect()
 }
 
-fn workspace_of(path: &Path, cx: &App) -> String {
+pub(super) fn workspace_of(path: &Path, cx: &App) -> String {
     let store = store::store(cx).read(cx);
     store
         .workspaces
@@ -48,7 +51,7 @@ fn workspace_of(path: &Path, cx: &App) -> String {
         .unwrap_or_default()
 }
 
-fn inside(root: &Path, relative: &str) -> Option<PathBuf> {
+pub(super) fn inside(root: &Path, relative: &str) -> Option<PathBuf> {
     let relative = Path::new(relative);
     if relative.components().any(|part| !matches!(part, Component::Normal(_))) {
         return None;
@@ -86,7 +89,8 @@ fn reference(reference: GitRef) -> String {
     match reference {
         GitRef::Head => "HEAD".into(),
         GitRef::Current(name) => format!("HEAD -> {name}"),
-        GitRef::Branch(name) | GitRef::Remote(name) => name,
+        GitRef::Branch(name) => name,
+        GitRef::Remote(name) => format!("remote: {name}"),
         GitRef::Tag(name) => format!("tag: {name}"),
     }
 }
@@ -177,6 +181,10 @@ fn answer(request: Request, root: PathBuf) -> Response {
             },
             None => failed("The commit was not found."),
         },
+        Request::Branches { .. } => Response::Branches {
+            current: git::status(&root).map(|status| status.branch).unwrap_or_default(),
+            branches: git::branches(&root, BRANCH_LIMIT),
+        },
         _ => failed("Unsupported request."),
     }
 }
@@ -188,7 +196,9 @@ fn project_of(request: &Request) -> Option<&str> {
         | Request::Changes { project }
         | Request::Diff { project, .. }
         | Request::Log { project }
-        | Request::Commit { project, .. } => Some(project),
+        | Request::Commit { project, .. }
+        | Request::Branches { project }
+        | Request::Act { project, .. } => Some(project),
         _ => None,
     }
 }
@@ -202,11 +212,25 @@ impl Uplink {
             outbox.send(&Message::Response { id, response });
         };
         let shared = shared_projects(cx);
+        let root_of =
+            |project: &str| shared.iter().find(|(root, _)| project_key(root) == project).map(|(root, _)| root.clone());
         if let Some(project) = project_of(&request) {
-            let Some((root, _)) = shared.iter().find(|(root, _)| project_key(root) == project).cloned() else {
+            let Some(root) = root_of(project) else {
                 reply(&outbox, failed("This project is not shared."));
                 return;
             };
+            if let Request::Act { action, .. } = request {
+                if !control {
+                    reply(&outbox, failed("This computer lets this device view only."));
+                    return;
+                }
+                let source = match &action {
+                    Action::Paste { source, .. } => root_of(source),
+                    _ => None,
+                };
+                act::act(outbox, id, root, source, action, cx);
+                return;
+            }
             cx.background_executor().spawn(async move { reply(&outbox, answer(request, root)) }).detach();
             return;
         }
@@ -224,6 +248,7 @@ impl Uplink {
                     .detach();
             }
             _ if !control => reply(&outbox, failed("This computer lets this device view only.")),
+            Request::Tab { tab, action } => act::tab(&outbox, id, tab, action, cx),
             Request::Folders { path } => {
                 let home = dirs::home_dir().unwrap_or_default();
                 let folder = if path.is_empty() { home } else { PathBuf::from(path) };

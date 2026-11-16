@@ -322,6 +322,7 @@ Clicking a row opens its details: the fingerprint, **also reach it at**, and the
 - A tab being watched from another device shows an eye glyph in the sidebar, and the Uplink status chip names the devices watching it.
 - A paired device can also ask for more than the tabs of shared projects: their files and file contents (up to 1 MB per file), git changes and diffs, git history and commit details, and the agent conversations that ran in them. This works with view or control. Paths cannot leave the project, symbolic links included.
 - With control it can also browse folders and add one as a project, and resume a conversation of a shared project in a new tab.
+- With control it can change shared projects the way the desktop's context menus do: create, rename, move, copy, cut and paste, duplicate and delete files (deleted files go to the trash), open or reveal them on the computer; stage, unstage, discard and commit changes, list, switch and create branches, check out, create branches and tags from, cherry-pick, revert and reset to a commit, delete branches and tags, restore a file from a commit; rename, color, move to a workspace and close a shared project; rename, color, move out of its project and close a shared tab. The computer checks every path and name: paths stay inside the project and branch, tag and commit names cannot be options. Closing a running agent from another device does not ask on the computer; the device asks first.
 
 ### Remote tabs
 

@@ -389,7 +389,7 @@ fn change_menu(
     items
 }
 
-fn discard(root: &Path, changes: &[Change]) -> Result<(), String> {
+pub(crate) fn discard(root: &Path, changes: &[Change]) -> Result<(), String> {
     let (new, tracked): (Vec<&Change>, Vec<&Change>) = changes.iter().partition(|change| change.status == 'U');
     for change in new {
         trash::delete(root.join(&change.path)).map_err(|error| error.to_string())?;

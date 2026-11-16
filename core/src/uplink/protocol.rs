@@ -139,6 +139,57 @@ pub enum Request {
     Diff { project: String, path: String, commit: Option<String> },
     Log { project: String },
     Commit { project: String, hash: String },
+    Branches { project: String },
+    Act { project: String, action: Action },
+    Tab { tab: String, action: TabAction },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "do", rename_all = "snake_case")]
+pub enum Action {
+    Create { path: String, folder: bool },
+    Rename { from: String, to: String },
+    Duplicate { path: String },
+    Delete { path: String },
+    Paste { source: String, from: String, folder: String, cut: bool },
+    Open { path: String },
+    Reveal { path: String },
+    Stage { paths: Vec<String> },
+    Unstage { paths: Vec<String> },
+    Discard { paths: Vec<String> },
+    Commit { message: String },
+    Switch { branch: String },
+    Track { remote: String },
+    Detach { hash: String },
+    Branch { name: String, at: Option<String> },
+    Tag { name: String, at: String },
+    CherryPick { hash: String },
+    Revert { hash: String },
+    Reset { hash: String, mode: Reset },
+    DeleteBranch { name: String },
+    DeleteTag { name: String },
+    Restore { hash: String, path: String },
+    RenameProject { name: String },
+    ColorProject { color: Option<ItemColor> },
+    MoveProject { workspace: String },
+    CloseProject,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum Reset {
+    Soft,
+    Mixed,
+    Hard,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "do", rename_all = "snake_case")]
+pub enum TabAction {
+    Rename { title: String },
+    Color { color: Option<ItemColor> },
+    MoveOut,
+    Close,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -152,6 +203,7 @@ pub enum Response {
     Diff { lines: Vec<RemoteLine> },
     Log { commits: Vec<RemoteCommit> },
     Commit { date: String, message: String, stats: String, changes: Vec<RemoteChange> },
+    Branches { current: String, branches: Vec<String> },
     Done,
     Failed { reason: String },
 }
@@ -323,6 +375,19 @@ mod tests {
             request: Request::Diff { project: "/p".into(), path: "a.rs".into(), commit: None },
         };
         assert!(matches!(decode(&message(&request)), Some(Frame::Message(decoded)) if decoded == request));
+        let act = Message::Request {
+            id: 8,
+            request: Request::Act {
+                project: "/p".into(),
+                action: Action::Reset { hash: "abc".into(), mode: Reset::Hard },
+            },
+        };
+        assert!(matches!(decode(&message(&act)), Some(Frame::Message(decoded)) if decoded == act));
+        let tab = Message::Request {
+            id: 9,
+            request: Request::Tab { tab: "t".into(), action: TabAction::Color { color: Some(ItemColor::Teal) } },
+        };
+        assert!(matches!(decode(&message(&tab)), Some(Frame::Message(decoded)) if decoded == tab));
         let lines = vec![RemoteLine { kind: LineKind::Added, text: "x".into(), old: None, new: Some(1) }];
         let response = Message::Response { id: 7, response: Response::Diff { lines } };
         assert!(matches!(decode(&message(&response)), Some(Frame::Message(decoded)) if decoded == response));

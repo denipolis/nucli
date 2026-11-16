@@ -435,24 +435,7 @@ pub fn close_project(view: &mut WorkspaceView, path: &Path, window: &mut Window,
     let running = project.tabs.iter().any(|id| running_agent(view, id, cx));
     let path = path.to_path_buf();
     let finish = move |view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>| {
-        let workspace = view.workspace.clone();
-        store::store(cx).update(cx, |store, cx| {
-            let ids: Vec<String> = store
-                .workspace(&workspace)
-                .and_then(|state| state.project(&path))
-                .map(|project| project.tabs.iter().chain(&project.terminals).cloned().collect())
-                .unwrap_or_default();
-            for id in ids {
-                store.close_tab(&id, cx);
-            }
-            if let Some(state) = store.workspace_mut(&workspace) {
-                state.projects.retain(|project| project.path != path);
-                if matches!(&state.selected, Some(Selected::Project(selected)) if *selected == path) {
-                    state.selected = None;
-                }
-            }
-            store.changed(cx);
-        });
+        remove_project(&view.workspace.clone(), &path, cx);
         view.focus_current(window, cx);
     };
     if !running {
@@ -472,6 +455,26 @@ pub fn close_project(view: &mut WorkspaceView, path: &Path, window: &mut Window,
         }
     })
     .detach();
+}
+
+pub fn remove_project(workspace: &str, path: &Path, cx: &mut App) {
+    store::store(cx).update(cx, |store, cx| {
+        let ids: Vec<String> = store
+            .workspace(workspace)
+            .and_then(|state| state.project(path))
+            .map(|project| project.tabs.iter().chain(&project.terminals).cloned().collect())
+            .unwrap_or_default();
+        for id in ids {
+            store.close_tab(&id, cx);
+        }
+        if let Some(state) = store.workspace_mut(workspace) {
+            state.projects.retain(|project| project.path != path);
+            if matches!(&state.selected, Some(Selected::Project(selected)) if *selected == path) {
+                state.selected = None;
+            }
+        }
+        store.changed(cx);
+    });
 }
 
 pub fn begin_rename(view: &mut WorkspaceView, target: Rename, window: &mut Window, cx: &mut Context<WorkspaceView>) {
@@ -514,33 +517,37 @@ pub fn begin_rename(view: &mut WorkspaceView, target: Rename, window: &mut Windo
 fn finish_rename(view: &mut WorkspaceView, apply: bool, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     let Some((target, input)) = view.rename.take() else { return };
     if apply {
-        let text = input.read(cx).text.trim().to_string();
-        let name = (!text.is_empty()).then_some(text);
-        let workspace = view.workspace.clone();
-        store::store(cx).update(cx, |store, cx| {
-            match &target {
-                Rename::Project(path) => {
-                    if let Some(project) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(path)) {
-                        let folder = project.path.file_name().map(|name| name.to_string_lossy().into_owned());
-                        project.name = name.filter(|name| Some(name) != folder.as_ref());
-                    }
-                }
-                Rename::Tab(id) => {
-                    if let Some(session) = store.sessions.get(id) {
-                        session.update(cx, |session, cx| {
-                            session.name = None;
-                            let automatic = session.display_title();
-                            session.name = name.filter(|name| *name != automatic);
-                            cx.notify();
-                        });
-                    }
-                }
-            }
-            store.changed(cx);
-        });
+        let text = input.read(cx).text.clone();
+        rename(&view.workspace.clone(), &target, &text, cx);
     }
     view.focus_current(window, cx);
     cx.notify();
+}
+
+pub fn rename(workspace: &str, target: &Rename, text: &str, cx: &mut App) {
+    let text = text.trim().to_string();
+    let name = (!text.is_empty()).then_some(text);
+    store::store(cx).update(cx, |store, cx| {
+        match target {
+            Rename::Project(path) => {
+                if let Some(project) = store.workspace_mut(workspace).and_then(|state| state.project_mut(path)) {
+                    let folder = project.path.file_name().map(|name| name.to_string_lossy().into_owned());
+                    project.name = name.filter(|name| Some(name) != folder.as_ref());
+                }
+            }
+            Rename::Tab(id) => {
+                if let Some(session) = store.sessions.get(id) {
+                    session.update(cx, |session, cx| {
+                        session.name = None;
+                        let automatic = session.display_title();
+                        session.name = name.filter(|name| *name != automatic);
+                        cx.notify();
+                    });
+                }
+            }
+        }
+        store.changed(cx);
+    });
 }
 
 pub fn move_tab(
