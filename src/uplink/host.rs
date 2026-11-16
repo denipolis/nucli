@@ -61,6 +61,13 @@ pub(super) fn inside(root: &Path, relative: &str) -> Option<PathBuf> {
     resolved.starts_with(root.canonicalize().ok()?).then_some(path)
 }
 
+pub(super) fn resolved(root: &Path, relative: &str) -> Option<PathBuf> {
+    inside(root, relative)?
+        .canonicalize()
+        .ok()
+        .filter(|path| root.canonicalize().is_ok_and(|root| path.starts_with(root)))
+}
+
 fn confined(root: &Path, relative: &str) -> bool {
     if relative.is_empty() {
         false
@@ -106,7 +113,12 @@ fn reference(reference: GitRef) -> String {
 }
 
 fn read_file(path: &Path) -> Response {
-    let Ok(bytes) = std::fs::read(path) else { return failed("The file cannot be read.") };
+    let mut bytes = Vec::new();
+    let read = std::fs::File::open(path)
+        .and_then(|file| std::io::Read::read_to_end(&mut std::io::Read::take(file, FILE_LIMIT as u64 + 1), &mut bytes));
+    if read.is_err() {
+        return failed("The file cannot be read.");
+    }
     let binary = bytes.iter().take(8192).any(|byte| *byte == 0);
     let truncated = bytes.len() > FILE_LIMIT;
     let text = if binary {
@@ -134,11 +146,11 @@ fn list_folder(path: &Path, folders_only: bool) -> Vec<RemoteEntry> {
 
 fn answer(request: Request, root: PathBuf) -> Response {
     match request {
-        Request::Files { folder, .. } => match inside(&root, &folder) {
+        Request::Files { folder, .. } => match resolved(&root, &folder) {
             Some(path) => Response::Files { entries: list_folder(&path, false) },
             None => failed("This folder is outside the project."),
         },
-        Request::File { path, .. } => match inside(&root, &path) {
+        Request::File { path, .. } => match resolved(&root, &path) {
             Some(path) => read_file(&path),
             None => failed("This file is outside the project."),
         },

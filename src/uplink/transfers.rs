@@ -7,7 +7,7 @@ use futures::channel::{mpsc, oneshot};
 use gpui::{App, Context};
 
 use super::Uplink;
-use super::host::inside;
+use super::host::resolved;
 use super::net::Outbox;
 use super::protocol::{Message, Request, Response};
 use super::transfer::{self, Piece};
@@ -71,7 +71,7 @@ pub fn serve(outbox: Outbox, id: u64, root: PathBuf, path: String, cx: &mut App)
     let executor = cx.background_executor().clone();
     cx.background_executor()
         .spawn(async move {
-            let Some(file) = inside(&root, &path).filter(|file| file.is_file()) else {
+            let Some(file) = resolved(&root, &path).filter(|file| file.is_file()) else {
                 reply(&outbox, id, failed("This file was not found in the project."));
                 return;
             };
@@ -97,7 +97,7 @@ impl Uplink {
         cx: &mut Context<Self>,
     ) {
         let Request::Upload { folder, name, size, .. } = request else { return };
-        let Some(folder) = inside(&root, &folder).filter(|folder| folder.is_dir()) else {
+        let Some(folder) = resolved(&root, &folder).filter(|folder| folder.is_dir()) else {
             reply(&outbox, id, failed("This folder was not found in the project."));
             return;
         };
