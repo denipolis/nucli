@@ -762,6 +762,7 @@ impl Render for Home {
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::key_down))
             .relative()
+            .child(ui::taps())
             .child(div().flex_1().min_h_0().flex().flex_col().child(body).with_animation(
                 ("screen", self.moves),
                 ui::motion(),

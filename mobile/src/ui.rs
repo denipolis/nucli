@@ -1,12 +1,14 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
     Animation, App, Bounds, Div, ElementId, FocusHandle, HitboxBehavior, InteractiveElement, IntoElement,
-    LongPressEvent, MouseButton, MouseDownEvent, ParentElement, Pixels, ScrollHandle, SharedString, Stateful,
-    StatefulInteractiveElement, Styled, TouchPhase, Window, WindowAppearance, canvas, div, point, px,
+    LongPressEvent, MouseButton, MouseDownEvent, ParentElement, Pixels, PlatformInput, Point, ScrollEvent,
+    ScrollHandle, ScrollSource, SharedString, Stateful, StatefulInteractiveElement, Styled, TouchEvent, TouchId,
+    TouchPhase, Window, WindowAppearance, canvas, div, point, px,
 };
 use nucli_core::icons;
 use nucli_core::theme::{self, Theme};
@@ -23,6 +25,8 @@ thread_local! {
     static FOCUS: RefCell<HashMap<ElementId, FocusHandle>> = RefCell::default();
     static SCROLL: RefCell<Option<ScrollHandle>> = const { RefCell::new(None) };
     static REVEAL: Cell<bool> = const { Cell::new(false) };
+    static SETTLED: Cell<Option<(Point<Pixels>, Instant)>> = const { Cell::new(None) };
+    static CAUGHT: Cell<Option<Point<Pixels>>> = const { Cell::new(None) };
 }
 
 pub fn reveal() {
@@ -94,6 +98,50 @@ pub fn hold(on: impl Fn(&(), &mut Window, &mut App) + 'static) -> impl IntoEleme
     )
     .absolute()
     .inset_0()
+}
+
+pub fn taps() -> impl IntoElement {
+    canvas(
+        |_, _, _| SCROLL.set(None),
+        |_, _, window, _| {
+            window.on_mouse_event(|event: &ScrollEvent, phase, window, cx| {
+                if phase.capture() && event.source == ScrollSource::Touch {
+                    caught(event, window, cx);
+                }
+            })
+        },
+    )
+    .absolute()
+}
+
+fn caught(event: &ScrollEvent, window: &mut Window, cx: &mut App) {
+    let Some(offset) = SCROLL.with_borrow(|scroll| scroll.as_ref().map(ScrollHandle::offset)) else {
+        CAUGHT.set(None);
+        return;
+    };
+    let now = Instant::now();
+    let still = match SETTLED.get() {
+        Some((anchor, since)) if (offset - anchor).magnitude() < 2.0 => now - since > Duration::from_millis(100),
+        _ => {
+            SETTLED.set(Some((offset, now)));
+            false
+        }
+    };
+    let resting = event.delta.pixel_delta(px(1.0)) == Point::default();
+    match event.touch_phase {
+        TouchPhase::Started if resting => CAUGHT.set(still.then_some(event.position)),
+        TouchPhase::Ended if resting && CAUGHT.take() == Some(event.position) => {
+            let position = event.position;
+            window.defer(cx, move |window, cx| {
+                for phase in [TouchPhase::Started, TouchPhase::Ended] {
+                    let touch =
+                        TouchEvent { id: TouchId(u64::MAX), phase, position, predicted_position: None, force: None };
+                    window.dispatch_event(PlatformInput::Touch(touch), cx);
+                }
+            });
+        }
+        _ => CAUGHT.set(None),
+    }
 }
 
 pub fn scroll(id: impl Into<ElementId>, handle: &ScrollHandle) -> Stateful<Div> {
