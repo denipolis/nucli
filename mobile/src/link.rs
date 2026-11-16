@@ -188,6 +188,10 @@ impl Link {
         receiver
     }
 
+    fn asked(&self, key: Key, id: u64) -> bool {
+        self.asks.get(&id).is_some_and(|(asked, _)| *asked == key)
+    }
+
     fn drop_asks(&mut self, key: Key) {
         let ids: Vec<u64> = self.asks.iter().filter(|(_, (asked, _))| *asked == key).map(|(id, _)| *id).collect();
         for id in ids {
@@ -379,7 +383,12 @@ impl Link {
                 self.dial();
             }
             NetEvent::Gone(fullname) => self.nearby.retain(|nearby| nearby.fullname != fullname),
-            NetEvent::Chunk(_, id, data) => self.chunk(id, data),
+            NetEvent::Chunk(conn, id, data) => {
+                let from = self.online.iter().find(|(_, online)| online.conn == conn).map(|(key, _)| *key);
+                if from.is_some_and(|key| self.asked(key, id)) {
+                    self.chunk(id, data);
+                }
+            }
             NetEvent::Input(..) | NetEvent::PairingFailed { .. } => return,
         }
         cx.notify();
@@ -441,6 +450,9 @@ impl Link {
                 self.watched.remove(&(key, tab));
             }
             Message::Response { id, response } => {
+                if !self.asked(key, id) {
+                    return;
+                }
                 self.finish_transfer(id, &response);
                 if let Some((_, sender)) = self.asks.remove(&id) {
                     let _ = sender.send(response);
@@ -458,7 +470,7 @@ impl Link {
                 }
                 self.save();
             }
-            Message::Sending { id, size } => self.sending(id, size),
+            Message::Sending { id, size } if self.asked(key, id) => self.sending(id, size),
             Message::Unpair => {
                 self.devices.retain(|device| device.public().as_ref() != Some(&key));
                 if let Some(online) = self.online.remove(&key) {
