@@ -11,6 +11,7 @@
 - Review what agents change: live git diffs, staging, commits, a commit graph, and a file view you can edit in place
 - A fast square monospace UI in Rust, with themes, tree-sitter highlighting and a command palette for everything
 - Uplink: pair your computers and phone once (pick the other one, allow it there, check that both show the same number), then watch, type into and start their agents from any of them, directly and end-to-end encrypted, with no server in between
+- Nucli Uplink, an iPhone and iPad app to do the same from your phone
 - A settings page, backed by plain JSON files you can also edit
 - No telemetry; no network calls unless you turn on Uplink
 
@@ -21,6 +22,7 @@ Download the build for your system from [Releases](https://github.com/denipolis/
 - **macOS**: open `Nucli-*.dmg` and drag `Nucli.app` to `Applications`. Builds are not notarized, so run `xattr -dr com.apple.quarantine /Applications/Nucli.app` once.
 - **Linux**: unpack `nucli-*.tar.gz` and run `nucli`. It needs Vulkan drivers and `libxkbcommon-x11`.
 - **Windows**: unpack `Nucli-*.zip` and run `nucli.exe`.
+- **iPhone and iPad**: Nucli Uplink has no App Store build. [Build it on a Mac](mobile/README.md) and install it on your phone.
 
 On macOS and Linux, `./scripts/install_latest_github.sh` (needs `gh`) installs the latest release.
 
