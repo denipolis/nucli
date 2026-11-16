@@ -1,7 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnimationExt, AnyElement, Context, Div, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
-    Styled, div, px,
+    AnyElement, Context, Div, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, div, px,
 };
 use nucli_core::icons;
 use nucli_core::theme::Theme;
@@ -13,11 +12,11 @@ use crate::home::{Home, Screen, Section};
 use crate::ui;
 
 pub const SECTIONS: [(&str, &str); 3] =
-    [(icons::WINDOW, "workspaces"), (icons::AGENT, "agents"), (icons::HISTORY, "history")];
+    [(icons::FOLDER, "projects"), (icons::AGENT, "agents"), (icons::HISTORY, "history")];
 
 pub fn section_index(section: Section) -> usize {
     match section {
-        Section::Workspaces => 0,
+        Section::Projects => 0,
         Section::Agents => 1,
         Section::History => 2,
     }
@@ -51,44 +50,37 @@ impl Home {
             ui::button("details", icons::DEVICE, theme)
                 .on_click(cx.listener(move |home, _, window, cx| home.go(Screen::Device(key), window, cx))),
         );
-        let mut tabs =
-            div().flex().flex_none().gap(px(2.0)).px(px(10.0)).py(px(6.0)).border_b_1().border_color(theme.border);
-        for (index, tab) in ui::tabs(SECTIONS, section_index(self.section), theme).into_iter().enumerate() {
-            let section = [Section::Workspaces, Section::Agents, Section::History][index];
-            tabs = tabs.child(tab.on_click(cx.listener(move |home, _, _, cx| home.set_section(section, cx))));
-        }
-        let body = match self.section {
-            Section::Workspaces => self.workspaces_of(key, theme, cx),
-            Section::Agents => self.agents_of(key, theme, cx),
-            Section::History => self.history_of(key, theme, cx),
-        };
         div()
             .flex_1()
             .min_h_0()
             .flex()
             .flex_col()
             .child(header)
-            .child(tabs)
-            .child(ui::scroll("computer", &self.scroll).child(body.with_animation(
-                ("section", section_index(self.section)),
-                ui::motion(),
-                |this, delta| this.opacity(delta),
-            )))
+            .child(ui::scroll("computer", &self.scroll).child(self.workspaces_of(key, theme, cx)))
             .into_any_element()
     }
 
-    fn history_of(&self, key: Key, theme: &Theme, cx: &mut Context<Self>) -> Div {
+    pub fn history_of(&self, key: Key, workspace: &str, theme: &Theme, cx: &mut Context<Self>) -> Div {
         let control = self.link.read(cx).control(&key);
         let catalog = self.link.read(cx).online.get(&key).map(|online| online.catalog.clone()).unwrap_or_default();
         let conversations = match &self.conversations {
             None => return self.loading(theme),
             Some(Response::Failed { reason }) => return div().child(ui::hint(reason.clone(), theme).py(px(24.0))),
-            Some(Response::History { conversations }) => conversations.clone(),
+            Some(Response::History { conversations }) => conversations
+                .iter()
+                .filter(|item| {
+                    catalog
+                        .projects
+                        .iter()
+                        .any(|project| project.path == item.project && project.workspace == workspace)
+                })
+                .cloned()
+                .collect(),
             Some(_) => Vec::new(),
         };
         let mut list = div().flex().flex_col();
         if conversations.is_empty() {
-            return list.child(ui::hint("No conversations in shared projects.", theme).py(px(24.0)));
+            return list.child(ui::hint("No conversations in this workspace.", theme).py(px(24.0)));
         }
         if let Some(notice) = &self.notice {
             list = list.child(ui::hint(notice.clone(), theme).text_color(theme.yellow));

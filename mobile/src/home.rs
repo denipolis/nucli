@@ -40,7 +40,7 @@ pub enum Screen {
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Section {
-    Workspaces,
+    Projects,
     Agents,
     History,
 }
@@ -104,7 +104,6 @@ impl Home {
                 home.history = vec![Screen::Computers];
                 home.screen = Screen::Computer(key);
                 home.moved(true);
-                home.section = Section::Workspaces;
             }
             if let Some((key, tab)) = opened {
                 home.open(key, tab, window, cx);
@@ -146,7 +145,7 @@ impl Home {
             link,
             screen,
             history: Vec::new(),
-            section: Section::Workspaces,
+            section: Section::Projects,
             mirror: None,
             address,
             name,
@@ -199,7 +198,7 @@ impl Home {
         let screen = self.screen.clone();
         let current = move |home: &Home| home.screen == screen;
         match self.screen.clone() {
-            Screen::Computer(key) if self.section == Section::History => {
+            Screen::Workspace { key, .. } if self.section == Section::History => {
                 self.conversations = None;
                 self.fetch(
                     key,
@@ -311,8 +310,8 @@ impl Home {
             self.link.update(cx, |link, _| link.note = None);
             self.scanning = None;
         }
-        if matches!(screen, Screen::Computer(_)) {
-            self.section = Section::Workspaces;
+        if matches!(screen, Screen::Workspace { .. }) {
+            self.section = Section::Projects;
         }
         if !matches!(screen, Screen::File { .. } | Screen::Diff { .. } | Screen::Commit { .. }) {
             self.drawer = None;
@@ -605,7 +604,7 @@ impl Home {
                 let section = match rest {
                     "agents" => Section::Agents,
                     "history" => Section::History,
-                    _ => Section::Workspaces,
+                    _ => Section::Projects,
                 };
                 self.set_section(section, cx);
             }
@@ -660,7 +659,7 @@ impl Home {
                 }
             }
             "resume" => {
-                if let Screen::Computer(key) = self.screen
+                if let Screen::Workspace { key, .. } = self.screen.clone()
                     && let Some(Response::History { conversations }) = &self.conversations
                     && let Some(item) = conversations.iter().find(|item| item.title.contains(rest))
                 {
@@ -739,7 +738,7 @@ impl Render for Home {
         let animated = match &self.screen {
             Screen::Welcome => self.shown.elapsed() < Duration::from_secs(3),
             Screen::Pair => true,
-            Screen::Computer(_) if self.section == Section::History => self.conversations.is_none(),
+            Screen::Workspace { .. } if self.section == Section::History => self.conversations.is_none(),
             Screen::Folders { .. } => self.folders.is_none(),
             Screen::File { .. } | Screen::Diff { .. } | Screen::Commit { .. } => self.view.is_none(),
             Screen::Project { .. } | Screen::Workspace { .. } => {

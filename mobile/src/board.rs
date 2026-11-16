@@ -12,6 +12,7 @@ use nucli_core::uplink::wire::{self, Key};
 use crate::home::Home;
 use crate::menus::close_tab;
 use crate::ui;
+use crate::workspace::in_workspace;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Group {
@@ -122,19 +123,24 @@ impl Home {
         }
     }
 
-    pub fn agents_of(&self, key: Key, theme: &Theme, cx: &mut Context<Self>) -> Div {
+    pub fn agents_of(&self, key: Key, workspace: &str, theme: &Theme, cx: &mut Context<Self>) -> Div {
         let link = self.link.read(cx);
         let Some(online) = link.online.get(&key) else {
             return div().child(ui::hint("The computer is offline.", theme).py(px(24.0)));
         };
         let catalog = online.catalog.clone();
-        let mut tabs: Vec<RemoteTab> = catalog.tabs.iter().filter(|tab| tab.kind == Kind::Agent).cloned().collect();
+        let mut tabs: Vec<RemoteTab> = catalog
+            .tabs
+            .iter()
+            .filter(|tab| tab.kind == Kind::Agent && in_workspace(&catalog, tab, workspace))
+            .cloned()
+            .collect();
         tabs.sort_by(|a, b| {
             (project_name(&catalog, &a.project), &a.title).cmp(&(project_name(&catalog, &b.project), &b.title))
         });
         let mut list = div().flex().flex_col();
         if tabs.is_empty() {
-            return list.child(ui::hint("No agents are running on this computer.", theme).py(px(24.0)));
+            return list.child(ui::hint("No agents are running in this workspace.", theme).py(px(24.0)));
         }
         for (current, title) in GROUPS {
             let rows: Vec<&RemoteTab> = tabs.iter().filter(|tab| group(tab) == current).collect();

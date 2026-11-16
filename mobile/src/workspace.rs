@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Context, Div, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, Window,
-    div, px,
+    AnimationExt, AnyElement, Context, Div, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
+    Styled, Window, div, px,
 };
 use nucli_core::icons;
 use nucli_core::session::Kind;
@@ -10,7 +10,8 @@ use nucli_core::uplink::protocol::{Catalog, RemoteProject, RemoteTab, RemoteWork
 use nucli_core::uplink::wire::Key;
 
 use crate::board::{Group, group};
-use crate::home::{Home, Screen};
+use crate::computer::{SECTIONS, section_index};
+use crate::home::{Home, Screen, Section};
 use crate::menus::close_project;
 use crate::ui;
 
@@ -31,7 +32,7 @@ fn scratch(catalog: &Catalog, tab: &RemoteTab) -> bool {
     catalog.projects.iter().any(|project| project.path == tab.project && project.name.is_empty())
 }
 
-fn in_workspace(catalog: &Catalog, tab: &RemoteTab, name: &str) -> bool {
+pub fn in_workspace(catalog: &Catalog, tab: &RemoteTab, name: &str) -> bool {
     tab.workspace == name
         || catalog
             .projects
@@ -152,6 +153,33 @@ impl Home {
 
     pub fn workspace(&mut self, key: Key, name: &str, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let header = self.back_bar(name.to_string(), theme, cx);
+        let mut tabs =
+            div().flex().flex_none().gap(px(2.0)).px(px(10.0)).py(px(6.0)).border_b_1().border_color(theme.border);
+        for (index, tab) in ui::tabs(SECTIONS, section_index(self.section), theme).into_iter().enumerate() {
+            let section = [Section::Projects, Section::Agents, Section::History][index];
+            tabs = tabs.child(tab.on_click(cx.listener(move |home, _, _, cx| home.set_section(section, cx))));
+        }
+        let body = match self.section {
+            Section::Projects => self.projects_in(key, name, theme, cx),
+            Section::Agents => self.agents_of(key, name, theme, cx),
+            Section::History => self.history_of(key, name, theme, cx),
+        };
+        div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .child(header)
+            .child(tabs)
+            .child(ui::scroll("workspace", &self.scroll).child(body.with_animation(
+                ("section", section_index(self.section)),
+                ui::motion(),
+                |this, delta| this.opacity(delta),
+            )))
+            .into_any_element()
+    }
+
+    fn projects_in(&self, key: Key, name: &str, theme: &Theme, cx: &mut Context<Self>) -> Div {
         let link = self.link.read(cx);
         let control = link.control(&key);
         let catalog = link.online.get(&key).map(|online| online.catalog.clone());
@@ -184,14 +212,7 @@ impl Home {
                 }
             }
         }
-        div()
-            .flex_1()
-            .min_h_0()
-            .flex()
-            .flex_col()
-            .child(header)
-            .child(ui::scroll("workspace", &self.scroll).child(list))
-            .into_any_element()
+        list
     }
 
     fn project_row(
