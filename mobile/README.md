@@ -16,9 +16,10 @@ Once:
 
 1. Open Xcode, go to Xcode › Settings › Accounts and add your Apple ID.
 2. Connect the phone with the cable, unlock it and tap Trust.
-3. On the phone, turn on Settings › Privacy & Security › Developer Mode and restart it when asked.
-4. Pick a bundle ID of your own, like `com.yourname.nucli.uplink`. Apple ties a bundle ID to one account, so you cannot use the one from this repo.
-5. In Xcode, create a new project: File › New › Project › iOS › App. Name it `uplink`, choose your Apple ID as the team and set the organization identifier to the rest of your bundle ID (`com.yourname.nucli`). Pick your phone at the top of the window and press Run. Xcode creates a provisioning profile for the bundle ID and installs an empty app. You can keep this project anywhere.
+3. Pick a bundle ID of your own, like `com.yourname.nucli.uplink`. Apple ties a bundle ID to one account, so you cannot use the one from this repo.
+4. In Xcode, create a new project: File › New › Project › iOS › App. Name it `uplink`, choose your Apple ID as the team and set the organization identifier to the rest of your bundle ID (`com.yourname.nucli`). You can keep this project anywhere.
+5. Pick your phone at the top of the window and press Run. The first time it fails with "Developer Mode disabled", and only then the switch shows up on the phone: Settings › Privacy & Security › Developer Mode, near the bottom. Turn it on, let the phone restart and confirm.
+6. Press Run again. Xcode creates a provisioning profile for the bundle ID and installs an empty app.
 
 Then build and install Nucli Uplink:
 
