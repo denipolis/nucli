@@ -424,10 +424,10 @@ impl Uplink {
             }
             NetEvent::PairingFailed { attempts, ended } => {
                 self.note = Some(if ended {
-                    format!("Pairing stopped after {attempts} wrong codes.")
+                    format!("Pairing stopped after {attempts} tries with a wrong code.")
                 } else {
                     let left = net::PAIRING_ATTEMPTS - attempts;
-                    format!("A device entered a wrong code. {left} attempts left.")
+                    format!("Someone tried to pair with this computer using a wrong code. {left} tries left.")
                 });
                 cx.notify();
             }
@@ -638,6 +638,12 @@ impl Uplink {
                     cx.notify();
                     return;
                 };
+                if self.pairing().is_some_and(|(own, ..)| own == code) {
+                    self.join =
+                        Join::Failed("That is this computer's own code. Type it on the other device instead.".into());
+                    cx.notify();
+                    return;
+                }
                 let address = address.trim();
                 let paired: Vec<Key> = self.devices.iter().filter_map(Device::public).collect();
                 let waiting: Vec<&Nearby> =
