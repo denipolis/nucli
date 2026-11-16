@@ -427,21 +427,23 @@ pub fn resolve(address: &str, default_port: u16) -> Vec<SocketAddr> {
     with_port.to_socket_addrs().map(|found| found.collect()).unwrap_or_default()
 }
 
+fn sockets(addresses: &[String], default_port: u16) -> Vec<SocketAddr> {
+    let mut tried = HashSet::new();
+    addresses.iter().flat_map(|address| resolve(address, default_port)).filter(|socket| tried.insert(*socket)).collect()
+}
+
+fn reach(socket: &SocketAddr) -> io::Result<TcpStream> {
+    let stream = TcpStream::connect_timeout(socket, DIAL)?;
+    prepare(&stream)?;
+    Ok(stream)
+}
+
 fn dial_any(addresses: &[String], default_port: u16) -> io::Result<(TcpStream, SocketAddr)> {
     let mut last = io::Error::new(io::ErrorKind::NotFound, "no address");
-    let mut tried = HashSet::new();
-    for address in addresses {
-        for socket in resolve(address, default_port) {
-            if !tried.insert(socket) {
-                continue;
-            }
-            match TcpStream::connect_timeout(&socket, DIAL) {
-                Ok(stream) => {
-                    prepare(&stream)?;
-                    return Ok((stream, socket));
-                }
-                Err(error) => last = error,
-            }
+    for socket in sockets(addresses, default_port) {
+        match reach(&socket) {
+            Ok(stream) => return Ok((stream, socket)),
+            Err(error) => last = error,
         }
     }
     Err(last)
@@ -460,14 +462,19 @@ fn reason(error: &io::Error) -> String {
 pub fn dial(key: Key, addresses: Vec<String>, default_port: u16, shared: &Arc<Shared>) {
     let shared = shared.clone();
     std::thread::spawn(move || {
-        let result = dial_any(&addresses, default_port).and_then(|(stream, socket)| {
-            let _watchdog = watchdog(&stream, HANDSHAKE)?;
-            let link = wire::connect(stream, &shared.identity, &key)?;
-            start(link, socket, true, &shared)
-        });
-        if let Err(error) = result {
-            shared.post(NetEvent::DialFailed(key, reason(&error)));
+        let mut last = io::Error::new(io::ErrorKind::NotFound, "no address");
+        for socket in sockets(&addresses, default_port) {
+            let result = reach(&socket).and_then(|stream| {
+                let _watchdog = watchdog(&stream, HANDSHAKE)?;
+                let link = wire::connect(stream, &shared.identity, &key)?;
+                start(link, socket, true, &shared)
+            });
+            match result {
+                Ok(()) => return,
+                Err(error) => last = error,
+            }
         }
+        shared.post(NetEvent::DialFailed(key, reason(&last)));
     });
 }
 
