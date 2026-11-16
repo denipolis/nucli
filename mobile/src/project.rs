@@ -51,7 +51,9 @@ impl Home {
                 ));
             }
         }
-        let mut list = div().flex().flex_col().child(ui::hint(project.to_string(), theme).text_color(theme.faint));
+        let mut list = div().flex().flex_col().when(!scratch && !project.is_empty(), |this| {
+            this.child(ui::hint(project.to_string(), theme).text_color(theme.faint))
+        });
         if offline {
             list = list.child(ui::hint("The computer is offline.", theme));
         }
