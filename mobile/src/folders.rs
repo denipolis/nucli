@@ -1,6 +1,5 @@
 use gpui::{
-    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
-    Styled, div, px,
+    AnyElement, Context, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, div, px,
 };
 use nucli_core::icons;
 use nucli_core::theme::Theme;
@@ -87,7 +86,7 @@ impl Home {
             .flex()
             .flex_col()
             .child(header)
-            .child(div().id("folders").flex_1().min_h_0().overflow_y_scroll().child(list))
+            .child(ui::scroll("folders", &self.scroll).child(list))
             .child(footer)
             .into_any_element()
     }

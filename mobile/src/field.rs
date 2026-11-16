@@ -31,7 +31,14 @@ impl Field {
         action: TextInputAction,
         cx: &mut Context<Self>,
     ) -> Field {
-        Field { text: String::new(), placeholder, capitalize, action, focus: cx.focus_handle(), marked: None }
+        Field {
+            text: String::new(),
+            placeholder,
+            capitalize,
+            action,
+            focus: cx.focus_handle().tab_stop(true),
+            marked: None,
+        }
     }
 
     pub fn set(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {

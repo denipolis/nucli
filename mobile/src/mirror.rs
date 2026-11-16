@@ -67,7 +67,7 @@ impl Mirror {
             tab,
             link,
             term,
-            focus: cx.focus_handle(),
+            focus: cx.focus_handle().tab_stop(true),
             marked: None,
             fit: (0, 0),
             held: false,
@@ -174,7 +174,11 @@ impl Mirror {
     }
 
     fn key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
-        if self.encode(&event.keystroke, cx) {
+        let keystroke = &event.keystroke;
+        if keystroke.key == "v" && keystroke.modifiers == Modifiers::command() {
+            self.paste(cx);
+            cx.stop_propagation();
+        } else if self.encode(keystroke, cx) {
             cx.stop_propagation();
         }
     }

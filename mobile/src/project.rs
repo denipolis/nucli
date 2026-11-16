@@ -91,7 +91,7 @@ impl Home {
             .flex_col()
             .relative()
             .child(header)
-            .child(div().id("project").flex_1().min_h_0().overflow_y_scroll().child(list))
+            .child(ui::scroll("project", &self.scroll).child(list))
             .children(drawer)
             .into_any_element()
     }
@@ -107,10 +107,8 @@ impl Home {
             ));
         }
         let header = ui::bar(theme).child(tabs.border_b_0().px(px(0.0)).flex_1()).child(
-            ui::button("close-drawer", icons::CLOSE, theme).on_click(cx.listener(|home, _, _, cx| {
-                home.drawer = None;
-                cx.notify();
-            })),
+            ui::button("close-drawer", icons::CLOSE, theme)
+                .on_click(cx.listener(|home, _, window, cx| home.back(window, cx))),
         );
         let body = match &drawer.data {
             None => self.loading(theme),
@@ -249,14 +247,12 @@ impl Home {
                 div()
                     .id("drawer-backdrop")
                     .flex_1()
-                    .on_click(cx.listener(|home, _, _, cx| {
-                        home.drawer = None;
-                        cx.notify();
-                    }))
+                    .on_click(cx.listener(|home, _, window, cx| home.back(window, cx)))
                     .with_animation("drawer-dim", ui::motion(), move |this, delta| this.bg(dim.opacity(0.7 * delta))),
             )
             .child(
                 div()
+                    .track_focus(&self.drawer_focus)
                     .flex()
                     .flex_col()
                     .w(relative(0.88))
@@ -265,7 +261,7 @@ impl Home {
                     .border_l_1()
                     .border_color(theme.border)
                     .child(header)
-                    .child(div().id("drawer").flex_1().min_h_0().overflow_y_scroll().child(body.with_animation(
+                    .child(ui::scroll("drawer", &self.drawer_scroll).child(body.with_animation(
                         SharedString::from(format!("drawer-{}-{}", panel_index(drawer.panel), drawer.folder)),
                         ui::motion(),
                         |this, delta| this.opacity(delta),

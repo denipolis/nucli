@@ -1,7 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
-    Styled, div, px,
+    AnyElement, Context, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, div, px,
 };
 use nucli_core::icons;
 use nucli_core::session::Kind;
@@ -113,7 +112,7 @@ impl Home {
             .flex()
             .flex_col()
             .child(header)
-            .child(div().id("computers").flex_1().min_h_0().overflow_y_scroll().child(list))
+            .child(ui::scroll("computers", &self.scroll).child(list))
             .into_any_element()
     }
 }

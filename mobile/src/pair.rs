@@ -1,8 +1,5 @@
 use gpui::prelude::FluentBuilder;
-use gpui::{
-    AnyElement, Context, Focusable, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
-    div, px,
-};
+use gpui::{AnyElement, Context, Focusable, IntoElement, ParentElement, StatefulInteractiveElement, Styled, div, px};
 use nucli_core::icons;
 use nucli_core::theme::Theme;
 
@@ -178,7 +175,7 @@ impl Home {
             .flex()
             .flex_col()
             .child(header)
-            .child(div().id("pair").flex_1().min_h_0().overflow_y_scroll().child(body))
+            .child(ui::scroll("pair", &self.scroll).child(body))
             .into_any_element()
     }
 }

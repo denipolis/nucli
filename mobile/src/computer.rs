@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnimationExt, AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, div, px,
+    AnimationExt, AnyElement, Context, Div, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
+    Styled, div, px,
 };
 use nucli_core::icons;
 use nucli_core::session::Kind;
@@ -71,7 +71,7 @@ impl Home {
             .flex_col()
             .child(header)
             .child(tabs)
-            .child(div().id("computer").flex_1().min_h_0().overflow_y_scroll().child(body.with_animation(
+            .child(ui::scroll("computer", &self.scroll).child(body.with_animation(
                 ("section", section_index(self.section)),
                 ui::motion(),
                 |this, delta| this.opacity(delta),

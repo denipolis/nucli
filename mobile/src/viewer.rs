@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Context, Div, Hsla, InteractiveElement, IntoElement, ListHorizontalSizingBehavior, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled, div, px, uniform_list,
+    AnyElement, Context, Div, Hsla, IntoElement, ListHorizontalSizingBehavior, ParentElement, SharedString, Styled,
+    div, px, uniform_list,
 };
 use nucli_core::theme::Theme;
 use nucli_core::uplink::protocol::{LineKind, Response};
@@ -176,7 +176,7 @@ impl Home {
                 for change in &changes {
                     list = list.child(self.change_row(key, project, change, Some(hash.to_string()), theme, cx));
                 }
-                div().id("commit").flex_1().min_h_0().overflow_y_scroll().child(list).into_any_element()
+                ui::scroll("commit", &self.scroll).child(list).into_any_element()
             }
             Some(_) => div().into_any_element(),
         };

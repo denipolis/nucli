@@ -1,8 +1,9 @@
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AnimationExt, AnyElement, AppContext, Autocapitalize, Context, Entity, Focusable, IntoElement, ParentElement,
-    Render, Styled, Task, TextInputAction, Window, div, px,
+    AnimationExt, AnyElement, AppContext, Autocapitalize, Context, Entity, FocusHandle, Focusable, InteractiveElement,
+    IntoElement, KeyDownEvent, Modifiers, ParentElement, Render, ScrollHandle, Styled, Task, TextInputAction, Window,
+    div, point, px,
 };
 use nucli_core::fonts::FAMILY;
 use nucli_core::session::Activity;
@@ -69,6 +70,10 @@ pub struct Home {
     pub view: Option<Response>,
     pub drawer: Option<Drawer>,
     pub notice: Option<String>,
+    pub scroll: ScrollHandle,
+    pub drawer_scroll: ScrollHandle,
+    pub drawer_focus: FocusHandle,
+    focus: FocusHandle,
     ticker: Option<Task<()>>,
     moves: usize,
     shift: f32,
@@ -76,7 +81,7 @@ pub struct Home {
 
 impl Home {
     pub fn new(link: Entity<Link>, window: &mut Window, cx: &mut Context<Self>) -> Home {
-        cx.observe(&link, |home, link, cx| {
+        cx.observe_in(&link, window, |home, link, window, cx| {
             let (paired, opened) = link.update(cx, |link, _| (link.paired.take(), link.opened.take()));
             if let Some(key) = paired
                 && home.screen == Screen::Pair
@@ -87,7 +92,7 @@ impl Home {
                 home.section = Section::Projects;
             }
             if let Some((key, tab)) = opened {
-                home.open(key, tab, cx);
+                home.open(key, tab, window, cx);
             }
             cx.notify();
         })
@@ -142,6 +147,10 @@ impl Home {
             view: None,
             drawer: None,
             notice: None,
+            scroll: ScrollHandle::new(),
+            drawer_scroll: ScrollHandle::new(),
+            drawer_focus: cx.focus_handle(),
+            focus: cx.focus_handle(),
             ticker: None,
             moves: 0,
             shift: 0.0,
@@ -249,6 +258,7 @@ impl Home {
 
     pub fn open_drawer(&mut self, key: Key, project: String, panel: Panel, folder: String, cx: &mut Context<Self>) {
         self.drawer = Some(Drawer { panel, folder: folder.clone(), data: None });
+        self.drawer_scroll.set_offset(point(px(0.0), px(0.0)));
         let request = match panel {
             Panel::Files => Request::Files { project, folder: folder.clone() },
             Panel::Changes => Request::Changes { project },
@@ -328,7 +338,7 @@ impl Home {
         self.go(Screen::Pair, window, cx);
     }
 
-    pub fn open(&mut self, key: Key, tab: String, cx: &mut Context<Self>) {
+    pub fn open(&mut self, key: Key, tab: String, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(previous) = self.mirror.take() {
             let (old_key, old_tab) = {
                 let previous = previous.read(cx);
@@ -339,6 +349,11 @@ impl Home {
         let link = self.link.clone();
         let mirror = cx.new(|cx| Mirror::new(link, key, tab, cx));
         cx.observe(&mirror, |_, _, cx| cx.notify()).detach();
+        if window.last_input_was_keyboard() {
+            mirror.update(cx, |mirror, cx| mirror.focus(window, cx));
+        } else {
+            window.blur(cx);
+        }
         self.mirror = Some(mirror);
         if self.screen != Screen::Terminal {
             self.history.push(std::mem::replace(&mut self.screen, Screen::Terminal));
@@ -445,8 +460,38 @@ impl Home {
     }
 
     fn moved(&mut self, forward: bool) {
+        self.scroll.set_offset(point(px(0.0), px(0.0)));
         self.moves += 1;
         self.shift = if forward { ui::SHIFT } else { -ui::SHIFT };
+    }
+
+    fn key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let (key, modifiers) = (event.keystroke.key.as_str(), event.keystroke.modifiers);
+        let plain = !modifiers.modified();
+        match key {
+            "down" | "tab" if plain => self.step(true, window, cx),
+            "up" if plain => self.step(false, window, cx),
+            "tab" if modifiers == Modifiers::shift() => self.step(false, window, cx),
+            "escape" if plain && !self.history.is_empty() => self.back(window, cx),
+            "[" if modifiers == Modifiers::command() && !self.history.is_empty() => self.back(window, cx),
+            _ => return,
+        }
+        cx.stop_propagation();
+    }
+
+    fn step(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let drawer = self.drawer.is_some() && matches!(self.screen, Screen::Project { .. });
+        for _ in 0..256 {
+            if forward {
+                window.focus_next(cx);
+            } else {
+                window.focus_prev(cx);
+            }
+            if !drawer || self.drawer_focus.contains_focused(window, cx) {
+                break;
+            }
+        }
+        ui::reveal();
     }
 
     fn animate(&mut self, needed: bool, cx: &mut Context<Self>) {
@@ -483,7 +528,7 @@ impl Home {
                     Some((*key, tab.id.clone()))
                 });
                 if let Some((key, tab)) = found {
-                    self.open(key, tab, cx);
+                    self.open(key, tab, window, cx);
                 }
             }
             "back" => self.back(window, cx),
@@ -621,6 +666,9 @@ impl Render for Home {
             _ => self.any_working(cx),
         };
         self.animate(animated, cx);
+        if window.focused(cx).is_none() {
+            window.focus(&self.focus, cx);
+        }
         let body: AnyElement = match self.screen.clone() {
             Screen::Welcome => self.welcome(&theme, cx),
             Screen::Computers => self.computers(&theme, cx),
@@ -650,6 +698,8 @@ impl Render for Home {
             .text_color(theme.text)
             .font_family(FAMILY)
             .text_size(px(ui::TEXT))
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::key_down))
             .child(div().flex_1().min_h_0().flex().flex_col().child(body).with_animation(
                 ("screen", self.moves),
                 ui::motion(),

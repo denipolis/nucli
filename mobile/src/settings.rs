@@ -142,7 +142,7 @@ impl Home {
             .flex()
             .flex_col()
             .child(header)
-            .child(div().id("settings").flex_1().min_h_0().overflow_y_scroll().child(body))
+            .child(ui::scroll("settings", &self.scroll).child(body))
             .into_any_element()
     }
 }

@@ -99,7 +99,7 @@ impl Home {
                     }),
             )
             .child(div().flex_none().text_size(px(ui::SMALL)).text_color(state_color).child(state))
-            .on_click(cx.listener(move |home, _, _, cx| home.open(key, tab_id.clone(), cx)))
+            .on_click(cx.listener(move |home, _, window, cx| home.open(key, tab_id.clone(), window, cx)))
     }
 
     pub fn agents_of(&self, key: Key, theme: &Theme, cx: &mut Context<Self>) -> Div {

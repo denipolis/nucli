@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Context, Entity, InteractiveElement, IntoElement, ParentElement, SharedString,
+    AnyElement, Context, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Window, div, px,
 };
 use nucli_core::icons;
@@ -81,7 +81,8 @@ impl Home {
             .overflow_x_scroll()
             .border_t_1()
             .border_color(theme.border)
-            .bg(theme.surface);
+            .bg(theme.surface)
+            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default());
         let on_mirror = |action: fn(&mut Mirror, &mut Window, &mut Context<Mirror>)| {
             cx.listener(move |home: &mut Home, _, window, cx| {
                 if let Some(mirror) = &home.mirror {

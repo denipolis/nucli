@@ -1,6 +1,9 @@
 use std::time::Duration;
 
-use gpui::{App, Entity, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PlatformInput, Window, point, px};
+use gpui::{
+    App, Entity, KeyDownEvent, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    OperatingSystem, PlatformInput, Window, point, px,
+};
 
 use crate::home::Home;
 
@@ -16,9 +19,14 @@ pub fn start(home: Entity<Home>, window: &mut Window, cx: &mut App) {
             done += lines.len();
             for line in lines {
                 let home = home.clone();
-                let _ = handle.update(cx, |_, window, cx| match line.strip_prefix("tap ") {
-                    Some(point) => tap(point, window, cx),
-                    None => home.update(cx, |home, cx| home.control(&line, window, cx)),
+                let _ = handle.update(cx, |_, window, cx| {
+                    if let Some(point) = line.strip_prefix("tap ") {
+                        tap(point, window, cx);
+                    } else if let Some(keys) = line.strip_prefix("press ") {
+                        press(keys, window, cx);
+                    } else {
+                        home.update(cx, |home, cx| home.control(&line, window, cx));
+                    }
                 });
             }
         }
@@ -37,5 +45,14 @@ fn tap(text: &str, window: &mut Window, cx: &mut App) {
         PlatformInput::MouseUp(MouseUpEvent { button, position, click_count: 1, ..Default::default() }),
     ] {
         window.dispatch_event(event, cx);
+    }
+}
+
+fn press(keys: &str, window: &mut Window, cx: &mut App) {
+    for text in keys.split(' ') {
+        let Ok(keystroke) = Keystroke::parse_with_os(text, OperatingSystem::Mac) else { continue };
+        let down = KeyDownEvent { keystroke: keystroke.clone(), is_held: false, prefer_character_input: false };
+        window.dispatch_event(PlatformInput::KeyDown(down), cx);
+        window.dispatch_event(PlatformInput::KeyUp(KeyUpEvent { keystroke }), cx);
     }
 }

@@ -1,7 +1,11 @@
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    Animation, App, Div, ElementId, InteractiveElement, IntoElement, ParentElement, SharedString, Stateful,
-    StatefulInteractiveElement, Styled, Window, WindowAppearance, div, px,
+    Animation, App, Bounds, Div, ElementId, FocusHandle, InteractiveElement, IntoElement, ParentElement, Pixels,
+    ScrollHandle, SharedString, Stateful, StatefulInteractiveElement, Styled, Window, WindowAppearance, canvas, div,
+    point, px,
 };
 use nucli_core::icons;
 use nucli_core::theme::{self, Theme};
@@ -13,6 +17,65 @@ pub const SMALL: f32 = 12.0;
 pub const ROW: f32 = 48.0;
 pub const SPINNER_MS: u128 = 110;
 pub const SHIFT: f32 = 24.0;
+
+thread_local! {
+    static FOCUS: RefCell<HashMap<ElementId, FocusHandle>> = RefCell::default();
+    static SCROLL: RefCell<Option<ScrollHandle>> = const { RefCell::new(None) };
+    static REVEAL: Cell<bool> = const { Cell::new(false) };
+}
+
+pub fn reveal() {
+    REVEAL.set(true);
+}
+
+fn focusable(id: impl Into<ElementId>, theme: &Theme) -> Stateful<Div> {
+    let id = id.into();
+    let handle = FOCUS.with_borrow(|focus| focus.get(&id).cloned());
+    let (selection, text, watched) = (theme.selection, theme.text, id.clone());
+    div()
+        .id(id)
+        .when_some(handle.clone(), |this, handle| this.track_focus(&handle))
+        .focus_visible(move |style| style.bg(selection).text_color(text))
+        .child(
+            canvas(move |bounds, window, cx| watch(watched, handle, bounds, window, cx), |_, _, _, _| {})
+                .absolute()
+                .inset_0(),
+        )
+}
+
+fn watch(id: ElementId, handle: Option<FocusHandle>, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    let Some(handle) = handle else {
+        FOCUS.with_borrow_mut(|focus| focus.insert(id, cx.focus_handle().tab_stop(true)));
+        window.request_animation_frame();
+        return;
+    };
+    if !handle.is_focused(window) || !REVEAL.take() {
+        return;
+    }
+    let Some(scroll) = SCROLL.with_borrow(Clone::clone) else { return };
+    let visible = window.content_mask().bounds;
+    let shift = if bounds.top() < visible.top() {
+        visible.top() - bounds.top()
+    } else if bounds.bottom() > visible.bottom() {
+        visible.bottom() - bounds.bottom()
+    } else {
+        return;
+    };
+    let offset = scroll.offset();
+    scroll.set_offset(point(offset.x, offset.y + shift));
+    window.request_animation_frame();
+}
+
+pub fn scroll(id: impl Into<ElementId>, handle: &ScrollHandle) -> Stateful<Div> {
+    let current = handle.clone();
+    div()
+        .id(id)
+        .flex_1()
+        .min_h_0()
+        .overflow_y_scroll()
+        .track_scroll(handle)
+        .child(canvas(move |_, _, _| SCROLL.set(Some(current)), |_, _, _, _| {}).absolute().inset_0())
+}
 
 pub fn theme(window: &Window, cx: &App) -> Theme {
     let prefs = prefs::get(cx);
@@ -48,8 +111,7 @@ pub fn title(text: impl Into<SharedString>) -> Div {
 }
 
 pub fn button(id: impl Into<ElementId>, label: impl Into<SharedString>, theme: &Theme) -> Stateful<Div> {
-    div()
-        .id(id)
+    focusable(id, theme)
         .flex_none()
         .flex()
         .items_center()
@@ -79,8 +141,7 @@ pub fn key(id: impl Into<ElementId>, label: impl Into<SharedString>, theme: &The
 }
 
 pub fn primary(id: impl Into<ElementId>, label: impl Into<SharedString>, theme: &Theme) -> Stateful<Div> {
-    div()
-        .id(id)
+    focusable(id, theme)
         .flex()
         .items_center()
         .justify_center()
@@ -93,8 +154,7 @@ pub fn primary(id: impl Into<ElementId>, label: impl Into<SharedString>, theme: 
 }
 
 pub fn secondary(id: impl Into<ElementId>, label: impl Into<SharedString>, theme: &Theme) -> Stateful<Div> {
-    div()
-        .id(id)
+    focusable(id, theme)
         .flex()
         .items_center()
         .justify_center()
@@ -122,8 +182,7 @@ pub fn section(text: impl Into<SharedString>, theme: &Theme) -> Div {
 }
 
 pub fn row(id: impl Into<ElementId>, theme: &Theme) -> Stateful<Div> {
-    div()
-        .id(id)
+    focusable(id, theme)
         .flex()
         .items_center()
         .gap(px(12.0))
@@ -152,8 +211,7 @@ pub fn tabs<const N: usize>(
     labels.map(|(glyph, label)| {
         let on = index == active;
         index += 1;
-        div()
-            .id(label)
+        focusable(label, theme)
             .flex()
             .items_center()
             .gap(px(6.0))
