@@ -4,6 +4,8 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window, div, px,
 };
 
+use std::path::{Path, PathBuf};
+
 use crate::icons;
 use crate::persist::View;
 use crate::store;
@@ -19,7 +21,7 @@ pub struct PanelState {
     revealed_terminal: Option<String>,
 }
 
-fn panel_project(view: &WorkspaceView, cx: &App) -> Option<std::path::PathBuf> {
+fn panel_project(view: &WorkspaceView, cx: &App) -> Option<PathBuf> {
     view.current_project_path(cx).filter(|path| !path.as_os_str().is_empty())
 }
 
@@ -129,23 +131,7 @@ pub fn terminal_panel(
                 .on_drag(dragged, |drag: &crate::sidebar::DraggedTab, _, _, cx| {
                     cx.new(|_| crate::sidebar::DragPreview(drag.title.clone()))
                 })
-                .on_click(cx.listener(move |view, _, window, cx| {
-                    let workspace = view.workspace.clone();
-                    let (path, id) = (path.clone(), select_id.clone());
-                    store::store(cx).update(cx, |store, cx| {
-                        if let Some(project) =
-                            store.workspace_mut(&workspace).and_then(|state| state.project_mut(&path))
-                        {
-                            project.active_terminal = Some(id.clone());
-                            project.terminal_shown = true;
-                        }
-                        store.changed(cx);
-                    });
-                    if let Some(session) = view.store(cx).session(&select_id) {
-                        let focus = session.read(cx).focus.clone();
-                        window.focus(&focus, cx);
-                    }
-                }))
+                .on_click(cx.listener(move |view, _, window, cx| select_terminal(view, &path, &select_id, window, cx)))
                 .on_mouse_down(
                     MouseButton::Right,
                     cx.listener(move |view, event: &gpui::MouseDownEvent, _, cx| {
@@ -196,19 +182,87 @@ fn toggle_terminal_panel(view: &mut WorkspaceView, shown: bool, window: &mut Win
         view.focus_current(window, cx);
         return;
     }
+    focus_active_terminal(view, window, cx);
+    cx.notify();
+}
+
+fn select_terminal(
+    view: &mut WorkspaceView,
+    path: &Path,
+    id: &str,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    let workspace = view.workspace.clone();
+    store::store(cx).update(cx, |store, cx| {
+        if let Some(project) = store.workspace_mut(&workspace).and_then(|state| state.project_mut(path)) {
+            project.active_terminal = Some(id.to_string());
+            project.terminal_shown = true;
+        }
+        store.changed(cx);
+    });
+    if let Some(session) = view.store(cx).session(id) {
+        let focus = session.read(cx).focus.clone();
+        window.focus(&focus, cx);
+    }
+}
+
+fn focus_active_terminal(view: &WorkspaceView, window: &mut Window, cx: &mut App) -> bool {
     let path = panel_target(view, cx);
     let active = view
         .state(cx)
         .and_then(|state| state.project(&path))
         .and_then(|project| project.active_terminal.clone().or_else(|| project.terminals.first().cloned()));
-    if let Some(session) = active.and_then(|id| view.store(cx).session(&id).cloned()) {
-        let focus = session.read(cx).focus.clone();
-        window.focus(&focus, cx);
-    }
-    cx.notify();
+    let Some(session) = active.and_then(|id| view.store(cx).session(&id).cloned()) else { return false };
+    let focus = session.read(cx).focus.clone();
+    window.focus(&focus, cx);
+    true
 }
 
-fn panel_target(view: &WorkspaceView, cx: &App) -> std::path::PathBuf {
+fn panel_terminals(view: &WorkspaceView, cx: &App) -> Vec<String> {
+    let path = panel_target(view, cx);
+    view.state(cx).and_then(|state| state.project(&path)).map(|project| project.terminals.clone()).unwrap_or_default()
+}
+
+pub fn close_focused(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) -> bool {
+    let Some(id) = focused_terminal(view, window, cx) else { return false };
+    store::store(cx).update(cx, |store, cx| store.close_tab(&id, cx));
+    if panel_terminals(view, cx).is_empty() || !focus_active_terminal(view, window, cx) {
+        view.focus_current(window, cx);
+    }
+    true
+}
+
+pub fn cycle_focused(
+    view: &mut WorkspaceView,
+    delta: i32,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) -> bool {
+    let Some(current) = focused_terminal(view, window, cx) else { return false };
+    let terminals = panel_terminals(view, cx);
+    let index = terminals.iter().position(|id| *id == current).unwrap_or(0) as i32;
+    let next = (index + delta).rem_euclid(terminals.len() as i32) as usize;
+    select_terminal(view, &panel_target(view, cx), &terminals[next], window, cx);
+    true
+}
+
+pub fn select_focused_number(
+    view: &mut WorkspaceView,
+    number: usize,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) -> bool {
+    if focused_terminal(view, window, cx).is_none() {
+        return false;
+    }
+    if let Some(id) = panel_terminals(view, cx).get(number - 1) {
+        select_terminal(view, &panel_target(view, cx), id, window, cx);
+    }
+    true
+}
+
+fn panel_target(view: &WorkspaceView, cx: &App) -> PathBuf {
     view.current_project_path(cx).unwrap_or_default()
 }
 
@@ -232,7 +286,7 @@ pub fn focused_terminal(view: &WorkspaceView, window: &Window, cx: &App) -> Opti
     if !project.terminal_shown {
         return None;
     }
-    let id = project.active_terminal.clone()?;
+    let id = project.active_terminal.clone().or_else(|| project.terminals.first().cloned())?;
     let session = view.store(cx).session(&id)?;
     session.read(cx).focus.contains_focused(window, cx).then_some(id)
 }
@@ -251,10 +305,6 @@ pub fn toggle_terminal(view: &mut WorkspaceView, window: &mut Window, cx: &mut C
         return;
     }
     set_shown(view, true, cx);
-    let id = project.active_terminal.or_else(|| project.terminals.first().cloned());
-    if let Some(session) = id.and_then(|id| view.store(cx).session(&id).cloned()) {
-        let focus = session.read(cx).focus.clone();
-        window.focus(&focus, cx);
-    }
+    focus_active_terminal(view, window, cx);
     cx.notify();
 }

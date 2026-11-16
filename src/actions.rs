@@ -414,13 +414,11 @@ pub fn close_tab(view: &mut WorkspaceView, id: &str, window: &mut Window, cx: &m
 }
 
 fn close(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
-    if view.file_shown(cx) {
-        crate::file_view::close_active(view, window, cx);
+    if crate::panel::close_focused(view, window, cx) {
         return;
     }
-    if let Some(id) = crate::panel::focused_terminal(view, window, cx) {
-        store::store(cx).update(cx, |store, cx| store.close_tab(&id, cx));
-        view.focus_current(window, cx);
+    if view.file_shown(cx) {
+        crate::file_view::close_active(view, window, cx);
         return;
     }
     if let Some(id) = view.state(cx).and_then(|state| state.selected_tab()).map(String::from) {
@@ -1188,6 +1186,9 @@ fn delete_workspace(view: &mut WorkspaceView, window: &mut Window, cx: &mut Cont
 }
 
 fn cycle(view: &mut WorkspaceView, delta: i32, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    if crate::panel::cycle_focused(view, delta, window, cx) {
+        return;
+    }
     let Some(state) = view.state(cx) else { return };
     let tabs = state.ordered_tabs();
     if tabs.is_empty() {
@@ -1203,6 +1204,9 @@ fn cycle(view: &mut WorkspaceView, delta: i32, window: &mut Window, cx: &mut Con
 }
 
 fn select_number(view: &mut WorkspaceView, number: usize, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    if crate::panel::select_focused_number(view, number, window, cx) {
+        return;
+    }
     if let Some(id) = view.state(cx).and_then(|state| state.ordered_tabs().get(number - 1).cloned()) {
         view.select_tab(&id, window, cx);
     }

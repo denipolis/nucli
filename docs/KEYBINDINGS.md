@@ -59,6 +59,8 @@ On Linux and Windows every default uses the same key as on macOS with the modifi
 | Toggle notifications | `toggle_notifications` | | |
 | Quit | `quit` | `cmd-q` | `ctrl-shift-q` |
 
+While a shell in the terminal panel has focus, `close`, `tab_switcher`, `tab_switcher_back`, `next_tab`, `previous_tab` and `select_tab_1` … `select_tab_9` act on the panel's shells instead of the tabs.
+
 Terminal keys on macOS (fixed): `cmd-left` / `cmd-right` line start / end, `cmd-backspace` delete to line start, `alt-left` / `alt-right` word back / forward, `alt-backspace` delete word back, `alt` + key sends Meta (`ESC` prefix).
 
 Find and replace in the file view: `enter` / `shift-enter` next and previous match, `tab` moves between the fields, `enter` in the replace field replaces and moves on, `cmd-enter` (`ctrl-enter`) replaces all, `esc` closes. Toggles: `cmd-alt-c` match case, `cmd-alt-w` whole word, `cmd-alt-r` regular expression, `cmd-alt-p` preserve case, `cmd-alt-l` in selection (`ctrl-alt-c`, `ctrl-alt-w`, `ctrl-alt-r`, `ctrl-alt-p`, `ctrl-alt-l` on Linux and Windows).

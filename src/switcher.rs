@@ -13,13 +13,16 @@ pub struct Switcher {
     pub highlighted: usize,
 }
 
-pub fn open(view: &mut WorkspaceView, delta: i32, _window: &mut Window, cx: &mut Context<WorkspaceView>) {
+pub fn open(view: &mut WorkspaceView, delta: i32, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     if let Some(switcher) = view.switcher.as_mut() {
         let count = switcher.entries.len() as i32;
         if count > 0 {
             switcher.highlighted = (switcher.highlighted as i32 + delta).rem_euclid(count) as usize;
         }
         cx.notify();
+        return;
+    }
+    if crate::panel::cycle_focused(view, delta, window, cx) {
         return;
     }
     let Some(state) = view.state(cx) else { return };
