@@ -28,10 +28,25 @@ fn uplink(line: &str, cx: &mut App) {
     let (command, rest) = line.split_once(' ').unwrap_or((line, ""));
     let workspace = crate::store::store(cx).read(cx).windows.keys().next().cloned().unwrap_or_default();
     entity.update(cx, |uplink, cx| match command {
-        "pair" => uplink.start_pairing(cx),
-        "join" => {
-            let (address, code) = rest.split_once(' ').unwrap_or((rest, ""));
-            uplink.start_join(address, code, crate::uplink::devices::Access::Control, cx);
+        "pair" => uplink.open_dialog(&workspace, true, cx),
+        "join" => uplink.connect_to(rest, cx),
+        "connect" => {
+            if let Some(key) = uplink.nearby.iter().find(|nearby| nearby.name == rest).map(|nearby| nearby.key) {
+                uplink.connect_nearby(key, cx);
+            }
+        }
+        "allow" => uplink.allow(),
+        "deny" => uplink.deny(cx),
+        "close" => uplink.close_dialog(cx),
+        "access" => {
+            let key = uplink.devices.iter().find(|device| device.name == rest.split(' ').nth(1).unwrap_or_default());
+            let access = match rest.split(' ').next() {
+                Some("control") => crate::uplink::devices::Access::Control,
+                _ => crate::uplink::devices::Access::View,
+            };
+            if let Some(key) = key.and_then(|device| device.public()) {
+                uplink.set_access(&key, access, cx);
+            }
         }
         "open" => {
             let first = uplink.links.iter().find_map(|(key, link)| {
@@ -52,8 +67,8 @@ fn uplink(line: &str, cx: &mut App) {
                 .collect();
             let nearby: Vec<String> = uplink.nearby.iter().map(|nearby| format!("{}{:?}", nearby.name, nearby.addresses)).collect();
             eprintln!(
-                "UPLINK pairing={pairing} join={:?} note={:?} error={:?} devices={devices:?} links={links:?} nearby={nearby:?} mirrors={}",
-                uplink.join,
+                "UPLINK pairing={pairing} dialog={:?} note={:?} error={:?} devices={devices:?} links={links:?} nearby={nearby:?} mirrors={}",
+                uplink.dialog.as_ref().map(|dialog| (dialog.step.label(), dialog.error.clone())),
                 uplink.note,
                 uplink.error,
                 uplink.mirrors.len()

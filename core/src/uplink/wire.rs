@@ -24,6 +24,7 @@ pub const CODE_LEN: usize = 8;
 pub enum Mode {
     Session,
     Pair,
+    Request,
 }
 
 pub struct Identity {
@@ -57,6 +58,7 @@ pub(crate) fn preamble(mode: Mode) -> [u8; 9] {
     bytes[8] = match mode {
         Mode::Session => 0,
         Mode::Pair => 1,
+        Mode::Request => 2,
     };
     bytes
 }
@@ -73,6 +75,7 @@ pub fn read_preamble(stream: &mut TcpStream) -> io::Result<Mode> {
     match bytes[8] {
         0 => Ok(Mode::Session),
         1 => Ok(Mode::Pair),
+        2 => Ok(Mode::Request),
         _ => Err(failed("unknown connection mode")),
     }
 }
@@ -202,8 +205,8 @@ impl Writer {
     }
 }
 
-pub fn connect(mut stream: TcpStream, identity: &Identity, expected: &Key) -> io::Result<Channel> {
-    let preamble = preamble(Mode::Session);
+pub fn connect(mut stream: TcpStream, identity: &Identity, mode: Mode, expected: Option<&Key>) -> io::Result<Channel> {
+    let preamble = preamble(mode);
     stream.write_all(&preamble)?;
     let mut noise = Builder::new(params(SESSION))
         .local_private_key(&identity.secret)
@@ -213,15 +216,20 @@ pub fn connect(mut stream: TcpStream, identity: &Identity, expected: &Key) -> io
     write_handshake(&mut stream, &mut noise)?;
     read_handshake(&mut stream, &mut noise)?;
     let remote = remote_key(&noise)?;
-    if remote != *expected {
+    if expected.is_some_and(|expected| remote != *expected) {
         return Err(failed("the device at this address has a different key"));
     }
     write_handshake(&mut stream, &mut noise)?;
     finish(stream, noise, remote)
 }
 
-pub fn accept(mut stream: TcpStream, identity: &Identity, trusted: impl Fn(&Key) -> bool) -> io::Result<Channel> {
-    let preamble = preamble(Mode::Session);
+pub fn accept(
+    mut stream: TcpStream,
+    identity: &Identity,
+    mode: Mode,
+    trusted: impl Fn(&Key) -> bool,
+) -> io::Result<Channel> {
+    let preamble = preamble(mode);
     let mut noise = Builder::new(params(SESSION))
         .local_private_key(&identity.secret)
         .and_then(|builder| builder.prologue(&preamble))
@@ -410,9 +418,9 @@ mod tests {
         let accepting = std::thread::spawn(move || {
             let mut server = server;
             read_preamble(&mut server)?;
-            accept(server, &bob, |key| *key == alice_public)
+            accept(server, &bob, Mode::Session, |key| *key == alice_public)
         });
-        let channel = connect(client, &alice, &bob_public).unwrap();
+        let channel = connect(client, &alice, Mode::Session, Some(&bob_public)).unwrap();
         let accepted = accepting.join().unwrap().unwrap();
         assert_eq!(accepted.remote, alice_public);
         let (_, mut writer) = channel.split().unwrap();
@@ -434,9 +442,9 @@ mod tests {
         let accepting = std::thread::spawn(move || {
             let mut server = server;
             read_preamble(&mut server)?;
-            accept(server, &bob, |_| false)
+            accept(server, &bob, Mode::Session, |_| false)
         });
-        let _ = connect(client, &stranger, &bob_public);
+        let _ = connect(client, &stranger, Mode::Session, Some(&bob_public));
         assert!(accepting.join().unwrap().is_err());
 
         let (impostor, alice) = (Identity::generate(), Identity::generate());
@@ -444,9 +452,34 @@ mod tests {
         std::thread::spawn(move || {
             let mut server = server;
             let _ = read_preamble(&mut server);
-            let _ = accept(server, &impostor, |_| true);
+            let _ = accept(server, &impostor, Mode::Session, |_| true);
         });
-        assert!(connect(client, &alice, &bob_public).is_err());
+        assert!(connect(client, &alice, Mode::Session, Some(&bob_public)).is_err());
+    }
+
+    #[test]
+    fn requests_show_the_same_number_on_both_sides() {
+        let (alice, bob) = (Identity::generate(), Identity::generate());
+        let (alice_public, bob_public) = (alice.public, bob.public);
+        let (client, server) = pair();
+        let accepting = std::thread::spawn(move || {
+            let mut server = server;
+            assert_eq!(read_preamble(&mut server)?, Mode::Request);
+            accept(server, &bob, Mode::Request, |_| true)
+        });
+        let channel = connect(client, &alice, Mode::Request, None).unwrap();
+        let accepted = accepting.join().unwrap().unwrap();
+        assert_eq!((channel.remote, accepted.remote), (bob_public, alice_public));
+        assert_eq!(channel.sas, accepted.sas);
+
+        let (client, server) = pair();
+        let accepting = std::thread::spawn(move || {
+            let mut server = server;
+            read_preamble(&mut server)?;
+            accept(server, &Identity::generate(), Mode::Session, |_| true)
+        });
+        let _ = connect(client, &Identity::generate(), Mode::Request, None);
+        assert!(accepting.join().unwrap().is_err());
     }
 
     #[test]
@@ -457,9 +490,9 @@ mod tests {
         let accepting = std::thread::spawn(move || {
             let mut server = server;
             read_preamble(&mut server)?;
-            accept(server, &bob, |key| *key == alice_public)
+            accept(server, &bob, Mode::Session, |key| *key == alice_public)
         });
-        let channel = connect(client, &alice, &bob_public).unwrap();
+        let channel = connect(client, &alice, Mode::Session, Some(&bob_public)).unwrap();
         let (mut reader, _) = accepting.join().unwrap().unwrap().split().unwrap();
         let (_, mut writer) = channel.split().unwrap();
         let mut raw = writer.stream.try_clone().unwrap();

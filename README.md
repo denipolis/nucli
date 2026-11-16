@@ -10,7 +10,7 @@
 - Automatic agent detection with live status, notifications and resumable conversations
 - Review what agents change: live git diffs, staging, commits, a commit graph, and a file view you can edit in place
 - A fast square monospace UI in Rust, with themes, tree-sitter highlighting and a command palette for everything
-- Uplink: pair your computers with a one-time code, then watch, type into and start their agents from any of them, directly and end-to-end encrypted, with no server in between
+- Uplink: pair your computers and phone once (pick the other one, allow it there, check that both show the same number), then watch, type into and start their agents from any of them, directly and end-to-end encrypted, with no server in between
 - A settings page, backed by plain JSON files you can also edit
 - No telemetry; no network calls unless you turn on Uplink
 

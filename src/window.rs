@@ -478,6 +478,9 @@ impl Render for WorkspaceView {
         if let Some(switcher) = &self.switcher {
             root = root.child(crate::switcher::render(self, switcher, cx));
         }
+        if let Some(pairing) = crate::uplink::pairing::render(self, cx) {
+            root = root.child(deferred(pairing).with_priority(2));
+        }
         root.into_any_element()
     }
 }

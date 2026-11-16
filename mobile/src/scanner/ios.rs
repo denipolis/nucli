@@ -135,7 +135,7 @@ pub fn scan(found: Sender<String>) -> Result<(), String> {
     view.layer().addSublayer(&preview);
     let label = UILabel::new(mtm);
     label.setText(Some(&NSString::from_str(
-        "Point the camera at the QR code in Nucli › Settings › Uplink › add device.\n\nTap to cancel.",
+        "Point the camera at the QR code in Nucli's Connect a device.\n\nTap to cancel.",
     )));
     unsafe { label.setTextColor(Some(&UIColor::whiteColor())) };
     label.setNumberOfLines(0);

@@ -2,6 +2,7 @@ mod act;
 pub mod files;
 mod host;
 pub mod page;
+pub mod pairing;
 pub mod sidebar;
 mod transfers;
 
@@ -78,15 +79,6 @@ pub struct Target {
     feeds: std::sync::mpsc::Sender<Feed>,
 }
 
-#[derive(Clone, PartialEq, Debug)]
-pub enum Join {
-    Idle,
-    Working,
-    Confirm(String),
-    Failed(String),
-    Done(String),
-}
-
 struct Dialing {
     busy: bool,
     next: Instant,
@@ -100,11 +92,11 @@ pub struct Uplink {
     path: PathBuf,
     server: Option<Server>,
     discovery: Option<Discovery>,
-    announced: Option<(String, u16, bool)>,
+    announced: Option<(String, u16)>,
     pub error: Option<String>,
     pub links: HashMap<Key, Link>,
     pub nearby: Vec<Nearby>,
-    pub join: Join,
+    pub dialog: Option<pairing::Dialog>,
     pub note: Option<String>,
     dialing: HashMap<Key, Dialing>,
     watchers: Vec<Watcher>,
@@ -131,7 +123,7 @@ pub fn init(cx: &mut App) {
             error: None,
             links: HashMap::new(),
             nearby: Vec::new(),
-            join: Join::Idle,
+            dialog: None,
             note: None,
             dialing: HashMap::new(),
             watchers: Vec::new(),
@@ -279,9 +271,9 @@ impl Uplink {
     fn announce(&mut self) {
         let Some(discovery) = &self.discovery else { return };
         let Ok(hello) = self.shared.hello.lock().map(|hello| hello.clone()) else { return };
-        let state = (hello.name.clone(), hello.port, self.pairing().is_some());
+        let state = (hello.name.clone(), hello.port);
         if self.announced.as_ref() != Some(&state) && self.server.is_some() {
-            discovery.announce(&self.shared.identity.public, &state.0, state.1, state.2);
+            discovery.announce(&self.shared.identity.public, &state.0, state.1);
             self.announced = Some(state);
         }
     }
@@ -303,7 +295,7 @@ impl Uplink {
         }
         self.nearby.clear();
         self.dialing.clear();
-        self.join = Join::Idle;
+        self.close_dialog(cx);
         self.note = None;
         let watched: Vec<String> = self
             .watchers
@@ -335,12 +327,10 @@ impl Uplink {
         {
             *pairing = None;
         }
+        self.keep_code(cx);
         self.announce();
         self.dial(cx);
         self.watchers.retain(|watcher| watcher.alive.load(Ordering::Acquire));
-        if self.pairing().is_some() {
-            cx.notify();
-        }
     }
 
     fn dial(&mut self, cx: &mut Context<Self>) {
@@ -411,30 +401,11 @@ impl Uplink {
                 cx.notify();
             }
             NetEvent::Paired { key, hello, address, access } => self.paired(key, hello, address, access, cx),
-            NetEvent::Approve { hello, sas, answer, .. } => approve(hello, sas, answer, cx),
-            NetEvent::Declined(name) => {
-                self.note = Some(format!("{} was not allowed to pair.", name.chars().take(64).collect::<String>()));
-                self.announce();
-                cx.notify();
-            }
-            NetEvent::Confirm { name, sas } => {
-                let name: String = name.chars().take(64).collect();
-                self.join = Join::Confirm(format!("Check that {name} shows {sas}, then allow this device there."));
-                cx.notify();
-            }
-            NetEvent::PairingFailed { attempts, ended } => {
-                self.note = Some(if ended {
-                    format!("Pairing stopped after {attempts} tries with a wrong code.")
-                } else {
-                    let left = net::PAIRING_ATTEMPTS - attempts;
-                    format!("Someone tried to pair with this computer using a wrong code. {left} tries left.")
-                });
-                cx.notify();
-            }
-            NetEvent::JoinFailed(reason) => {
-                self.join = Join::Failed(reason);
-                cx.notify();
-            }
+            NetEvent::Approve { key, hello, sas, answer } => self.asked(key, hello, sas, answer, cx),
+            NetEvent::Declined { key, name } => self.declined(key, name, cx),
+            NetEvent::Confirm { name, sas } => self.confirmed(name, sas, cx),
+            NetEvent::PairingFailed { attempts, ended } => self.pairing_failed(attempts, ended, cx),
+            NetEvent::JoinFailed(reason) => self.join_failed(reason, cx),
             NetEvent::Nearby(found) => {
                 if let Some(dialing) = self.dialing.get_mut(&found.key)
                     && !dialing.busy
@@ -598,81 +569,28 @@ impl Uplink {
                 self.devices.push(device);
             }
         }
-        if self.join == Join::Working {
-            self.join = Join::Done(name.clone());
-        }
-        self.note = Some(format!("Paired with {name}. It connects by itself from now on."));
         if let Ok(mut pairing) = self.shared.pairing.lock() {
             *pairing = None;
         }
         self.dialing.remove(&key);
         self.save(cx);
-        self.announce();
+        self.dialog_paired(key, name, cx);
         self.dial(cx);
     }
 
-    pub fn start_pairing(&mut self, cx: &mut Context<Self>) {
+    fn start_pairing(&mut self, cx: &mut Context<Self>) {
         if let Ok(mut pairing) = self.shared.pairing.lock() {
             *pairing = Some(Pairing::default());
         }
         self.note = None;
-        self.announce();
         cx.notify();
     }
 
-    pub fn cancel_pairing(&mut self, cx: &mut Context<Self>) {
+    fn cancel_pairing(&mut self, cx: &mut Context<Self>) {
         if let Ok(mut pairing) = self.shared.pairing.lock() {
             *pairing = None;
         }
-        self.note = None;
-        self.announce();
         cx.notify();
-    }
-
-    pub fn start_join(&mut self, address: &str, code: &str, access: Access, cx: &mut Context<Self>) {
-        let (addresses, code, expected) = match invite::parse(code).or_else(|| invite::parse(address)) {
-            Some(invite) => (invite.addresses, invite.code, invite.key),
-            None => {
-                let Some(code) = wire::normalize_code(code) else {
-                    self.join = Join::Failed(format!("A pairing code has {} letters and digits.", wire::CODE_LEN));
-                    cx.notify();
-                    return;
-                };
-                if self.pairing().is_some_and(|(own, ..)| own == code) {
-                    self.join =
-                        Join::Failed("That is this computer's own code. Type it on the other device instead.".into());
-                    cx.notify();
-                    return;
-                }
-                let address = address.trim();
-                let paired: Vec<Key> = self.devices.iter().filter_map(Device::public).collect();
-                let waiting: Vec<&Nearby> =
-                    self.nearby.iter().filter(|nearby| nearby.pairing && !paired.contains(&nearby.key)).collect();
-                let nearby = match waiting.as_slice() {
-                    [only] if address.is_empty() => Some(*only),
-                    _ => self.nearby.iter().find(|nearby| {
-                        nearby.name == address || nearby.addresses.iter().any(|known| known.to_string() == address)
-                    }),
-                };
-                let addresses = match nearby {
-                    Some(nearby) => nearby.addresses.iter().map(|known| known.to_string()).collect(),
-                    None => vec![address.to_string()],
-                };
-                (addresses, code, nearby.map(|nearby| nearby.key))
-            }
-        };
-        if addresses.iter().all(|address| address.is_empty()) {
-            self.join = Join::Failed("Choose a nearby device or type its address.".into());
-            cx.notify();
-            return;
-        }
-        self.join = Join::Working;
-        net::join(addresses, code, expected, access, settings::get(cx).uplink.port, &self.shared);
-        cx.notify();
-    }
-
-    pub fn finish_join(&mut self) {
-        self.join = Join::Idle;
     }
 
     pub fn set_access(&mut self, key: &Key, access: Access, cx: &mut Context<Self>) {
@@ -1233,40 +1151,6 @@ pub fn project_shared(path: &Path, cx: &App) -> bool {
     let project =
         store.workspaces.iter().filter(|workspace| !workspace.closed).find_map(|workspace| workspace.project(path));
     project.is_some_and(|project| project.uplink.unwrap_or(settings::get(cx).uplink.share))
-}
-
-fn approve(hello: Hello, sas: String, answer: std::sync::mpsc::Sender<Option<Access>>, cx: &mut App) {
-    let Some(handle) = store::store(cx).read(cx).windows.values().next().copied() else {
-        let _ = answer.send(None);
-        return;
-    };
-    let name: String = hello.name.chars().take(64).collect();
-    let shown = handle.update(cx, |_, window, cx| {
-        window.activate_window();
-        let detail = format!(
-            "Check that {name} shows {sas}. If it shows another number, someone else is pairing: deny.\n\nControl lets {name} type into, open and change shared tabs and projects. View lets it watch and read them."
-        );
-        let choice = window.prompt(
-            gpui::PromptLevel::Warning,
-            &format!("Pair with {name}?"),
-            Some(&detail),
-            &["Allow Control", "Allow View Only", "Deny"],
-            cx,
-        );
-        let answer = answer.clone();
-        cx.spawn(async move |_, _| {
-            let access = match choice.await {
-                Ok(0) => Some(Access::Control),
-                Ok(1) => Some(Access::View),
-                _ => None,
-            };
-            let _ = answer.send(access);
-        })
-        .detach();
-    });
-    if shown.is_err() {
-        let _ = answer.send(None);
-    }
 }
 
 fn project_key(path: &Path) -> String {

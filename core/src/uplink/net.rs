@@ -35,7 +35,7 @@ pub enum NetEvent {
     Paired { key: Key, hello: Hello, address: Option<String>, access: Access },
     PairingFailed { attempts: u32, ended: bool },
     Approve { key: Key, hello: Hello, sas: String, answer: std::sync::mpsc::Sender<Option<Access>> },
-    Declined(String),
+    Declined { key: Key, name: String },
     Confirm { name: String, sas: String },
     JoinFailed(String),
     Nearby(Nearby),
@@ -48,7 +48,6 @@ pub struct Nearby {
     pub key: Key,
     pub name: String,
     pub addresses: Vec<SocketAddr>,
-    pub pairing: bool,
 }
 
 pub struct Pairing {
@@ -72,6 +71,8 @@ pub struct Shared {
     pub excluded: Mutex<Vec<String>>,
     pub events: UnboundedSender<NetEvent>,
     handshakes: AtomicUsize,
+    asking: AtomicBool,
+    outgoing: Mutex<Option<TcpStream>>,
 }
 
 impl Shared {
@@ -84,7 +85,15 @@ impl Shared {
             excluded: Mutex::new(Vec::new()),
             events,
             handshakes: AtomicUsize::new(0),
+            asking: AtomicBool::new(false),
+            outgoing: Mutex::new(None),
         })
+    }
+
+    pub fn cancel_join(&self) {
+        if let Some(stream) = self.outgoing.lock().ok().and_then(|mut outgoing| outgoing.take()) {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
     }
 
     fn post(&self, event: NetEvent) {
@@ -317,11 +326,12 @@ fn incoming(mut stream: TcpStream, address: SocketAddr, shared: &Arc<Shared>) {
         let Ok(watchdog) = prepare(&stream).and_then(|_| watchdog(&stream, HANDSHAKE)) else { return };
         match wire::read_preamble(&mut stream) {
             Ok(Mode::Session) => {
-                if let Ok(link) = wire::accept(stream, &shared.identity, |key| shared.trusts(key)) {
+                if let Ok(link) = wire::accept(stream, &shared.identity, Mode::Session, |key| shared.trusts(key)) {
                     let _ = start(link, address, false, &shared);
                 }
             }
             Ok(Mode::Pair) => host_pairing(stream, address, watchdog, &shared),
+            Ok(Mode::Request) => host_request(stream, address, watchdog, &shared),
             Err(_) => {}
         }
     });
@@ -375,7 +385,7 @@ fn host_pairing(stream: TcpStream, address: SocketAddr, watchdog: Sender<()>, sh
         let sas = channel.sas.clone();
         exchange_hello(channel, &shared.hello()).map(|exchanged| (sas, exchanged))
     });
-    let (sas, (key, hello, _reader, mut writer)) = match result {
+    let (sas, (key, hello, reader, writer)) = match result {
         Ok(paired) => paired,
         Err(error) => {
             let Ok(mut pairing) = shared.pairing.lock() else { return };
@@ -395,21 +405,68 @@ fn host_pairing(stream: TcpStream, address: SocketAddr, watchdog: Sender<()>, sh
         }
     };
     drop(watchdog);
-    let (answer, answered) = channel();
-    shared.post(NetEvent::Approve { key, hello: hello.clone(), sas, answer });
-    let verdict = answered.recv_timeout(APPROVAL).ok().flatten();
+    let Some(verdict) = ask(key, &hello, sas, reader, shared) else {
+        if let Ok(mut pairing) = shared.pairing.lock()
+            && let Some(current) = pairing.as_mut().filter(|current| current.code == code)
+        {
+            current.busy = false;
+        }
+        return;
+    };
     let Ok(mut pairing) = shared.pairing.lock() else { return };
     if pairing.as_ref().is_none_or(|current| current.code != code) {
         return;
     }
     *pairing = None;
+    drop(pairing);
+    settle(verdict, key, hello, writer, address, shared);
+}
+
+fn host_request(stream: TcpStream, address: SocketAddr, watchdog: Sender<()>, shared: &Arc<Shared>) {
+    if shared.asking.load(Ordering::Acquire) {
+        return;
+    }
+    let Ok(channel) = wire::accept(stream, &shared.identity, Mode::Request, |_| true) else { return };
+    let sas = channel.sas.clone();
+    let Ok((key, hello, reader, writer)) = exchange_hello(channel, &shared.hello()) else { return };
+    drop(watchdog);
+    if let Some(verdict) = ask(key, &hello, sas, reader, shared) {
+        settle(verdict, key, hello, writer, address, shared);
+    }
+}
+
+fn ask(key: Key, hello: &Hello, sas: String, mut reader: wire::Reader, shared: &Shared) -> Option<Option<Access>> {
+    if shared.asking.swap(true, Ordering::AcqRel) {
+        return None;
+    }
+    let (answer, answered) = channel();
+    let withdrawn = answer.clone();
+    std::thread::spawn(move || {
+        let _ = reader.read();
+        let _ = withdrawn.send(None);
+    });
+    shared.post(NetEvent::Approve { key, hello: hello.clone(), sas, answer });
+    let verdict = answered.recv_timeout(APPROVAL).ok().flatten();
+    shared.asking.store(false, Ordering::Release);
+    Some(verdict)
+}
+
+fn settle(
+    verdict: Option<Access>,
+    key: Key,
+    hello: Hello,
+    mut writer: wire::Writer,
+    address: SocketAddr,
+    shared: &Shared,
+) {
     match verdict {
         Some(access) if writer.write(&protocol::message(&Message::Approved)).is_ok() => {
             let address = (hello.port > 0).then(|| SocketAddr::new(address.ip(), hello.port).to_string());
             shared.post(NetEvent::Paired { key, hello, address, access });
         }
-        _ => shared.post(NetEvent::Declined(hello.name)),
+        _ => shared.post(NetEvent::Declined { key, name: hello.name }),
     }
+    let _ = writer.stream.shutdown(std::net::Shutdown::Both);
 }
 
 pub fn resolve(address: &str, default_port: u16) -> Vec<SocketAddr> {
@@ -466,7 +523,7 @@ pub fn dial(key: Key, addresses: Vec<String>, default_port: u16, shared: &Arc<Sh
         for socket in sockets(&addresses, default_port) {
             let result = reach(&socket).and_then(|stream| {
                 let _watchdog = watchdog(&stream, HANDSHAKE)?;
-                let link = wire::connect(stream, &shared.identity, &key)?;
+                let link = wire::connect(stream, &shared.identity, Mode::Session, Some(&key))?;
                 start(link, socket, true, &shared)
             });
             match result {
@@ -480,7 +537,7 @@ pub fn dial(key: Key, addresses: Vec<String>, default_port: u16, shared: &Arc<Sh
 
 pub fn join(
     addresses: Vec<String>,
-    code: String,
+    code: Option<String>,
     expected: Option<Key>,
     access: Access,
     default_port: u16,
@@ -489,11 +546,23 @@ pub fn join(
     let shared = shared.clone();
     std::thread::spawn(move || {
         let result = dial_any(&addresses, default_port).and_then(|(stream, socket)| {
+            if let Ok(mut outgoing) = shared.outgoing.lock() {
+                *outgoing = stream.try_clone().ok();
+            }
             let watchdog = watchdog(&stream, HANDSHAKE)?;
-            let channel = wire::join(stream, &shared.identity, &code)?;
+            let channel = match &code {
+                Some(code) => wire::join(stream, &shared.identity, code)?,
+                None => wire::connect(stream, &shared.identity, Mode::Request, expected.as_ref()).map_err(|_| {
+                    io::Error::other("The other device did not answer. It may be busy with another device.")
+                })?,
+            };
             let sas = channel.sas.clone();
-            let (key, hello, mut reader, _writer) = exchange_hello(channel, &shared.hello())
-                .map_err(|_| io::Error::other("The code did not match, or pairing ended on the other device."))?;
+            let (key, hello, mut reader, _writer) = exchange_hello(channel, &shared.hello()).map_err(|_| {
+                io::Error::other(match code {
+                    Some(_) => "The code did not match, or pairing ended on the other device.",
+                    None => "The other device did not answer. It may be busy with another device.",
+                })
+            })?;
             if expected.is_some_and(|expected| expected != key) {
                 return Err(io::Error::other("A different device answered at this address."));
             }
@@ -510,6 +579,9 @@ pub fn join(
                 shared.post(NetEvent::Paired { key, hello, address, access });
             }
             Err(error) => shared.post(NetEvent::JoinFailed(error.to_string())),
+        }
+        if let Ok(mut outgoing) = shared.outgoing.lock() {
+            *outgoing = None;
         }
     });
 }
@@ -557,7 +629,6 @@ impl Discovery {
                             key,
                             name: info.get_property_val_str("name").unwrap_or_default().chars().take(64).collect(),
                             addresses,
-                            pairing: info.get_property_val_str("pairing") == Some("1"),
                         }));
                     }
                     mdns_sd::ServiceEvent::ServiceRemoved(_, fullname) => shared.post(NetEvent::Gone(fullname)),
@@ -568,9 +639,9 @@ impl Discovery {
         Some(Discovery { daemon, instance })
     }
 
-    pub fn announce(&self, key: &Key, name: &str, port: u16, pairing: bool) {
+    pub fn announce(&self, key: &Key, name: &str, port: u16) {
         let id = wire::encode_key(key);
-        let properties = [("id", id.as_str()), ("name", name), ("pairing", if pairing { "1" } else { "0" })];
+        let properties = [("id", id.as_str()), ("name", name)];
         let host = format!("{}.local.", self.instance.to_lowercase());
         if let Ok(info) = mdns_sd::ServiceInfo::new(SERVICE, &self.instance, &host, "", port, &properties[..]) {
             let _ = self.daemon.register(info.enable_addr_auto());
@@ -676,12 +747,12 @@ mod tests {
         let address = format!("127.0.0.1:{port}");
 
         *host.pairing.lock().unwrap() = Some(Pairing::default());
-        join(vec![address.clone()], "WRONGCDE".into(), None, Access::Control, port, &guest);
+        join(vec![address.clone()], Some("WRONGCDE".into()), None, Access::Control, port, &guest);
         assert!(matches!(next(&mut guest_events), NetEvent::JoinFailed(_)));
         assert!(matches!(next(&mut host_events), NetEvent::PairingFailed { attempts: 1, ended: false }));
 
         let code = host.pairing.lock().unwrap().as_ref().unwrap().code.clone();
-        join(vec![address.clone()], code, Some(host.identity.public), Access::Control, port, &guest);
+        join(vec![address.clone()], Some(code), Some(host.identity.public), Access::Control, port, &guest);
         let NetEvent::Approve { sas, answer, .. } = next(&mut host_events) else { panic!("host not asked") };
         let NetEvent::Confirm { sas: shown, .. } = next(&mut guest_events) else { panic!("guest not told") };
         assert_eq!(sas, shown);
@@ -718,6 +789,39 @@ mod tests {
     }
 
     #[test]
+    fn requests_pair_without_a_code_once_allowed() {
+        let (host, mut host_events) = node("host");
+        let (guest, mut guest_events) = node("guest");
+        let (other, mut other_events) = node("other");
+        let port = free_port();
+        let _server = listen(port, &host).unwrap();
+        let address = format!("127.0.0.1:{port}");
+
+        join(vec![address.clone()], None, Some(host.identity.public), Access::View, port, &guest);
+        let NetEvent::Approve { key, sas, answer, .. } = next(&mut host_events) else { panic!("host not asked") };
+        let NetEvent::Confirm { sas: shown, .. } = next(&mut guest_events) else { panic!("guest not told") };
+        assert_eq!((key, &sas), (guest.identity.public, &shown));
+
+        join(vec![address.clone()], None, None, Access::View, port, &other);
+        assert!(matches!(next(&mut other_events), NetEvent::JoinFailed(_)));
+
+        guest.cancel_join();
+        assert!(matches!(next(&mut guest_events), NetEvent::JoinFailed(_)));
+        assert!(matches!(next(&mut host_events), NetEvent::Declined { name, .. } if name == "guest"));
+        drop(answer);
+
+        join(vec![address.clone()], None, Some(guest.identity.public), Access::View, port, &other);
+        assert!(matches!(next(&mut other_events), NetEvent::JoinFailed(_)));
+
+        join(vec![address], None, Some(host.identity.public), Access::View, port, &guest);
+        let NetEvent::Approve { answer, .. } = next(&mut host_events) else { panic!("host not asked again") };
+        assert!(matches!(next(&mut guest_events), NetEvent::Confirm { .. }));
+        answer.send(Some(Access::View)).unwrap();
+        assert!(matches!(next(&mut host_events), NetEvent::Paired { key, .. } if key == guest.identity.public));
+        assert!(matches!(next(&mut guest_events), NetEvent::Paired { key, .. } if key == host.identity.public));
+    }
+
+    #[test]
     fn three_wrong_codes_end_pairing() {
         let (host, mut host_events) = node("host");
         let (guest, mut guest_events) = node("guest");
@@ -725,14 +829,14 @@ mod tests {
         let _server = listen(port, &host).unwrap();
         *host.pairing.lock().unwrap() = Some(Pairing::default());
         for attempt in 1..=PAIRING_ATTEMPTS {
-            join(vec![format!("127.0.0.1:{port}")], "00000000".into(), None, Access::Control, port, &guest);
+            join(vec![format!("127.0.0.1:{port}")], Some("00000000".into()), None, Access::Control, port, &guest);
             assert!(matches!(next(&mut guest_events), NetEvent::JoinFailed(_)));
             let NetEvent::PairingFailed { attempts, ended } = next(&mut host_events) else { panic!() };
             assert_eq!((attempts, ended), (attempt, attempt == PAIRING_ATTEMPTS));
         }
         assert!(host.pairing.lock().unwrap().is_none());
         let code = wire::new_code();
-        join(vec![format!("127.0.0.1:{port}")], code, None, Access::Control, port, &guest);
+        join(vec![format!("127.0.0.1:{port}")], Some(code), None, Access::Control, port, &guest);
         assert!(matches!(next(&mut guest_events), NetEvent::JoinFailed(_)));
     }
 
@@ -751,11 +855,11 @@ mod tests {
         std::thread::sleep(Duration::from_millis(200));
         assert!(host.pairing.lock().unwrap().is_some());
         let code = host.pairing.lock().unwrap().as_ref().unwrap().code.clone();
-        join(vec![format!("127.0.0.1:{port}")], code, None, Access::View, port, &guest);
+        join(vec![format!("127.0.0.1:{port}")], Some(code), None, Access::View, port, &guest);
         let NetEvent::Approve { answer, .. } = next(&mut host_events) else { panic!("host not asked") };
         assert!(matches!(next(&mut guest_events), NetEvent::Confirm { .. }));
         answer.send(None).unwrap();
-        assert!(matches!(next(&mut host_events), NetEvent::Declined(name) if name == "guest"));
+        assert!(matches!(next(&mut host_events), NetEvent::Declined { name, .. } if name == "guest"));
         assert!(matches!(next(&mut guest_events), NetEvent::JoinFailed(_)));
         assert!(host.pairing.lock().unwrap().is_none());
     }

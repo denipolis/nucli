@@ -1,13 +1,12 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, AppContext, Bounds, ClipboardItem, Context, Entity, Focusable, InteractiveElement, IntoElement,
-    ParentElement, PromptLevel, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, canvas, div,
-    fill, point, px, size,
+    AnyElement, App, AppContext, Bounds, Context, Entity, InteractiveElement, IntoElement, ParentElement, PromptLevel,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, canvas, div, fill, point, px, size,
 };
 
 use super::devices::{Access, Device};
 use super::wire::{self, Key};
-use super::{Join, Uplink, invite};
+use super::{Uplink, invite};
 use crate::icons;
 use crate::settings::{self, UPLINK_PORT};
 use crate::settings_view::{button, checkbox, group, row};
@@ -19,8 +18,6 @@ use crate::window::WorkspaceView;
 pub struct Inputs {
     name: Entity<TextInput>,
     port: Entity<TextInput>,
-    address: Entity<TextInput>,
-    code: Entity<TextInput>,
     manual: Vec<(String, Entity<TextInput>)>,
     open: Option<String>,
     subscriptions: Vec<Subscription>,
@@ -44,29 +41,12 @@ fn page_inputs(view: &WorkspaceView) -> Option<&Inputs> {
     view.settings.as_ref().and_then(|page| page.uplink.as_ref())
 }
 
-fn join(view: &mut WorkspaceView, cx: &mut Context<WorkspaceView>) {
-    let Some(inputs) = page_inputs(view) else { return };
-    let (address, code) = (inputs.address.read(cx).text.clone(), inputs.code.read(cx).text.clone());
-    with_uplink(cx, |uplink, cx| uplink.start_join(&address, &code, Access::View, cx));
-}
-
 pub fn ensure(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
-    let joined = super::uplink(cx).filter(|uplink| matches!(uplink.read(cx).join, Join::Done(_)));
-    if let Some(uplink) = joined {
-        uplink.update(cx, |uplink, _| uplink.finish_join());
-        if let Some(inputs) = page_inputs(view) {
-            let (address, code) = (inputs.address.clone(), inputs.code.clone());
-            address.update(cx, |input, cx| input.clear(cx));
-            code.update(cx, |input, cx| input.clear(cx));
-        }
-    }
     let Some(page) = view.settings.as_mut() else { return };
     if page.uplink.is_none() {
         let config = settings::get(cx).uplink.clone();
         let name = input(&config.device_name(), &config.name, cx);
         let port = input(&UPLINK_PORT.to_string(), &config.port.to_string(), cx);
-        let address = input("its name or address", "", cx);
-        let code = input("code or pairing link", "", cx);
         let subscriptions = vec![
             cx.subscribe_in(&name, window, |view, input, event, window, cx| match event {
                 InputEvent::Changed => {
@@ -91,27 +71,9 @@ pub fn ensure(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
                 InputEvent::Cancel => view.focus_current(window, cx),
                 _ => {}
             }),
-            cx.subscribe_in(&code, window, |view, _, event, window, cx| match event {
-                InputEvent::Submit => join(view, cx),
-                InputEvent::NextField => {
-                    if let Some(inputs) = page_inputs(view) {
-                        window.focus(&inputs.address.focus_handle(cx), cx);
-                    }
-                }
-                _ => cx.notify(),
-            }),
-            cx.subscribe_in(&address, window, |view, _, event, window, cx| match event {
-                InputEvent::Submit => join(view, cx),
-                InputEvent::NextField => {
-                    if let Some(inputs) = page_inputs(view) {
-                        window.focus(&inputs.code.focus_handle(cx), cx);
-                    }
-                }
-                _ => cx.notify(),
-            }),
         ];
         let Some(page) = view.settings.as_mut() else { return };
-        page.uplink = Some(Inputs { name, port, address, code, manual: Vec::new(), open: None, subscriptions });
+        page.uplink = Some(Inputs { name, port, manual: Vec::new(), open: None, subscriptions });
     }
     let devices: Vec<Device> = super::uplink(cx).map(|uplink| uplink.read(cx).devices.clone()).unwrap_or_default();
     let known: Vec<String> =
@@ -162,11 +124,10 @@ fn header(title: &'static str, theme: &Theme) -> gpui::Div {
         .child(div().text_color(theme.faint).child(title))
 }
 
-fn qr(text: &str, theme: &Theme) -> Option<AnyElement> {
+pub(super) fn qr(text: &str, module: f32, theme: &Theme) -> Option<AnyElement> {
     let code = qrcode::QrCode::new(text.as_bytes()).ok()?;
     let width = code.width();
     let colors = code.to_colors();
-    let module = 3.0;
     let quiet = 4;
     let side = (width + quiet * 2) as f32 * module;
     let (dark, light) = if theme.dark { (theme.background, theme.text) } else { (theme.text, theme.background) };
@@ -187,121 +148,6 @@ fn qr(text: &str, theme: &Theme) -> Option<AnyElement> {
     .h(px(side))
     .flex_none();
     Some(element.into_any_element())
-}
-
-fn countdown(left: std::time::Duration) -> String {
-    let seconds = left.as_secs();
-    format!("{}:{:02}", seconds / 60, seconds % 60)
-}
-
-fn adding(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme: &Theme) -> AnyElement {
-    let mut panel =
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(8.0))
-            .px(px(12.0))
-            .py(px(8.0))
-            .border_b_1()
-            .border_color(theme.border)
-            .child(div().flex().items_center().justify_between().gap(px(8.0)).child("Add a device").child(
-                button("uplink-cancel-add", "cancel", theme).on_click(|_, _, cx| {
-                    with_uplink(cx, |uplink, cx| {
-                        uplink.finish_join();
-                        uplink.cancel_pairing(cx);
-                    })
-                }),
-            ))
-            .child(div().text_color(theme.faint).child(
-                "Choose add device on the other computer too, then type the code of one computer into the other.",
-            ));
-    if let Some((code, left, attempts)) = uplink.pairing() {
-        let excluded = &settings::get(cx).uplink.excluded_networks;
-        let addresses = uplink.port().map(|port| invite::local_addresses(port, excluded)).unwrap_or_default();
-        let link = invite::link(&code, uplink.identity(), &addresses);
-        let copied = link.clone();
-        panel =
-            panel.child(
-                div().flex().gap(px(16.0)).children(qr(&link, theme)).child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(4.0))
-                        .min_w_0()
-                        .child(div().text_color(theme.faint).child("Code of this computer"))
-                        .child(
-                            div()
-                                .text_size(px(34.0))
-                                .line_height(px(44.0))
-                                .text_color(theme.accent)
-                                .child(wire::format_code(&code)),
-                        )
-                        .child(div().text_color(theme.faint).child(format!(
-                            "expires in {} · {} wrong tries left",
-                            countdown(left),
-                            super::net::PAIRING_ATTEMPTS - attempts
-                        )))
-                        .child(div().flex().child(button("uplink-copy-link", "copy pairing link", theme).on_click(
-                            move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(copied.clone())),
-                        ))),
-                ),
-            );
-    }
-    let tick = cx.global::<crate::store::StoreHandle>().0.read(cx).tick_fast;
-    let paired: Vec<Key> = uplink.devices.iter().filter_map(Device::public).collect();
-    let typed = inputs.address.read(cx).text.trim().to_string();
-    let waiting: Vec<_> =
-        uplink.nearby.iter().filter(|nearby| nearby.pairing && !paired.contains(&nearby.key)).collect();
-    let mut nearby = div().flex().flex_wrap().items_center().gap(px(8.0));
-    if waiting.is_empty() {
-        nearby = nearby.child(div().text_color(theme.faint).child(
-            "No other computer nearby is adding a device. Type its name or address, or paste its pairing link.",
-        ));
-    } else {
-        nearby = nearby.child(div().text_color(theme.faint).child("Nearby"));
-    }
-    let single = waiting.len() == 1;
-    for (index, device) in waiting.iter().enumerate() {
-        let name = device.name.clone();
-        let selected = typed == name || (typed.is_empty() && single);
-        nearby = nearby.child(
-            div()
-                .id(("uplink-nearby", index))
-                .flex()
-                .gap(px(6.0))
-                .px(px(8.0))
-                .when(selected, |this| this.bg(theme.accent).text_color(theme.on_accent))
-                .when(!selected, |this| this.text_color(theme.muted).hover(|style| style.text_color(theme.text)))
-                .child(icons::DEVICE)
-                .child(device.name.clone())
-                .on_click(cx.listener(move |view, _, window, cx| {
-                    if let Some(inputs) = page_inputs(view) {
-                        inputs.address.update(cx, |input, cx| input.set_text(&name, cx));
-                        window.focus(&inputs.code.focus_handle(cx), cx);
-                    }
-                })),
-        );
-    }
-    let status = match &uplink.join {
-        Join::Working => Some((format!("{} pairing…", icons::SPINNER[tick % icons::SPINNER.len()]), theme.accent)),
-        Join::Confirm(text) => Some((format!("{} {text}", icons::SPINNER[tick % icons::SPINNER.len()]), theme.accent)),
-        Join::Failed(reason) => Some((reason.clone(), theme.red)),
-        Join::Idle | Join::Done(_) => None,
-    };
-    panel
-        .child(div().pt(px(4.0)).child("Code of the other computer"))
-        .child(nearby)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .child(field(&inputs.code, 220.0, theme).min_w_0())
-                .when(!single, |this| this.child(field(&inputs.address, 220.0, theme).min_w_0()))
-                .child(button("uplink-join", "join", theme).on_click(cx.listener(|view, _, _, cx| join(view, cx)))),
-        )
-        .children(status.map(|(text, color)| div().text_color(color).child(text)))
-        .into_any_element()
 }
 
 fn device_row(
@@ -462,23 +308,19 @@ fn forget(key: Key, name: &str, window: &mut Window, cx: &mut Context<WorkspaceV
 }
 
 fn devices(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme: &Theme) -> AnyElement {
-    let busy = uplink.pairing().is_some() || matches!(uplink.join, Join::Working | Join::Confirm(_) | Join::Failed(_));
-    let mut list = group(theme).child(header("Devices", theme).when(!busy, |this| {
-        this.child(
-            button("uplink-add", "add device", theme)
-                .on_click(|_, _, cx| with_uplink(cx, |uplink, cx| uplink.start_pairing(cx))),
-        )
-    }));
-    if busy {
-        list = list.child(adding(inputs, uplink, cx, theme));
-    }
-    if uplink.devices.is_empty() && !busy {
+    let mut list = group(theme).child(
+        header("Devices", theme).child(
+            button("uplink-add", "connect device", theme)
+                .on_click(cx.listener(|view, _, window, cx| super::pairing::show(view, window, cx))),
+        ),
+    );
+    if uplink.devices.is_empty() {
         list = list.child(
             div()
                 .px(px(12.0))
                 .py(px(8.0))
                 .text_color(theme.faint)
-                .child("None yet. Choose add device here and on the other computer."),
+                .child("None yet. Choose connect device to pair a phone or another computer."),
         );
     }
     for device in &uplink.devices {
@@ -633,7 +475,7 @@ pub fn render(view: &WorkspaceView, cx: &Context<WorkspaceView>) -> Vec<AnyEleme
                         .py(px(10.0))
                         .child("How it works")
                         .child(div().text_color(theme.faint).child(
-                            "Pair two computers once with a one-time code. They then connect directly to each other over your local network, or any private network you set up between them. Nothing goes through a server.",
+                            "Pair two devices once: pick the other one, allow it there, and check that both show the same number. They then connect directly to each other over your local network, or any private network you set up between them. Nothing goes through a server.",
                         ))
                         .child(div().text_color(theme.faint).child(
                             "Every connection is end-to-end encrypted and both sides prove who they are. You choose which tabs are shared and whether a device may type into them or only watch.",

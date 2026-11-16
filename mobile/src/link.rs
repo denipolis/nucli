@@ -40,6 +40,7 @@ pub struct Link {
     watched: HashMap<(Key, String), Sender<Feed>>,
     pub joining: bool,
     pub note: Option<String>,
+    pub check: Option<(String, String)>,
     pub paired: Option<Key>,
     pub opened: Option<(Key, String)>,
     opening: Option<Key>,
@@ -68,6 +69,7 @@ pub fn start(name: String, cx: &mut App) -> Entity<Link> {
         watched: HashMap::new(),
         joining: false,
         note: None,
+        check: None,
         paired: None,
         opened: None,
         opening: None,
@@ -138,22 +140,41 @@ impl Link {
         }
     }
 
-    pub fn join_code(&mut self, code: &str, address: &str, cx: &mut Context<Self>) {
-        let Some(code) = wire::normalize_code(code) else {
-            self.note = Some(format!("A pairing code has {} letters and digits.", wire::CODE_LEN));
-            cx.notify();
+    fn join(&mut self, addresses: Vec<String>, code: Option<String>, key: Option<Key>, cx: &mut Context<Self>) {
+        if self.joining {
             return;
-        };
+        }
+        self.joining = true;
+        self.note = None;
+        self.check = None;
+        net::join(addresses, code, key, Access::View, PORT, &self.shared);
+        cx.notify();
+    }
+
+    pub fn connect_address(&mut self, address: &str, cx: &mut Context<Self>) {
         let address = address.trim();
         if address.is_empty() {
             self.note = Some("Type the computer's name or address.".into());
             cx.notify();
             return;
         }
-        self.joining = true;
-        self.note = None;
-        net::join(vec![address.to_string()], code, None, Access::View, PORT, &self.shared);
-        cx.notify();
+        let found = self
+            .nearby
+            .iter()
+            .find(|nearby| nearby.name == address || nearby.addresses.iter().any(|known| known.to_string() == address));
+        match found.map(|nearby| nearby.key) {
+            Some(key) => self.connect(key, cx),
+            None => self.join(vec![address.to_string()], None, None, cx),
+        }
+    }
+
+    pub fn cancel(&mut self, cx: &mut Context<Self>) {
+        if self.joining {
+            self.shared.cancel_join();
+            self.joining = false;
+            self.check = None;
+            cx.notify();
+        }
     }
 
     pub fn control(&self, key: &Key) -> bool {
@@ -206,25 +227,17 @@ impl Link {
     }
 
     pub fn pairable(&self) -> Vec<&Nearby> {
-        self.nearby.iter().filter(|nearby| nearby.pairing && self.device(&nearby.key).is_none()).collect()
+        self.nearby.iter().filter(|nearby| self.device(&nearby.key).is_none()).collect()
     }
 
-    pub fn join_nearby(&mut self, key: Key, code: &str, cx: &mut Context<Self>) {
-        let Some(code) = wire::normalize_code(code) else {
-            self.note = Some(format!("A pairing code has {} letters and digits.", wire::CODE_LEN));
-            cx.notify();
-            return;
-        };
+    pub fn connect(&mut self, key: Key, cx: &mut Context<Self>) {
         let addresses: Vec<String> = self
             .nearby
             .iter()
             .filter(|nearby| nearby.key == key)
             .flat_map(|nearby| nearby.addresses.iter().map(|address| address.to_string()))
             .collect();
-        self.joining = true;
-        self.note = None;
-        net::join(addresses, code, Some(key), Access::View, PORT, &self.shared);
-        cx.notify();
+        self.join(addresses, None, Some(key), cx);
     }
 
     pub fn open_tab(&mut self, key: Key, project: &str, launcher: &str) {
@@ -276,10 +289,7 @@ impl Link {
             cx.notify();
             return;
         };
-        self.joining = true;
-        self.note = None;
-        net::join(invite.addresses, invite.code, invite.key, Access::View, PORT, &self.shared);
-        cx.notify();
+        self.join(invite.addresses, Some(invite.code), invite.key, cx);
     }
 
     pub fn watch(&mut self, key: Key, tab: &str, feeds: Sender<Feed>) {
@@ -366,7 +376,11 @@ impl Link {
             }
             NetEvent::Paired { key, hello, address, access } => self.paired(key, hello, address, access),
             NetEvent::JoinFailed(reason) => {
+                if !self.joining {
+                    return;
+                }
                 self.joining = false;
+                self.check = None;
                 self.note = Some(reason);
             }
             NetEvent::Nearby(found) => {
@@ -390,10 +404,14 @@ impl Link {
                 }
             }
             NetEvent::Confirm { name, sas } => {
-                let name: String = name.chars().take(64).collect();
-                self.note = Some(format!("Check that {name} shows {sas}, then allow this phone there."));
+                if self.joining {
+                    self.check = Some((name.chars().take(64).collect(), sas));
+                }
             }
-            NetEvent::Input(..) | NetEvent::PairingFailed { .. } | NetEvent::Approve { .. } | NetEvent::Declined(_) => {
+            NetEvent::Input(..)
+            | NetEvent::PairingFailed { .. }
+            | NetEvent::Approve { .. }
+            | NetEvent::Declined { .. } => {
                 return;
             }
         }
@@ -505,6 +523,7 @@ impl Link {
         }
         self.devices.push(device);
         self.joining = false;
+        self.check = None;
         self.note = Some(format!("Paired with {name}."));
         self.paired = Some(key);
         self.dialing.remove(&key);

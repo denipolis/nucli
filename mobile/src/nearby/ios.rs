@@ -63,7 +63,6 @@ struct Found {
     fullname: String,
     key: Key,
     name: String,
-    pairing: bool,
     port: u16,
     addresses: Vec<SocketAddr>,
 }
@@ -179,7 +178,6 @@ extern "C" fn browsed(
         fullname,
         key: [0; 32],
         name: String::new(),
-        pairing: false,
         port: 0,
         addresses: Vec::new(),
     };
@@ -215,7 +213,6 @@ extern "C" fn resolved(
     };
     let key = value(c"id").and_then(|text| wire::decode_key(&text));
     let name: String = value(c"name").unwrap_or_default().chars().take(64).collect();
-    let pairing = value(c"pairing").as_deref() == Some("1");
     let (resolve, stale) = STATE.with(|state| {
         let mut state = state.borrow_mut();
         let Some(state) = state.as_mut() else { return (false, None) };
@@ -226,7 +223,6 @@ extern "C" fn resolved(
         let Some(found) = state.found.get_mut(&id) else { return (false, None) };
         found.key = key;
         found.name = name;
-        found.pairing = pairing;
         found.port = u16::from_be(port);
         (found.addresser.is_null(), None)
     });
@@ -271,7 +267,6 @@ fn nearby(id: usize) -> Option<NetEvent> {
             key: found.key,
             name: found.name.clone(),
             addresses,
-            pairing: found.pairing,
         }))
     })
 }

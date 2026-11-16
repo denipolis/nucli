@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AnimationExt, AnyElement, AppContext, Autocapitalize, Context, Entity, FocusHandle, Focusable, InteractiveElement,
+    AnimationExt, AnyElement, AppContext, Autocapitalize, Context, Entity, FocusHandle, InteractiveElement,
     IntoElement, KeyDownEvent, Modifiers, ParentElement, Render, ScrollHandle, Styled, Task, TextInputAction, Window,
     div, point, px,
 };
@@ -64,14 +64,12 @@ pub struct Home {
     history: Vec<Screen>,
     pub section: Section,
     pub mirror: Option<Entity<Mirror>>,
-    pub code: Entity<Field>,
     pub address: Entity<Field>,
     pub name: Entity<Field>,
     pub reach: Entity<Field>,
     pub forgetting: Option<Key>,
     pub shown: Instant,
     pub scanning: Option<String>,
-    pub chosen: Option<Key>,
     pub conversations: Option<Response>,
     pub folders: Option<Response>,
     pub view: Option<Response>,
@@ -114,7 +112,6 @@ impl Home {
         let field = |placeholder, capitalize, action, cx: &mut Context<Self>| {
             cx.new(|cx| Field::new(placeholder, capitalize, action, cx))
         };
-        let code = field("K7QM-4XRP", Autocapitalize::Characters, TextInputAction::Next, cx);
         let address = field("computer name or address", Autocapitalize::None, TextInputAction::Go, cx);
         let name = field("this phone's name", Autocapitalize::Words, TextInputAction::Done, cx);
         let reach = field("names or addresses, comma separated", Autocapitalize::None, TextInputAction::Done, cx);
@@ -122,11 +119,7 @@ impl Home {
         let message = field("commit message", Autocapitalize::Sentences, TextInputAction::Done, cx);
         cx.subscribe_in(&input, window, |home, _, _: &FieldEvent, window, cx| home.answer(window, cx)).detach();
         cx.subscribe(&message, |home, _, _: &FieldEvent, cx| home.commit_staged(cx)).detach();
-        cx.subscribe_in(&code, window, |home, _, _: &FieldEvent, window, cx| {
-            window.focus(&home.address.focus_handle(cx), cx)
-        })
-        .detach();
-        cx.subscribe(&address, |home, _, _: &FieldEvent, cx| home.pair_with_code(cx)).detach();
+        cx.subscribe(&address, |home, _, _: &FieldEvent, cx| home.connect_address(cx)).detach();
         cx.subscribe(&name, |home, field, _: &FieldEvent, cx| {
             let text = field.read(cx).text.trim().to_string();
             if !text.is_empty() {
@@ -151,14 +144,12 @@ impl Home {
             history: Vec::new(),
             section: Section::Projects,
             mirror: None,
-            code,
             address,
             name,
             reach,
             forgetting: None,
             shown: Instant::now(),
             scanning: None,
-            chosen: None,
             conversations: None,
             folders: None,
             view: None,
@@ -352,6 +343,9 @@ impl Home {
             };
             self.link.update(cx, |link, _| link.unwatch(key, &tab));
         }
+        if self.screen == Screen::Pair {
+            self.link.update(cx, |link, cx| link.cancel(cx));
+        }
         self.forgetting = None;
         self.notice = None;
         self.screen = self.history.pop().unwrap_or(Screen::Computers);
@@ -447,28 +441,9 @@ impl Home {
         window.blur(cx);
     }
 
-    pub fn target(&self, cx: &Context<Self>) -> Option<Key> {
-        let link = self.link.read(cx);
-        let pairable = link.pairable();
-        match self.chosen.filter(|chosen| pairable.iter().any(|nearby| nearby.key == *chosen)) {
-            Some(chosen) => Some(chosen),
-            None if self.address.read(cx).text.trim().is_empty() && pairable.len() == 1 => Some(pairable[0].key),
-            None => None,
-        }
-    }
-
-    pub fn pair_with_code(&mut self, cx: &mut Context<Self>) {
-        let code = self.code.read(cx).text.clone();
+    pub fn connect_address(&mut self, cx: &mut Context<Self>) {
         let address = self.address.read(cx).text.clone();
-        let choose = address.trim().is_empty() && !self.link.read(cx).pairable().is_empty();
-        match self.target(cx) {
-            Some(key) => self.link.update(cx, |link, cx| link.join_nearby(key, &code, cx)),
-            None if choose => self.link.update(cx, |link, cx| {
-                link.note = Some("Choose the computer above, or type its name or address.".into());
-                cx.notify();
-            }),
-            None => self.link.update(cx, |link, cx| link.join_code(&code, &address, cx)),
-        }
+        self.link.update(cx, |link, cx| link.connect_address(&address, cx));
     }
 
     pub fn open_url(&mut self, url: &str, cx: &mut Context<Self>) {
@@ -478,12 +453,6 @@ impl Home {
         }
         prefs::update(cx, |prefs| prefs.onboarded = true);
         self.pair_with_link(url, cx);
-    }
-
-    pub fn choose(&mut self, key: Key, cx: &mut Context<Self>) {
-        self.chosen = Some(key);
-        self.link.update(cx, |link, _| link.note = None);
-        cx.notify();
     }
 
     pub fn pair_with_link(&mut self, text: &str, cx: &mut Context<Self>) {
@@ -655,18 +624,16 @@ impl Home {
                     self.resume(key, id, project, window, cx);
                 }
             }
-            "choose" => {
+            "connect" => {
                 let key = self.link.read(cx).nearby.iter().find(|nearby| nearby.name == rest).map(|nearby| nearby.key);
                 if let Some(key) = key {
-                    self.choose(key, cx);
+                    self.link.update(cx, |link, cx| link.connect(key, cx));
                 }
             }
             "pairlink" => self.pair_with_link(rest, cx),
-            "code" => {
-                let (code, address) = rest.split_once(' ').unwrap_or((rest, ""));
-                self.code.update(cx, |field, cx| field.set(code, cx));
-                self.address.update(cx, |field, cx| field.set(address, cx));
-                self.pair_with_code(cx);
+            "address" => {
+                self.address.update(cx, |field, cx| field.set(rest, cx));
+                self.connect_address(cx);
             }
             "download" => {
                 if let Screen::Project { key, project } = self.screen.clone() {

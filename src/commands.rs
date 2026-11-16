@@ -192,7 +192,7 @@ pub const COMMANDS: &[Command] = &[
     command!("show_history", "Sidebar: History", ShowHistory, "cmd-alt-3", "ctrl-alt-3"),
     command!("show_uplink", "Sidebar: Uplink", ShowUplink, "cmd-alt-4", "ctrl-alt-4"),
     command!("toggle_uplink", "Turn Uplink On or Off", ToggleUplink, "", ""),
-    command!("pair_device", "Uplink: Pair a Device…", PairDevice, "", ""),
+    command!("pair_device", "Uplink: Connect a Device…", PairDevice, "", ""),
     command!("show_files", "Panel: Files", ShowFiles, "ctrl-cmd-1", "ctrl-alt-shift-1"),
     command!("show_changes", "Panel: Changes", ShowChanges, "ctrl-cmd-2", "ctrl-alt-shift-2"),
     command!("show_commits", "Panel: History", ShowCommits, "ctrl-cmd-3", "ctrl-alt-shift-3"),
