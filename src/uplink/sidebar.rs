@@ -54,6 +54,28 @@ fn open_settings(view: &mut WorkspaceView, window: &mut gpui::Window, cx: &mut C
     crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx);
 }
 
+fn pair(_: &mut WorkspaceView, window: &mut gpui::Window, cx: &mut Context<WorkspaceView>) {
+    window.dispatch_action(Box::new(crate::commands::PairDevice), cx);
+}
+
+fn connect_row(cx: &mut Context<WorkspaceView>) -> AnyElement {
+    let theme = ui::theme(cx);
+    div()
+        .id("uplink-connect")
+        .flex()
+        .items_center()
+        .gap(px(6.0))
+        .pl(px(8.0))
+        .pr(px(8.0))
+        .mt(px(8.0))
+        .text_color(theme.accent)
+        .hover(|style| style.bg(theme.hover))
+        .child(icons::ADD)
+        .child("connect device")
+        .on_click(cx.listener(|view, _, window, cx| pair(view, window, cx)))
+        .into_any_element()
+}
+
 fn device_row(device: &Device, key: Key, online: bool, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
     let (status, color) = match (device.blocked, online) {
@@ -287,7 +309,12 @@ pub fn tab_row(
         .into_any_element()
 }
 
-fn empty(text: &'static str, action: &'static str, cx: &mut Context<WorkspaceView>) -> Vec<AnyElement> {
+fn empty(
+    text: &'static str,
+    action: &'static str,
+    run: fn(&mut WorkspaceView, &mut gpui::Window, &mut Context<WorkspaceView>),
+    cx: &mut Context<WorkspaceView>,
+) -> Vec<AnyElement> {
     let theme = ui::theme(cx);
     vec![
         div()
@@ -303,7 +330,7 @@ fn empty(text: &'static str, action: &'static str, cx: &mut Context<WorkspaceVie
                     .text_color(theme.accent)
                     .hover(|style| style.text_color(theme.text))
                     .child(action)
-                    .on_click(cx.listener(|view, _, window, cx| open_settings(view, window, cx))),
+                    .on_click(cx.listener(move |view, _, window, cx| run(view, window, cx))),
             )
             .into_any_element(),
     ]
@@ -313,11 +340,11 @@ pub fn rows(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
     let theme = ui::theme(cx);
     let Some(entity) = super::uplink(cx) else { return Vec::new() };
     if !Uplink::enabled(cx) {
-        return empty("Uplink is off.", "[turn on in settings]", cx);
+        return empty("Uplink is off.", "[turn on in settings]", open_settings, cx);
     }
     let uplink = entity.read(cx);
     if uplink.devices.is_empty() {
-        return empty("No paired devices yet.", "[pair a device]", cx);
+        return empty("No paired devices yet.", "[connect a device]", pair, cx);
     }
     let selected = view.state(cx).and_then(|state| state.selected_tab()).map(String::from);
     let mut devices: Vec<(Device, Key)> =
@@ -381,6 +408,9 @@ pub fn rows(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
     }
     if rows.is_empty() {
         rows.push(div().p(px(10.0)).text_color(theme.faint).child("no matches").into_any_element());
+    }
+    if query.is_empty() {
+        rows.push(connect_row(cx));
     }
     rows
 }

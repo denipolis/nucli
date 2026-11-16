@@ -328,7 +328,7 @@ Clicking a row opens its details: the fingerprint, **also reach it at**, and the
 
 ### Remote tabs
 
-- The Uplink sidebar tab lists every paired device: online ones with their shared projects and tabs (glyph, title, program, status), offline ones with when they were last seen. The filter applies. Right-click a device for Disconnect and Uplink Settings….
+- The Uplink sidebar tab lists every paired device: online ones with their shared projects and tabs (glyph, title, program, status), offline ones with when they were last seen. The filter applies. Right-click a device for Disconnect and Uplink Settings…. Below the devices, `connect device` (also `[connect a device]` while none are paired) starts pairing and opens Settings › Uplink.
 - Clicking a remote tab opens it in the viewport like a local tab: the full terminal with its scrollback, live, with selection, copy, find and links (file paths of the other computer are not opened locally). The title bar shows `device › project › tab`, the status chips show the device (and `view only` or `offline`), its folder, branch and program. Typing, pasting text, mouse reporting and `⌘K` go to the other computer when this device can control it. Files dropped on a remote tab are not typed, since their paths exist only here, and images in the clipboard stay on this computer.
 - The terminal has one size, the size of the device that typed into it last, as with `tmux`: typing on the other computer takes the size back. A device with view access never resizes it.
 - `⌘W` or Close View closes the remote view; the tab keeps running on its computer. Remote views are not saved and reopen from the sidebar.
