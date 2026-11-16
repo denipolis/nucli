@@ -4,22 +4,20 @@ use gpui::{
     Styled, div, px,
 };
 use nucli_core::icons;
-use nucli_core::session::Kind;
 use nucli_core::theme::Theme;
 use nucli_core::uplink::protocol::Response;
 use nucli_core::uplink::wire::Key;
 
-use crate::board::{Group, group};
 use crate::device::age;
 use crate::home::{Home, Screen, Section};
 use crate::ui;
 
 pub const SECTIONS: [(&str, &str); 3] =
-    [(icons::FOLDER, "projects"), (icons::AGENT, "agents"), (icons::HISTORY, "history")];
+    [(icons::WINDOW, "workspaces"), (icons::AGENT, "agents"), (icons::HISTORY, "history")];
 
 pub fn section_index(section: Section) -> usize {
     match section {
-        Section::Projects => 0,
+        Section::Workspaces => 0,
         Section::Agents => 1,
         Section::History => 2,
     }
@@ -56,11 +54,11 @@ impl Home {
         let mut tabs =
             div().flex().flex_none().gap(px(2.0)).px(px(10.0)).py(px(6.0)).border_b_1().border_color(theme.border);
         for (index, tab) in ui::tabs(SECTIONS, section_index(self.section), theme).into_iter().enumerate() {
-            let section = [Section::Projects, Section::Agents, Section::History][index];
+            let section = [Section::Workspaces, Section::Agents, Section::History][index];
             tabs = tabs.child(tab.on_click(cx.listener(move |home, _, _, cx| home.set_section(section, cx))));
         }
         let body = match self.section {
-            Section::Projects => self.projects_of(key, theme, cx),
+            Section::Workspaces => self.workspaces_of(key, theme, cx),
             Section::Agents => self.agents_of(key, theme, cx),
             Section::History => self.history_of(key, theme, cx),
         };
@@ -77,111 +75,6 @@ impl Home {
                 |this, delta| this.opacity(delta),
             )))
             .into_any_element()
-    }
-
-    fn projects_of(&self, key: Key, theme: &Theme, cx: &mut Context<Self>) -> Div {
-        let link = self.link.read(cx);
-        let control = link.control(&key);
-        let Some(online) = link.online.get(&key) else {
-            return div().child(ui::hint("The computer is offline.", theme).py(px(24.0)));
-        };
-        let catalog = online.catalog.clone();
-        let mut list = div().flex().flex_col();
-        let mut workspace = None;
-        let several =
-            catalog.projects.iter().map(|project| &project.workspace).collect::<std::collections::HashSet<_>>().len()
-                > 1;
-        for project in &catalog.projects {
-            if several && workspace != Some(&project.workspace) {
-                workspace = Some(&project.workspace);
-                list = list.child(ui::section(project.workspace.clone(), theme));
-            }
-            let tabs: Vec<_> = catalog.tabs.iter().filter(|tab| tab.project == project.path).collect();
-            let agents = tabs.iter().filter(|tab| tab.kind == Kind::Agent).count();
-            let waiting = tabs.iter().filter(|tab| group(tab) == Group::Waiting).count();
-            let working = tabs.iter().filter(|tab| group(tab) == Group::Working).count();
-            let scratch = project.name.is_empty();
-            let mut parts = Vec::new();
-            if agents > 0 {
-                parts.push(ui::count(agents, "agent"));
-            }
-            if tabs.len() > agents {
-                parts.push(ui::count(tabs.len() - agents, "shell"));
-            }
-            if parts.is_empty() {
-                parts.push("nothing running".into());
-            }
-            let path = project.path.clone();
-            let held = project.path.clone();
-            let color = project.color.map_or(theme.accent, |color| color.color(theme.dark));
-            list = list.child(
-                ui::row(SharedString::from(format!("project:{}", project.path)), theme)
-                    .child(div().flex_none().w(px(18.0)).text_color(color).child(if scratch {
-                        icons::HOME
-                    } else {
-                        icons::FOLDER
-                    }))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_w_0()
-                            .child(div().truncate().child(if scratch {
-                                "home".to_string()
-                            } else {
-                                project.name.clone()
-                            }))
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_size(px(ui::SMALL))
-                                    .text_color(theme.faint)
-                                    .child(parts.join(" · ")),
-                            ),
-                    )
-                    .when(waiting > 0, |this| {
-                        this.child(
-                            div()
-                                .flex_none()
-                                .text_size(px(ui::SMALL))
-                                .text_color(theme.yellow)
-                                .child(format!("{waiting} waiting")),
-                        )
-                    })
-                    .when(waiting == 0 && working > 0, |this| {
-                        this.child(
-                            div()
-                                .flex_none()
-                                .text_size(px(ui::SMALL))
-                                .text_color(theme.accent)
-                                .child(ui::spinner(self.shown.elapsed().as_millis())),
-                        )
-                    })
-                    .child(div().flex_none().text_color(theme.faint).child(icons::CHEVRON_RIGHT))
-                    .on_click(cx.listener(move |home, _, window, cx| {
-                        home.go(Screen::Project { key, project: path.clone() }, window, cx)
-                    }))
-                    .when(control && !scratch, |this| {
-                        this.child(ui::hold(cx.listener(move |home, _, _, cx| {
-                            let sheet = home.project_menu(key, &held, cx);
-                            home.show(sheet, cx)
-                        })))
-                    }),
-            );
-        }
-        if catalog.projects.is_empty() {
-            list = list.child(ui::hint("This computer shares no projects.", theme).py(px(16.0)));
-        }
-        if control {
-            list = list.child(
-                ui::row("add-project", theme)
-                    .child(div().flex_none().w(px(18.0)).text_color(theme.accent).child(icons::ADD))
-                    .child(div().text_color(theme.accent).child("add project"))
-                    .on_click(cx.listener(move |home, _, window, cx| home.go(Screen::Folders(key), window, cx))),
-            );
-        }
-        list
     }
 
     fn history_of(&self, key: Key, theme: &Theme, cx: &mut Context<Self>) -> Div {

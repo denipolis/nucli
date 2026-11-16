@@ -220,7 +220,7 @@ impl Home {
         if is_folder {
             let absolute = full(project, path);
             items.push(action("open as project", move |home, _, cx| {
-                home.send(key, Request::AddProject { path: absolute.clone() }, cx)
+                home.send(key, Request::AddProject { path: absolute.clone(), workspace: None }, cx)
             }));
         }
         if is_folder {
@@ -463,7 +463,7 @@ impl Home {
         let mut items = Vec::new();
         for launcher in &catalog.launchers {
             let (root, name, agent) = (project.to_string(), launcher.name.clone(), launcher.agent);
-            items.push(action(format!("new {name}"), move |home, _, cx| home.launch(key, &root, &name, agent, cx)));
+            items.push(action(format!("new {name}"), move |home, _, cx| home.launch(key, &root, "", &name, agent, cx)));
         }
         {
             let root = project.to_string();
@@ -513,13 +513,13 @@ impl Home {
         Sheet::Menu { title: remote.name, items }
     }
 
-    pub fn launcher_menu(&self, key: Key, project: &str, agent: bool, cx: &Context<Self>) -> Sheet {
+    pub fn launcher_menu(&self, key: Key, project: &str, workspace: &str, agent: bool, cx: &Context<Self>) -> Sheet {
         let items = self
             .launchers(key, agent, cx)
             .into_iter()
             .map(|name| {
-                let root = project.to_string();
-                action(name.clone(), move |home, _, cx| home.launch(key, &root, &name, agent, cx))
+                let (root, space) = (project.to_string(), workspace.to_string());
+                action(name.clone(), move |home, _, cx| home.launch(key, &root, &space, &name, agent, cx))
             })
             .collect();
         Sheet::Menu { title: if agent { "new agent" } else { "new shell" }.into(), items }

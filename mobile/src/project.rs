@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnimationExt, AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement, SharedString,
+    AnimationExt, AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement, SharedString, Stateful,
     StatefulInteractiveElement, Styled, div, px, relative,
 };
 use nucli_core::icons;
@@ -34,7 +34,6 @@ pub fn status_color(status: &str, theme: &Theme) -> gpui::Hsla {
 
 impl Home {
     pub fn project(&mut self, key: Key, project: &str, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        let time = self.shown.elapsed().as_millis();
         let link = self.link.read(cx);
         let control = link.control(&key);
         let catalog = link.online.get(&key).map(|online| online.catalog.clone());
@@ -58,36 +57,9 @@ impl Home {
         if offline {
             list = list.child(ui::hint("The computer is offline.", theme));
         }
-        if let Some(notice) = &self.notice {
-            list = list.child(
-                div()
-                    .flex()
-                    .gap(px(8.0))
-                    .px(px(16.0))
-                    .py(px(8.0))
-                    .text_color(theme.yellow)
-                    .when(notice.ends_with('…'), |this| this.text_color(theme.accent).child(ui::spinner(time)))
-                    .child(notice.clone()),
-            );
-        }
+        list = list.children(self.notice_row(theme));
         if control && !offline {
-            for (agent, glyph, label) in [(true, icons::ADD, "new agent"), (false, icons::TERMINAL, "new shell")] {
-                let path = project.to_string();
-                list = list.child(
-                    ui::row(label, theme)
-                        .text_color(theme.accent)
-                        .child(div().flex_none().w(px(18.0)).child(glyph))
-                        .child(label)
-                        .on_click(cx.listener({
-                            let path = path.clone();
-                            move |home, _, _, cx| home.new_tab(key, &path, agent, cx)
-                        }))
-                        .child(ui::hold(cx.listener(move |home, _, _, cx| {
-                            let sheet = home.launcher_menu(key, &path, agent, cx);
-                            home.show(sheet, cx)
-                        }))),
-                );
-            }
+            list = list.children(self.launch_rows(key, project, "", theme, cx));
         }
         for tab in catalog.tabs.iter().filter(|tab| tab.project == project) {
             let detail = [tab.branch.clone(), tab.notice.clone()].into_iter().flatten().collect::<Vec<_>>().join(" · ");
@@ -104,6 +76,46 @@ impl Home {
             .child(ui::scroll("project", &self.scroll).child(list))
             .children(drawer)
             .into_any_element()
+    }
+
+    pub fn notice_row(&self, theme: &Theme) -> Option<Div> {
+        let notice = self.notice.as_ref()?;
+        let time = self.shown.elapsed().as_millis();
+        Some(
+            div()
+                .flex()
+                .gap(px(8.0))
+                .px(px(16.0))
+                .py(px(8.0))
+                .text_color(theme.yellow)
+                .when(notice.ends_with('…'), |this| this.text_color(theme.accent).child(ui::spinner(time)))
+                .child(notice.clone()),
+        )
+    }
+
+    pub fn launch_rows(
+        &self,
+        key: Key,
+        project: &str,
+        workspace: &str,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> [Stateful<Div>; 2] {
+        [(true, icons::ADD, "new agent"), (false, icons::TERMINAL, "new shell")].map(|(agent, glyph, label)| {
+            let (path, space) = (project.to_string(), workspace.to_string());
+            ui::row(label, theme)
+                .text_color(theme.accent)
+                .child(div().flex_none().w(px(18.0)).child(glyph))
+                .child(label)
+                .on_click(cx.listener({
+                    let (path, space) = (path.clone(), space.clone());
+                    move |home, _, _, cx| home.new_tab(key, &path, &space, agent, cx)
+                }))
+                .child(ui::hold(cx.listener(move |home, _, _, cx| {
+                    let sheet = home.launcher_menu(key, &path, &space, agent, cx);
+                    home.show(sheet, cx)
+                })))
+        })
     }
 
     fn drawer_view(&self, key: Key, project: &str, drawer: &Drawer, theme: &Theme, cx: &mut Context<Self>) -> Div {

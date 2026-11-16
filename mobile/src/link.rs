@@ -240,10 +240,14 @@ impl Link {
         self.join(addresses, None, Some(key), cx);
     }
 
-    pub fn open_tab(&mut self, key: Key, project: &str, launcher: &str) {
+    pub fn open_tab(&mut self, key: Key, project: &str, workspace: &str, launcher: &str) {
         if let Some(online) = self.online.get(&key) {
             self.opening = Some(key);
-            online.outbox.send(&Message::Open { project: project.to_string(), launcher: launcher.to_string() });
+            online.outbox.send(&Message::Open {
+                project: project.to_string(),
+                launcher: launcher.to_string(),
+                workspace: workspace.to_string(),
+            });
         }
     }
 

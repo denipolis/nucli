@@ -22,6 +22,7 @@ mod transfers;
 mod ui;
 mod viewer;
 mod welcome;
+mod workspace;
 
 use futures::StreamExt;
 use gpui::{App, AppContext, WindowBounds, WindowOptions};

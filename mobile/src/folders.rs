@@ -25,7 +25,7 @@ fn join(path: &str, name: &str) -> String {
 }
 
 impl Home {
-    pub fn folders_screen(&mut self, key: Key, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    pub fn folders_screen(&mut self, key: Key, workspace: &str, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let header = self.back_bar("add project", theme, cx);
         let (path, folders) = match &self.folders {
             Some(Response::Folders { path, folders }) => (Some(path.clone()), folders.clone()),
@@ -75,10 +75,10 @@ impl Home {
         }
         if let Some(path) = path {
             let name = path.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next().unwrap_or(&path).to_string();
-            footer = footer.child(
-                ui::primary("add-folder", format!("{} add {name}", icons::ADD), theme)
-                    .on_click(cx.listener(move |home, _, window, cx| home.add_project(key, path.clone(), window, cx))),
-            );
+            let workspace = workspace.to_string();
+            footer = footer.child(ui::primary("add-folder", format!("{} add {name}", icons::ADD), theme).on_click(
+                cx.listener(move |home, _, window, cx| home.add_project(key, &workspace, path.clone(), window, cx)),
+            ));
         }
         div()
             .flex_1()

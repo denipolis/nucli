@@ -51,6 +51,12 @@ pub(super) fn workspace_of(path: &Path, cx: &App) -> String {
         .unwrap_or_default()
 }
 
+fn open_workspace(name: &str, cx: &App) -> Option<String> {
+    let store = store::store(cx).read(cx);
+    let workspace = store.workspaces.iter().find(|item| item.name == name && store.windows.contains_key(&item.id))?;
+    Some(workspace.id.clone())
+}
+
 pub(super) fn inside(root: &Path, relative: &str) -> Option<PathBuf> {
     let relative = Path::new(relative);
     if relative.components().any(|part| !matches!(part, Component::Normal(_))) {
@@ -300,15 +306,28 @@ impl Uplink {
                     })
                     .detach();
             }
-            Request::AddProject { path } => {
+            Request::AddProject { path, workspace } => {
                 let path = PathBuf::from(path);
                 if !path.is_dir() {
                     reply(&outbox, failed("This folder does not exist."));
                     return;
                 }
-                let workspace = workspace_of(&path, cx);
+                let workspace =
+                    workspace.and_then(|name| open_workspace(&name, cx)).unwrap_or_else(|| workspace_of(&path, cx));
                 actions::in_window(&workspace, cx, move |view, window, cx| {
                     actions::open_folder(view, path, window, cx);
+                    reply(&outbox, Response::Done);
+                });
+            }
+            Request::OpenWorkspace { workspace } => {
+                let store = store::store(cx).read(cx);
+                let Some(id) = store.workspaces.iter().find(|item| item.name == workspace).map(|item| item.id.clone())
+                else {
+                    reply(&outbox, failed("This workspace does not exist."));
+                    return;
+                };
+                cx.defer(move |cx| {
+                    crate::window::open(&id, cx);
                     reply(&outbox, Response::Done);
                 });
             }

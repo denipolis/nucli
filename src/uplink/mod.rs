@@ -23,7 +23,7 @@ use crate::store::{self, Launcher};
 use crate::terminal::{Feed, Request};
 use devices::{Access, Device};
 use net::{Connection, Discovery, Nearby, NetEvent, Outbox, Pairing, Routes, Server, Shared};
-use protocol::{Catalog, Hello, Message, RemoteLauncher, RemoteProject, RemoteTab, Stop};
+use protocol::{Catalog, Hello, Message, RemoteLauncher, RemoteProject, RemoteTab, RemoteWorkspace, Stop};
 use wire::Key;
 
 pub const MIRROR: &str = "uplink:";
@@ -784,7 +784,7 @@ impl Uplink {
                     });
                 }
             }
-            Message::Open { project, launcher } => self.host_open(key, &project, &launcher, cx),
+            Message::Open { project, launcher, workspace } => self.host_open(key, &project, &launcher, &workspace, cx),
             Message::Opened { tab } => {
                 if let Some((opener, workspace)) = self.opening.take()
                     && opener == key
@@ -894,7 +894,7 @@ impl Uplink {
         });
     }
 
-    fn host_open(&mut self, key: Key, project: &str, launcher: &str, cx: &mut Context<Self>) {
+    fn host_open(&mut self, key: Key, project: &str, launcher: &str, workspace: &str, cx: &mut Context<Self>) {
         let Some(device) = self.device(&key) else { return };
         if device.blocked || device.access != Access::Control {
             return;
@@ -906,11 +906,10 @@ impl Uplink {
         let Some(workspace) = store
             .workspaces
             .iter()
-            .filter(|workspace| !workspace.closed && store.windows.contains_key(&workspace.id))
-            .find(|workspace| {
-                workspace.project(&path).is_some_and(|project| project.uplink.unwrap_or(settings.uplink.share))
-            })
-            .map(|workspace| workspace.id.clone())
+            .filter(|item| !item.closed && store.windows.contains_key(&item.id))
+            .filter(|item| workspace.is_empty() || item.name == workspace)
+            .find(|item| item.project(&path).is_some_and(|project| project.uplink.unwrap_or(settings.uplink.share)))
+            .map(|item| item.id.clone())
         else {
             return;
         };
@@ -1124,7 +1123,11 @@ impl Uplink {
 
     pub fn request_open(&mut self, key: Key, project: &str, launcher: &str, workspace: &str, cx: &mut Context<Self>) {
         let Some(link) = self.links.get(&key) else { return };
-        link.outbox.send(&Message::Open { project: project.to_string(), launcher: launcher.to_string() });
+        link.outbox.send(&Message::Open {
+            project: project.to_string(),
+            launcher: launcher.to_string(),
+            workspace: String::new(),
+        });
         self.opening = Some((key, workspace.to_string()));
         let _ = cx;
     }
@@ -1164,6 +1167,11 @@ fn catalog(device: &Device, cx: &App) -> Catalog {
     let store = store::store(cx).read(cx);
     let default = settings::get(cx).uplink.share;
     let mut catalog = Catalog { control: device.access == Access::Control, ..Default::default() };
+    catalog.workspaces = store
+        .workspaces
+        .iter()
+        .map(|workspace| RemoteWorkspace { name: workspace.name.clone(), open: !workspace.closed })
+        .collect();
     for workspace in store.workspaces.iter().filter(|workspace| !workspace.closed) {
         for project in workspace.all_projects() {
             let project_on = project.uplink.unwrap_or(default);
@@ -1190,6 +1198,7 @@ fn catalog(device: &Device, cx: &App) -> Catalog {
                     failed: matches!(session.exit, Some(code) if code != Some(0)),
                     color: session.color,
                     project: project_key(&project.path),
+                    workspace: workspace.name.clone(),
                     cwd: session.cwd.as_deref().map(crate::paths::display),
                     branch: session.branch.clone(),
                     notice: session.notice.as_ref().map(|(text, _)| text.clone()),

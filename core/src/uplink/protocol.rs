@@ -27,6 +27,7 @@ pub struct RemoteTab {
     pub failed: bool,
     pub color: Option<ItemColor>,
     pub project: String,
+    pub workspace: String,
     pub cwd: Option<String>,
     pub branch: Option<String>,
     pub notice: Option<String>,
@@ -46,6 +47,7 @@ impl Default for RemoteTab {
             failed: false,
             color: None,
             project: String::new(),
+            workspace: String::new(),
             cwd: None,
             branch: None,
             notice: None,
@@ -64,6 +66,13 @@ pub struct RemoteProject {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(default)]
+pub struct RemoteWorkspace {
+    pub name: String,
+    pub open: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
 pub struct RemoteLauncher {
     pub name: String,
     pub agent: bool,
@@ -75,6 +84,7 @@ pub struct RemoteLauncher {
 pub struct Catalog {
     pub tabs: Vec<RemoteTab>,
     pub projects: Vec<RemoteProject>,
+    pub workspaces: Vec<RemoteWorkspace>,
     pub launchers: Vec<RemoteLauncher>,
     pub control: bool,
 }
@@ -101,6 +111,8 @@ pub enum Message {
     Open {
         project: String,
         launcher: String,
+        #[serde(default)]
+        workspace: String,
     },
     Opened {
         tab: String,
@@ -140,7 +152,8 @@ pub enum Request {
     History,
     Resume { conversation: String },
     Folders { path: String },
-    AddProject { path: String },
+    AddProject { path: String, workspace: Option<String> },
+    OpenWorkspace { workspace: String },
     Files { project: String, folder: String },
     File { project: String, path: String },
     Changes { project: String },

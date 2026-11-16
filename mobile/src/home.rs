@@ -26,8 +26,9 @@ pub enum Screen {
     Welcome,
     Computers,
     Computer(Key),
+    Workspace { key: Key, workspace: String },
     Project { key: Key, project: String },
-    Folders(Key),
+    Folders { key: Key, workspace: String },
     File { key: Key, project: String, path: String },
     Diff { key: Key, project: String, path: String, commit: Option<String> },
     Commit { key: Key, project: String, hash: String },
@@ -39,7 +40,7 @@ pub enum Screen {
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Section {
-    Projects,
+    Workspaces,
     Agents,
     History,
 }
@@ -102,7 +103,7 @@ impl Home {
                 home.history = vec![Screen::Computers];
                 home.screen = Screen::Computer(key);
                 home.moved(true);
-                home.section = Section::Projects;
+                home.section = Section::Workspaces;
             }
             if let Some((key, tab)) = opened {
                 home.open(key, tab, window, cx);
@@ -144,7 +145,7 @@ impl Home {
             link,
             screen,
             history: Vec::new(),
-            section: Section::Projects,
+            section: Section::Workspaces,
             mirror: None,
             address,
             name,
@@ -209,7 +210,7 @@ impl Home {
                     cx,
                 );
             }
-            Screen::Folders(key) => {
+            Screen::Folders { key, .. } => {
                 self.folders = None;
                 self.fetch(
                     key,
@@ -309,7 +310,7 @@ impl Home {
             self.scanning = None;
         }
         if matches!(screen, Screen::Computer(_)) {
-            self.section = Section::Projects;
+            self.section = Section::Workspaces;
         }
         if !matches!(screen, Screen::File { .. } | Screen::Diff { .. } | Screen::Commit { .. }) {
             self.drawer = None;
@@ -390,12 +391,12 @@ impl Home {
         cx.notify();
     }
 
-    pub fn new_tab(&mut self, key: Key, project: &str, agent: bool, cx: &mut Context<Self>) {
+    pub fn new_tab(&mut self, key: Key, project: &str, workspace: &str, agent: bool, cx: &mut Context<Self>) {
         let prefs = prefs::get(cx);
         let last = if agent { &prefs.agent } else { &prefs.shell };
         let launchers = self.launchers(key, agent, cx);
         if let Some(launcher) = launchers.iter().find(|name| *name == last).or(launchers.first()).cloned() {
-            self.launch(key, project, &launcher, agent, cx);
+            self.launch(key, project, workspace, &launcher, agent, cx);
         }
     }
 
@@ -405,9 +406,17 @@ impl Home {
         launchers.iter().filter(|launcher| launcher.agent == agent).map(|launcher| launcher.name.clone()).collect()
     }
 
-    pub fn launch(&mut self, key: Key, project: &str, launcher: &str, agent: bool, cx: &mut Context<Self>) {
+    pub fn launch(
+        &mut self,
+        key: Key,
+        project: &str,
+        workspace: &str,
+        launcher: &str,
+        agent: bool,
+        cx: &mut Context<Self>,
+    ) {
         prefs::update(cx, |prefs| *if agent { &mut prefs.agent } else { &mut prefs.shell } = launcher.to_string());
-        self.link.update(cx, |link, _| link.open_tab(key, project, launcher));
+        self.link.update(cx, |link, _| link.open_tab(key, project, workspace, launcher));
     }
 
     pub fn resume(
@@ -433,11 +442,18 @@ impl Home {
         );
     }
 
-    pub fn add_project(&mut self, key: Key, path: String, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn add_project(
+        &mut self,
+        key: Key,
+        workspace: &str,
+        path: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let project = path.clone();
         self.fetch(
             key,
-            Request::AddProject { path },
+            Request::AddProject { path, workspace: Some(workspace.to_string()) },
             move |home, response| match response {
                 Response::Failed { reason } => home.notice = Some(reason),
                 _ => {
@@ -585,12 +601,17 @@ impl Home {
                 let section = match rest {
                     "agents" => Section::Agents,
                     "history" => Section::History,
-                    _ => Section::Projects,
+                    _ => Section::Workspaces,
                 };
                 self.set_section(section, cx);
             }
+            "workspace" => {
+                if let Screen::Computer(key) = self.screen {
+                    self.go(Screen::Workspace { key, workspace: rest.to_string() }, window, cx);
+                }
+            }
             "project" => {
-                if let Screen::Computer(key) = self.screen.clone() {
+                if let Screen::Computer(key) | Screen::Workspace { key, .. } = self.screen.clone() {
                     let path = self.link.read(cx).online.get(&key).and_then(|online| {
                         online
                             .catalog
@@ -626,11 +647,11 @@ impl Home {
                 }
             }
             "browse" | "add" => {
-                if let Screen::Folders(key) = self.screen {
+                if let Screen::Folders { key, workspace } = self.screen.clone() {
                     if command == "browse" {
                         self.browse(key, rest.to_string(), cx);
                     } else {
-                        self.add_project(key, rest.to_string(), window, cx);
+                        self.add_project(key, &workspace, rest.to_string(), window, cx);
                     }
                 }
             }
@@ -672,11 +693,11 @@ impl Home {
                     .detach();
                 }
             }
-            "new" => {
-                if let Screen::Project { key, project } = self.screen.clone() {
-                    self.new_tab(key, &project, rest != "shell", cx);
-                }
-            }
+            "new" => match self.screen.clone() {
+                Screen::Project { key, project } => self.new_tab(key, &project, "", rest != "shell", cx),
+                Screen::Workspace { key, workspace } => self.new_tab(key, "", &workspace, rest != "shell", cx),
+                _ => {}
+            },
             "focus" => {
                 if let Some(mirror) = mirror {
                     mirror.update(cx, |mirror, cx| mirror.focus(window, cx));
@@ -715,9 +736,9 @@ impl Render for Home {
             Screen::Welcome => self.shown.elapsed() < Duration::from_secs(3),
             Screen::Pair => true,
             Screen::Computer(_) if self.section == Section::History => self.conversations.is_none(),
-            Screen::Folders(_) => self.folders.is_none(),
+            Screen::Folders { .. } => self.folders.is_none(),
             Screen::File { .. } | Screen::Diff { .. } | Screen::Commit { .. } => self.view.is_none(),
-            Screen::Project { .. } => {
+            Screen::Project { .. } | Screen::Workspace { .. } => {
                 self.any_working(cx)
                     || self.notice.is_some()
                     || self.drawer.as_ref().is_some_and(|drawer| drawer.data.is_none())
@@ -745,8 +766,9 @@ impl Render for Home {
             Screen::Welcome => self.welcome(&theme, cx),
             Screen::Computers => self.computers(&theme, cx),
             Screen::Computer(key) => self.computer(key, &theme, cx),
+            Screen::Workspace { key, workspace } => self.workspace(key, &workspace, &theme, cx),
             Screen::Project { key, project } => self.project(key, &project, &theme, cx),
-            Screen::Folders(key) => self.folders_screen(key, &theme, cx),
+            Screen::Folders { key, workspace } => self.folders_screen(key, &workspace, &theme, cx),
             Screen::File { path, .. } => self.file(&path, &theme, cx),
             Screen::Diff { path, commit, .. } => self.diff(&path, commit, &theme, cx),
             Screen::Commit { key, project, hash } => self.commit(key, &project, &hash, &theme, cx),
