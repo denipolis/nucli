@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use gpui::{
-    App, Entity, KeyDownEvent, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    OperatingSystem, PlatformInput, Window, point, px,
+    App, Entity, KeyUpEvent, Keystroke, LongPressEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    OperatingSystem, PlatformInput, TouchPhase, Window, point, px,
 };
 
 use crate::home::Home;
@@ -22,6 +22,8 @@ pub fn start(home: Entity<Home>, window: &mut Window, cx: &mut App) {
                 let _ = handle.update(cx, |_, window, cx| {
                     if let Some(point) = line.strip_prefix("tap ") {
                         tap(point, window, cx);
+                    } else if let Some(point) = line.strip_prefix("hold ") {
+                        hold(point, window, cx);
                     } else if let Some(keys) = line.strip_prefix("press ") {
                         press(keys, window, cx);
                     } else {
@@ -48,11 +50,20 @@ fn tap(text: &str, window: &mut Window, cx: &mut App) {
     }
 }
 
+fn hold(text: &str, window: &mut Window, cx: &mut App) {
+    let mut numbers = text.split(' ').filter_map(|part| part.parse::<f32>().ok());
+    let (Some(x), Some(y)) = (numbers.next(), numbers.next()) else { return };
+    let position = point(px(x), px(y));
+    for phase in [TouchPhase::Started, TouchPhase::Ended] {
+        let event = LongPressEvent { phase, start_position: position, position };
+        window.dispatch_event(PlatformInput::LongPress(event), cx);
+    }
+}
+
 fn press(keys: &str, window: &mut Window, cx: &mut App) {
     for text in keys.split(' ') {
         let Ok(keystroke) = Keystroke::parse_with_os(text, OperatingSystem::Mac) else { continue };
-        let down = KeyDownEvent { keystroke: keystroke.clone(), is_held: false, prefer_character_input: false };
-        window.dispatch_event(PlatformInput::KeyDown(down), cx);
+        window.dispatch_keystroke(keystroke.clone(), cx);
         window.dispatch_event(PlatformInput::KeyUp(KeyUpEvent { keystroke }), cx);
     }
 }

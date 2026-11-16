@@ -1,11 +1,12 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    Animation, App, Bounds, Div, ElementId, FocusHandle, InteractiveElement, IntoElement, ParentElement, Pixels,
-    ScrollHandle, SharedString, Stateful, StatefulInteractiveElement, Styled, Window, WindowAppearance, canvas, div,
-    point, px,
+    Animation, App, Bounds, Div, ElementId, FocusHandle, HitboxBehavior, InteractiveElement, IntoElement,
+    LongPressEvent, MouseButton, MouseDownEvent, ParentElement, Pixels, ScrollHandle, SharedString, Stateful,
+    StatefulInteractiveElement, Styled, TouchPhase, Window, WindowAppearance, canvas, div, point, px,
 };
 use nucli_core::icons;
 use nucli_core::theme::{self, Theme};
@@ -64,6 +65,35 @@ fn watch(id: ElementId, handle: Option<FocusHandle>, bounds: Bounds<Pixels>, win
     let offset = scroll.offset();
     scroll.set_offset(point(offset.x, offset.y + shift));
     window.request_animation_frame();
+}
+
+pub fn hold(on: impl Fn(&(), &mut Window, &mut App) + 'static) -> impl IntoElement {
+    let on = Rc::new(on);
+    canvas(
+        |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
+        move |_, hitbox, window, _| {
+            let (pressed, clicked, held) = (on.clone(), on.clone(), hitbox.clone());
+            window.on_mouse_event(move |event: &LongPressEvent, phase, window, cx| {
+                if phase.bubble()
+                    && event.phase == TouchPhase::Started
+                    && held.is_hovered_at(event.start_position, window)
+                    && !window.default_prevented()
+                {
+                    window.prevent_default();
+                    cx.stop_propagation();
+                    pressed(&(), window, cx);
+                }
+            });
+            window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+                if phase.bubble() && event.button == MouseButton::Right && hitbox.is_hovered(window) {
+                    cx.stop_propagation();
+                    clicked(&(), window, cx);
+                }
+            });
+        },
+    )
+    .absolute()
+    .inset_0()
 }
 
 pub fn scroll(id: impl Into<ElementId>, handle: &ScrollHandle) -> Stateful<Div> {

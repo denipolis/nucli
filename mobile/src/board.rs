@@ -79,6 +79,12 @@ impl Home {
         let (glyph, color) = glyph(tab);
         let (state, state_color) = status(tab, time, theme);
         let tab_id = tab.id.clone();
+        let link = self.link.read(cx);
+        let control = link.control(&key);
+        let scratch = link.online.get(&key).is_some_and(|online| {
+            online.catalog.projects.iter().any(|project| project.path == tab.project && project.name.is_empty())
+        });
+        let held = tab.clone();
         ui::row(SharedString::from(format!("tab:{}:{}", wire::encode_key(&key), tab.id)), theme)
             .child(
                 div()
@@ -100,6 +106,12 @@ impl Home {
             )
             .child(div().flex_none().text_size(px(ui::SMALL)).text_color(state_color).child(state))
             .on_click(cx.listener(move |home, _, window, cx| home.open(key, tab_id.clone(), window, cx)))
+            .when(control, |this| {
+                this.child(ui::hold(cx.listener(move |home, _, _, cx| {
+                    let sheet = home.tab_menu(key, &held, scratch);
+                    home.show(sheet, cx)
+                })))
+            })
     }
 
     pub fn agents_of(&self, key: Key, theme: &Theme, cx: &mut Context<Self>) -> Div {

@@ -5,12 +5,13 @@ use gpui::{
 };
 use nucli_core::icons;
 use nucli_core::theme::Theme;
-use nucli_core::uplink::protocol::Response;
+use nucli_core::uplink::protocol::{Action, Response};
 use nucli_core::uplink::wire::Key;
 
 use crate::board::project_name;
 use crate::device::age;
 use crate::home::{Drawer, Home, Panel, Screen};
+use crate::sheet::Sheet;
 use crate::ui;
 
 const PANELS: [(&str, &str); 3] = [(icons::FILES, "files"), (icons::CHANGES, "changes"), (icons::HISTORY, "history")];
@@ -108,6 +109,7 @@ impl Home {
                 cx.listener(move |home, _, _, cx| home.open_drawer(key, path.clone(), panel, String::new(), cx)),
             ));
         }
+        let control = self.link.read(cx).control(&key);
         let header = ui::bar(theme).child(tabs.border_b_0().px(px(0.0)).flex_1()).child(
             ui::button("close-drawer", icons::CLOSE, theme)
                 .on_click(cx.listener(|home, _, window, cx| home.back(window, cx))),
@@ -132,8 +134,31 @@ impl Home {
                                     .text_color(theme.muted)
                                     .child(drawer.folder.clone()),
                             )
+                            .on_click(cx.listener({
+                                let path = path.clone();
+                                move |home, _, _, cx| {
+                                    home.open_drawer(key, path.clone(), Panel::Files, parent.clone(), cx)
+                                }
+                            }))
+                            .when(control, |this| {
+                                let folder = drawer.folder.clone();
+                                this.child(ui::hold(cx.listener(move |home, _, _, cx| {
+                                    let sheet = home.folder_menu(key, &path, &folder);
+                                    home.show(sheet, cx)
+                                })))
+                            }),
+                    );
+                }
+                if control {
+                    let (root, folder) = (project.to_string(), drawer.folder.clone());
+                    list = list.child(
+                        ui::row("folder-menu", theme)
+                            .text_color(theme.accent)
+                            .child(div().flex_none().w(px(18.0)).child(icons::ADD))
+                            .child("new file or folder")
                             .on_click(cx.listener(move |home, _, _, cx| {
-                                home.open_drawer(key, path.clone(), Panel::Files, parent.clone(), cx)
+                                let sheet = home.folder_menu(key, &root, &folder);
+                                home.show(sheet, cx)
                             })),
                     );
                 }
@@ -153,6 +178,7 @@ impl Home {
                         (glyph, color.color(theme.dark))
                     };
                     let (folder, root) = (entry.folder, project.to_string());
+                    let held = (root.clone(), path.clone());
                     list = list.child(
                         ui::row(SharedString::from(format!("entry:{path}")), theme)
                             .child(div().flex_none().w(px(18.0)).text_color(color).child(glyph))
@@ -166,23 +192,45 @@ impl Home {
                                 } else {
                                     home.go(Screen::File { key, project: root.clone(), path: path.clone() }, window, cx)
                                 }
-                            })),
+                            }))
+                            .when(control, |this| {
+                                this.child(ui::hold(cx.listener(move |home, _, _, cx| {
+                                    let sheet = home.entry_menu(key, &held.0, &held.1, folder);
+                                    home.show(sheet, cx)
+                                })))
+                            }),
                     );
                 }
                 list
             }
             Some(Response::Changes { branch, changes }) => {
+                let root = project.to_string();
                 let mut list = div().flex().flex_col().child(
-                    div()
-                        .flex()
-                        .gap(px(8.0))
-                        .px(px(16.0))
-                        .py(px(10.0))
-                        .border_b_1()
-                        .border_color(theme.border)
-                        .child(div().text_color(theme.accent).child(icons::BRANCH))
-                        .child(div().truncate().child(branch.clone())),
+                    ui::row("branch", theme)
+                        .child(div().flex_none().w(px(18.0)).text_color(theme.accent).child(icons::BRANCH))
+                        .child(div().flex_1().min_w_0().truncate().child(branch.clone()))
+                        .when(control, |this| {
+                            this.child(div().flex_none().text_color(theme.faint).child(icons::CHEVRON_RIGHT))
+                                .on_click(cx.listener(move |home, _, _, cx| home.branches(key, &root, cx)))
+                        }),
                 );
+                if control {
+                    list = list.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(8.0))
+                            .px(px(16.0))
+                            .py(px(12.0))
+                            .border_b_1()
+                            .border_color(theme.border)
+                            .child(self.message.clone())
+                            .child(
+                                ui::primary("commit", format!("{} commit", icons::CHECK), theme)
+                                    .on_click(cx.listener(|home, _, _, cx| home.commit_staged(cx))),
+                            ),
+                    );
+                }
                 if changes.is_empty() {
                     list = list.child(ui::hint("No changes.", theme).py(px(16.0)));
                 }
@@ -191,7 +239,53 @@ impl Home {
                     if rows.is_empty() {
                         continue;
                     }
-                    list = list.child(ui::section(format!("{title} {}", rows.len()), theme));
+                    let paths: Vec<String> = rows.iter().map(|change| change.path.clone()).collect();
+                    let mut section = ui::section(format!("{title} {}", rows.len()), theme);
+                    if control {
+                        let root = project.to_string();
+                        let (label, all) =
+                            if staged { ("unstage all", paths.clone()) } else { ("stage all", paths.clone()) };
+                        section = section.child(
+                            div()
+                                .id(SharedString::from(format!("all-{title}")))
+                                .text_color(theme.accent)
+                                .child(label)
+                                .on_click(cx.listener(move |home, _, _, cx| {
+                                    let paths = all.clone();
+                                    let action =
+                                        if staged { Action::Unstage { paths } } else { Action::Stage { paths } };
+                                    home.act(key, &root, action, cx)
+                                })),
+                        );
+                        if !staged {
+                            let root = project.to_string();
+                            let count = paths.len();
+                            section = section.child(
+                                div()
+                                    .id("discard-all")
+                                    .text_color(theme.red)
+                                    .child("discard")
+                                    .on_click(cx.listener(move |home, _, _, cx| {
+                                        let (root, paths) = (root.clone(), paths.clone());
+                                        home.show(
+                                            Sheet::Confirm {
+                                                title: "discard changes?".into(),
+                                                detail: format!(
+                                                    "Discard changes to {count} {}? This cannot be undone. New files go to the trash.",
+                                                    if count == 1 { "file" } else { "files" }
+                                                ),
+                                                button: "discard".into(),
+                                                run: std::rc::Rc::new(move |home, _, cx| {
+                                                    home.act(key, &root, Action::Discard { paths: paths.clone() }, cx)
+                                                }),
+                                            },
+                                            cx,
+                                        )
+                                    })),
+                            );
+                        }
+                    }
+                    list = list.child(section);
                     for change in rows {
                         list = list.child(self.change_row(key, project, change, None, theme, cx));
                     }
@@ -206,7 +300,13 @@ impl Home {
                 for commit in commits {
                     let short: String = commit.hash.chars().take(7).collect();
                     let (hash, root) = (commit.hash.clone(), project.to_string());
-                    let refs = commit.refs.join(", ");
+                    let refs = commit
+                        .refs
+                        .iter()
+                        .map(|reference| reference.strip_prefix("remote: ").unwrap_or(reference))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let held = (project.to_string(), commit.clone());
                     list = list.child(
                         ui::row(SharedString::from(format!("commit:{}", commit.hash)), theme)
                             .child(div().flex_none().w(px(18.0)).text_color(theme.faint).child(icons::COMMIT))
@@ -232,7 +332,13 @@ impl Home {
                             )
                             .on_click(cx.listener(move |home, _, window, cx| {
                                 home.go(Screen::Commit { key, project: root.clone(), hash: hash.clone() }, window, cx)
-                            })),
+                            }))
+                            .when(control, |this| {
+                                this.child(ui::hold(cx.listener(move |home, _, _, cx| {
+                                    let sheet = home.commit_menu(key, &held.0, &held.1);
+                                    home.show(sheet, cx)
+                                })))
+                            }),
                     );
                 }
                 list
@@ -292,6 +398,9 @@ impl Home {
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<Div> {
         let (path, root) = (change.path.clone(), project.to_string());
+        let control = self.link.read(cx).control(&key);
+        let held = (project.to_string(), change.clone(), commit.clone());
+        let quick = (project.to_string(), change.path.clone(), change.staged);
         let name = change.path.rsplit('/').next().unwrap_or(&change.path).to_string();
         let folder = change.path.strip_suffix(&name).unwrap_or("").trim_end_matches('/').to_string();
         ui::row(SharedString::from(format!("change:{}:{}:{}", change.staged, change.path, commit.is_some())), theme)
@@ -326,6 +435,24 @@ impl Home {
                         this.child(div().text_color(theme.red).child(format!("-{}", change.removed)))
                     }),
             )
+            .when(control && held.2.is_none(), |this| {
+                this.child(
+                    div()
+                        .id(SharedString::from(format!("quick:{}:{}", quick.2, quick.1)))
+                        .flex_none()
+                        .w(px(28.0))
+                        .flex()
+                        .justify_center()
+                        .text_color(theme.accent)
+                        .child(if quick.2 { "−" } else { "+" })
+                        .on_click(cx.listener(move |home, _, _, cx| {
+                            let paths = vec![quick.1.clone()];
+                            let action = if quick.2 { Action::Unstage { paths } } else { Action::Stage { paths } };
+                            cx.stop_propagation();
+                            home.act(key, &quick.0, action, cx)
+                        })),
+                )
+            })
             .on_click(cx.listener(move |home, _, window, cx| {
                 home.go(
                     Screen::Diff { key, project: root.clone(), path: path.clone(), commit: commit.clone() },
@@ -333,5 +460,15 @@ impl Home {
                     cx,
                 )
             }))
+            .when(control, |this| {
+                this.child(ui::hold(cx.listener(move |home, _, _, cx| {
+                    let (root, change, commit) = &held;
+                    let sheet = match commit {
+                        Some(hash) => home.commit_file_menu(key, root, hash, change),
+                        None => home.change_menu(key, root, change),
+                    };
+                    home.show(sheet, cx)
+                })))
+            })
     }
 }

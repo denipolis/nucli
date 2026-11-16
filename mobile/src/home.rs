@@ -12,8 +12,12 @@ use nucli_core::uplink::wire::Key;
 
 use crate::field::{Field, FieldEvent};
 use crate::link::Link;
+use crate::menus::Clip;
 use crate::mirror::Mirror;
+use crate::sheet::Sheet;
 use crate::{prefs, ui};
+
+const TOAST: Duration = Duration::from_secs(4);
 
 #[derive(Clone, PartialEq)]
 pub enum Screen {
@@ -75,6 +79,12 @@ pub struct Home {
     pub scroll: ScrollHandle,
     pub drawer_scroll: ScrollHandle,
     pub drawer_focus: FocusHandle,
+    pub sheet: Option<Sheet>,
+    pub sheet_focus: FocusHandle,
+    pub input: Entity<Field>,
+    pub message: Entity<Field>,
+    pub clip: Option<Clip>,
+    pub toast: Option<(String, Instant)>,
     focus: FocusHandle,
     ticker: Option<Task<()>>,
     moves: usize,
@@ -107,6 +117,10 @@ impl Home {
         let address = field("computer name or address", Autocapitalize::None, TextInputAction::Go, cx);
         let name = field("this phone's name", Autocapitalize::Words, TextInputAction::Done, cx);
         let reach = field("names or addresses, comma separated", Autocapitalize::None, TextInputAction::Done, cx);
+        let input = field("", Autocapitalize::None, TextInputAction::Done, cx);
+        let message = field("commit message", Autocapitalize::Sentences, TextInputAction::Done, cx);
+        cx.subscribe_in(&input, window, |home, _, _: &FieldEvent, window, cx| home.answer(window, cx)).detach();
+        cx.subscribe(&message, |home, _, _: &FieldEvent, cx| home.commit_staged(cx)).detach();
         cx.subscribe_in(&code, window, |home, _, _: &FieldEvent, window, cx| {
             window.focus(&home.address.focus_handle(cx), cx)
         })
@@ -152,6 +166,12 @@ impl Home {
             scroll: ScrollHandle::new(),
             drawer_scroll: ScrollHandle::new(),
             drawer_focus: cx.focus_handle(),
+            sheet: None,
+            sheet_focus: cx.focus_handle(),
+            input,
+            message,
+            clip: None,
+            toast: None,
             focus: cx.focus_handle(),
             ticker: None,
             moves: 0,
@@ -313,6 +333,10 @@ impl Home {
 
     pub fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         window.blur(cx);
+        if self.sheet.take().is_some() {
+            cx.notify();
+            return;
+        }
         if self.drawer.is_some() && matches!(self.screen, Screen::Project { .. }) {
             self.drawer = None;
             cx.notify();
@@ -465,6 +489,22 @@ impl Home {
         self.link.update(cx, |link, cx| link.pair(text, cx));
     }
 
+    pub fn commit_staged(&mut self, cx: &mut Context<Self>) {
+        let message = self.message.read(cx).text.trim().to_string();
+        let Screen::Project { key, project } = self.screen.clone() else { return };
+        if message.is_empty() {
+            self.say("Write a commit message first.");
+            cx.notify();
+            return;
+        }
+        self.send_then(
+            key,
+            Request::Act { project, action: nucli_core::uplink::protocol::Action::Commit { message } },
+            |home, cx| home.message.update(cx, |field, cx| field.set("", cx)),
+            cx,
+        );
+    }
+
     fn moved(&mut self, forward: bool) {
         self.scroll.set_offset(point(px(0.0), px(0.0)));
         self.moves += 1;
@@ -478,22 +518,30 @@ impl Home {
             "down" | "tab" if plain => self.step(true, window, cx),
             "up" if plain => self.step(false, window, cx),
             "tab" if modifiers == Modifiers::shift() => self.step(false, window, cx),
-            "escape" if plain && !self.history.is_empty() => self.back(window, cx),
-            "[" if modifiers == Modifiers::command() && !self.history.is_empty() => self.back(window, cx),
+            "escape" if plain && (!self.history.is_empty() || self.sheet.is_some()) => self.back(window, cx),
+            "[" if modifiers == Modifiers::command() && (!self.history.is_empty() || self.sheet.is_some()) => {
+                self.back(window, cx)
+            }
             _ => return,
         }
         cx.stop_propagation();
     }
 
     fn step(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let drawer = self.drawer.is_some() && matches!(self.screen, Screen::Project { .. });
+        let scope = if self.sheet.is_some() {
+            Some(self.sheet_focus.clone())
+        } else if self.drawer.is_some() && matches!(self.screen, Screen::Project { .. }) {
+            Some(self.drawer_focus.clone())
+        } else {
+            None
+        };
         for _ in 0..256 {
             if forward {
                 window.focus_next(cx);
             } else {
                 window.focus_prev(cx);
             }
-            if !drawer || self.drawer_focus.contains_focused(window, cx) {
+            if scope.as_ref().is_none_or(|scope| scope.contains_focused(window, cx)) {
                 break;
             }
         }
@@ -671,7 +719,8 @@ impl Render for Home {
             }
             _ => self.any_working(cx),
         };
-        self.animate(animated, cx);
+        let toast = self.toast.clone().filter(|(_, shown)| shown.elapsed() < TOAST).map(|(text, _)| text);
+        self.animate(animated || toast.is_some(), cx);
         if window.focused(cx).is_none() {
             window.focus(&self.focus, cx);
         }
@@ -706,10 +755,38 @@ impl Render for Home {
             .text_size(px(ui::TEXT))
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::key_down))
+            .relative()
             .child(div().flex_1().min_h_0().flex().flex_col().child(body).with_animation(
                 ("screen", self.moves),
                 ui::motion(),
                 move |this, delta| this.opacity(delta).relative().left(px((1.0 - delta) * shift)),
             ))
+            .children(toast.map(|text| {
+                div()
+                    .absolute()
+                    .left(insets.left + px(16.0))
+                    .right(insets.right + px(16.0))
+                    .bottom(insets.bottom + px(16.0))
+                    .px(px(12.0))
+                    .py(px(10.0))
+                    .bg(theme.surface)
+                    .border_1()
+                    .border_color(theme.border)
+                    .text_size(px(ui::SMALL))
+                    .child(text)
+                    .with_animation(("toast", self.moves), ui::motion(), |this, delta| this.opacity(delta))
+            }))
+            .children(self.sheet_view(&theme, cx).map(|sheet| {
+                div()
+                    .absolute()
+                    .inset_0()
+                    .pt(insets.top)
+                    .pb(insets.bottom)
+                    .pl(insets.left)
+                    .pr(insets.right)
+                    .flex()
+                    .flex_col()
+                    .child(div().flex_1().relative().child(sheet))
+            }))
     }
 }

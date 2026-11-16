@@ -112,6 +112,7 @@ impl Home {
                 parts.push("nothing running".into());
             }
             let path = project.path.clone();
+            let held = project.path.clone();
             let color = project.color.map_or(theme.accent, |color| color.color(theme.dark));
             list = list.child(
                 ui::row(SharedString::from(format!("project:{}", project.path)), theme)
@@ -160,7 +161,13 @@ impl Home {
                     .child(div().flex_none().text_color(theme.faint).child(icons::CHEVRON_RIGHT))
                     .on_click(cx.listener(move |home, _, window, cx| {
                         home.go(Screen::Project { key, project: path.clone() }, window, cx)
-                    })),
+                    }))
+                    .when(control && !scratch, |this| {
+                        this.child(ui::hold(cx.listener(move |home, _, _, cx| {
+                            let sheet = home.project_menu(key, &held, cx);
+                            home.show(sheet, cx)
+                        })))
+                    }),
             );
         }
         if catalog.projects.is_empty() {
@@ -202,6 +209,7 @@ impl Home {
                 format!("{project} · {} · {}", item.profile, age(item.modified))
             };
             let (id, path) = (item.id.clone(), item.project.clone());
+            let held = item.clone();
             list = list.child(
                 ui::row(SharedString::from(format!("conversation:{}", item.id)), theme)
                     .child(div().flex_none().w(px(18.0)).text_color(color.color(theme.dark)).child(glyph))
@@ -223,7 +231,11 @@ impl Home {
                             .on_click(cx.listener(move |home, _, window, cx| {
                                 home.resume(key, id.clone(), path.clone(), window, cx)
                             }))
-                    }),
+                    })
+                    .child(ui::hold(cx.listener(move |home, _, _, cx| {
+                        let sheet = home.conversation_menu(key, &held, control);
+                        home.show(sheet, cx)
+                    }))),
             );
         }
         list
