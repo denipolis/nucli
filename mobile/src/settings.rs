@@ -130,7 +130,11 @@ impl Home {
                     .on_click(cx.listener(|home, _, window, cx| home.go(Screen::Pair, window, cx))),
             )
             .child(ui::section("about", theme))
-            .child(ui::label_value("version", div().child(format!("Nucli Uplink {}", env!("CARGO_PKG_VERSION"))), theme))
+            .child(ui::label_value(
+                "version",
+                div().child(format!("Nucli Uplink {}", env!("CARGO_PKG_VERSION"))),
+                theme,
+            ))
             .child(div().h(px(24.0)));
         div()
             .flex_1()

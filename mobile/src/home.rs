@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnimationExt, AnyElement, AppContext, Autocapitalize, Context, Entity, FocusHandle, InteractiveElement,
-    IntoElement, KeyDownEvent, Modifiers, ParentElement, Render, ScrollHandle, Styled, Task, TextInputAction, Window,
-    div, point, px,
+    AnimationExt, AnyElement, AppContext, Autocapitalize, BackGestureEvent, BackGesturePhase, Context, Entity,
+    FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, Modifiers, ParentElement, Render, ScrollHandle, Styled,
+    Task, TextInputAction, Window, div, point, px,
 };
 use nucli_core::fonts::FAMILY;
 use nucli_core::session::Activity;
@@ -88,6 +89,7 @@ pub struct Home {
     ticker: Option<Task<()>>,
     moves: usize,
     shift: f32,
+    swipe: f32,
 }
 
 impl Home {
@@ -168,6 +170,7 @@ impl Home {
             ticker: None,
             moves: 0,
             shift: 0.0,
+            swipe: 0.0,
         }
     }
 
@@ -505,6 +508,14 @@ impl Home {
         cx.stop_propagation();
     }
 
+    fn swiped(&mut self, event: &BackGestureEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.swipe = if event.phase == BackGesturePhase::Progressed { event.progress } else { 0.0 };
+        if event.phase == BackGesturePhase::Committed {
+            self.back(window, cx);
+        }
+        cx.notify();
+    }
+
     fn step(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
         let scope = if self.sheet.is_some() {
             Some(self.sheet_focus.clone())
@@ -698,7 +709,7 @@ impl Home {
 impl Render for Home {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = ui::theme(window, cx);
-        let shift = self.shift;
+        let (shift, swipe) = (self.shift, self.swipe);
         let insets = window.insets().effective();
         let animated = match &self.screen {
             Screen::Welcome => self.shown.elapsed() < Duration::from_secs(3),
@@ -762,12 +773,19 @@ impl Render for Home {
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::key_down))
             .relative()
+            .when(!self.history.is_empty() || self.sheet.is_some() || self.drawer.is_some(), |this| {
+                this.on_back_gesture(cx.listener(Self::swiped))
+            })
             .child(ui::taps())
-            .child(div().flex_1().min_h_0().flex().flex_col().child(body).with_animation(
-                ("screen", self.moves),
-                ui::motion(),
-                move |this, delta| this.opacity(delta).relative().left(px((1.0 - delta) * shift)),
-            ))
+            .child(
+                div().flex_1().min_h_0().flex().flex_col().relative().left(window.viewport_size().width * swipe).child(
+                    div().flex_1().min_h_0().flex().flex_col().child(body).with_animation(
+                        ("screen", self.moves),
+                        ui::motion(),
+                        move |this, delta| this.opacity(delta).relative().left(px((1.0 - delta) * shift)),
+                    ),
+                ),
+            )
             .children(toast.map(|text| {
                 div()
                     .absolute()
