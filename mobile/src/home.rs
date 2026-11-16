@@ -49,6 +49,8 @@ pub struct Drawer {
     pub panel: Panel,
     pub folder: String,
     pub data: Option<Response>,
+    pub slide: bool,
+    pub fade: bool,
 }
 
 pub struct Home {
@@ -257,7 +259,8 @@ impl Home {
     }
 
     pub fn open_drawer(&mut self, key: Key, project: String, panel: Panel, folder: String, cx: &mut Context<Self>) {
-        self.drawer = Some(Drawer { panel, folder: folder.clone(), data: None });
+        let slide = self.drawer.as_ref().is_none_or(|drawer| drawer.slide);
+        self.drawer = Some(Drawer { panel, folder: folder.clone(), data: None, slide, fade: true });
         self.drawer_scroll.set_offset(point(px(0.0), px(0.0)));
         let request = match panel {
             Panel::Files => Request::Files { project, folder: folder.clone() },
@@ -295,6 +298,9 @@ impl Home {
         }
         if !matches!(screen, Screen::File { .. } | Screen::Diff { .. } | Screen::Commit { .. }) {
             self.drawer = None;
+        } else if let Some(drawer) = &mut self.drawer {
+            drawer.slide = false;
+            drawer.fade = false;
         }
         self.forgetting = None;
         self.notice = None;

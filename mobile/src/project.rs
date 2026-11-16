@@ -240,38 +240,46 @@ impl Home {
             Some(_) => div(),
         };
         let dim = theme.background;
-        div()
-            .absolute()
-            .inset_0()
+        let backdrop =
+            div().id("drawer-backdrop").flex_1().on_click(cx.listener(|home, _, window, cx| home.back(window, cx)));
+        let backdrop = if drawer.slide {
+            backdrop
+                .with_animation("drawer-dim", ui::motion(), move |this, delta| this.bg(dim.opacity(0.7 * delta)))
+                .into_any_element()
+        } else {
+            backdrop.bg(dim.opacity(0.7)).into_any_element()
+        };
+        let body = if drawer.fade {
+            body.with_animation(
+                SharedString::from(format!("drawer-{}-{}", panel_index(drawer.panel), drawer.folder)),
+                ui::motion(),
+                |this, delta| this.opacity(delta),
+            )
+            .into_any_element()
+        } else {
+            body.into_any_element()
+        };
+        let panel = div()
+            .track_focus(&self.drawer_focus)
             .flex()
-            .occlude()
-            .child(
-                div()
-                    .id("drawer-backdrop")
-                    .flex_1()
-                    .on_click(cx.listener(|home, _, window, cx| home.back(window, cx)))
-                    .with_animation("drawer-dim", ui::motion(), move |this, delta| this.bg(dim.opacity(0.7 * delta))),
-            )
-            .child(
-                div()
-                    .track_focus(&self.drawer_focus)
-                    .flex()
-                    .flex_col()
-                    .w(relative(0.88))
-                    .h_full()
-                    .bg(theme.background)
-                    .border_l_1()
-                    .border_color(theme.border)
-                    .child(header)
-                    .child(ui::scroll("drawer", &self.drawer_scroll).child(body.with_animation(
-                        SharedString::from(format!("drawer-{}-{}", panel_index(drawer.panel), drawer.folder)),
-                        ui::motion(),
-                        |this, delta| this.opacity(delta),
-                    )))
-                    .with_animation("drawer-slide", ui::motion(), |this, delta| {
-                        this.relative().left(relative(0.88 * (1.0 - delta)))
-                    }),
-            )
+            .flex_col()
+            .w(relative(0.88))
+            .h_full()
+            .bg(theme.background)
+            .border_l_1()
+            .border_color(theme.border)
+            .child(header)
+            .child(ui::scroll("drawer", &self.drawer_scroll).child(body));
+        let panel = if drawer.slide {
+            panel
+                .with_animation("drawer-slide", ui::motion(), |this, delta| {
+                    this.relative().left(relative(0.88 * (1.0 - delta)))
+                })
+                .into_any_element()
+        } else {
+            panel.into_any_element()
+        };
+        div().absolute().inset_0().flex().occlude().child(backdrop).child(panel)
     }
 
     pub fn change_row(
