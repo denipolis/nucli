@@ -140,7 +140,10 @@ impl Uplink {
     }
 
     pub(super) fn answered(&mut self, key: Key, id: u64, response: Response) {
-        let Some(own) = self.transfers.own.remove(&id).filter(|own| own.key == key) else { return };
+        if self.transfers.own.get(&id).is_none_or(|own| own.key != key) {
+            return;
+        }
+        let Some(own) = self.transfers.own.remove(&id) else { return };
         if let Some(sink) = &own.sink
             && response == Response::Done
         {

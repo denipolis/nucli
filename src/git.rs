@@ -298,15 +298,23 @@ pub fn file_diff(dir: &Path, path: &str, commit: Option<&str>) -> Option<Vec<Dif
         Some(hash) => vec![parent(dir, hash), hash.to_string()],
         None => vec![base(dir).to_string()],
     };
-    let mut args = vec!["--literal-pathspecs", "diff"];
+    let mut args = vec![
+        "--literal-pathspecs",
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-renames",
+        WHOLE_FILE,
+        "--end-of-options",
+    ];
     args.extend(revisions.iter().map(String::as_str));
-    args.extend(["--no-color", "--no-ext-diff", "--no-renames", WHOLE_FILE, "--", path]);
+    args.extend(["--", path]);
     let diff = run(dir, &args)?;
     if !diff.is_empty() {
         return parse_diff(&diff);
     }
     let (text, kind) = match commit {
-        Some(hash) => (run(dir, &["show", &format!("{hash}:./{path}")])?, LineKind::Context),
+        Some(hash) => (run(dir, &["show", "--end-of-options", &format!("{hash}:./{path}")])?, LineKind::Context),
         None if is_untracked(dir, path) => (read_text(&dir.join(path))?, LineKind::Added),
         None => (read_text(&dir.join(path))?, LineKind::Context),
     };
@@ -489,6 +497,7 @@ pub fn commit_details(dir: &Path, hash: &str) -> Option<CommitDetails> {
         "--shortstat",
         "--date=format-local:%B %d, %Y at %I:%M %p",
         "--format=%ad%x00%B%x00",
+        "--end-of-options",
         hash,
     ];
     parse_details(&run(dir, &args)?)

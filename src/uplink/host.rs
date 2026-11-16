@@ -61,6 +61,16 @@ pub(super) fn inside(root: &Path, relative: &str) -> Option<PathBuf> {
     resolved.starts_with(root.canonicalize().ok()?).then_some(path)
 }
 
+fn confined(root: &Path, relative: &str) -> bool {
+    if relative.is_empty() {
+        false
+    } else if root.join(relative).symlink_metadata().is_ok() {
+        inside(root, relative).is_some()
+    } else {
+        act::target(root, relative).is_ok()
+    }
+}
+
 fn conversation(item: history::Conversation, shared: &[(PathBuf, String)]) -> Option<RemoteConversation> {
     let (root, _) =
         shared.iter().filter(|(root, _)| item.cwd.starts_with(root)).max_by_key(|(root, _)| root.as_os_str().len())?;
@@ -138,6 +148,9 @@ fn answer(request: Request, root: PathBuf) -> Response {
             }
             None => failed("This project is not a git repository."),
         },
+        Request::Diff { path, .. } if !confined(&root, &path) => failed("This file is outside the project."),
+        Request::Diff { commit: Some(hash), .. } if act::hash(&hash).is_err() => failed("This is not a commit."),
+        Request::Commit { hash, .. } if act::hash(&hash).is_err() => failed("This is not a commit."),
         Request::Diff { path, commit, .. } => match git::file_diff(&root, &path, commit.as_deref()) {
             Some(lines) => Response::Diff {
                 lines: lines
@@ -332,10 +345,27 @@ mod tests {
         assert!(inside(&root, "../secret").is_none());
         assert!(inside(&root, "src/../../secret").is_none());
         assert!(inside(&root, base.join("secret").to_str().unwrap()).is_none());
+        assert!(confined(&root, "src/main.rs") && confined(&root, "src/deleted.rs"));
+        assert!(!confined(&root, "../secret") && !confined(&root, "") && !confined(&root, "/etc/hosts"));
+        let output = base.join("written").to_string_lossy().into_owned();
+        let project = project_key(&root);
+        for request in [
+            Request::Diff {
+                project: project.clone(),
+                path: "src/main.rs".into(),
+                commit: Some(format!("--output={output}")),
+            },
+            Request::Commit { project: project.clone(), hash: format!("--output={output}") },
+            Request::Diff { project, path: "../secret".into(), commit: None },
+        ] {
+            assert!(matches!(answer(request, root.clone()), Response::Failed { .. }));
+        }
+        assert!(!base.join("written").exists());
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(base.join("secret"), root.join("link")).unwrap();
             assert!(inside(&root, "link").is_none());
+            assert!(!confined(&root, "link"));
         }
         let _ = std::fs::remove_dir_all(base);
     }

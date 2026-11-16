@@ -34,7 +34,7 @@ pub fn free_name(path: &Path) -> PathBuf {
 }
 
 pub fn valid_name(name: &str) -> bool {
-    !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', '\0'])
+    !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', '\0', ':'])
 }
 
 pub async fn send(
@@ -76,7 +76,12 @@ pub fn receive(
             let name = target.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
             let temp = target.with_file_name(format!(".{name}.nucli-part"));
             let result = async {
-                let mut file = std::fs::File::create(&temp).map_err(|error| error.to_string())?;
+                let _ = std::fs::remove_file(&temp);
+                let mut file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&temp)
+                    .map_err(|error| error.to_string())?;
                 let mut written = 0u64;
                 while let Some(piece) = pieces.next().await {
                     match piece {
@@ -120,6 +125,7 @@ mod tests {
     fn names_and_free_paths() {
         assert!(valid_name("a.txt") && valid_name(".env"));
         assert!(!valid_name("") && !valid_name("..") && !valid_name("a/b") && !valid_name("a\\b"));
+        assert!(!valid_name("C:x"));
         let base = std::env::temp_dir().join(format!("nucli-transfer-{}", std::process::id()));
         std::fs::create_dir_all(&base).unwrap();
         assert_eq!(free_name(&base.join("new.txt")), base.join("new.txt"));

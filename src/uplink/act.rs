@@ -21,7 +21,7 @@ fn reply(outbox: &Outbox, id: u64, result: Result<(), String>) {
     outbox.send(&Message::Response { id, response });
 }
 
-fn target(root: &Path, relative: &str) -> Result<PathBuf, String> {
+pub(super) fn target(root: &Path, relative: &str) -> Result<PathBuf, String> {
     let path = Path::new(relative);
     if relative.is_empty() || path.components().any(|part| !matches!(part, Component::Normal(_))) {
         return Err("This path is outside the project.".into());
@@ -47,7 +47,7 @@ fn name(text: &str) -> Result<&str, String> {
     Ok(text)
 }
 
-fn hash(text: &str) -> Result<&str, String> {
+pub(super) fn hash(text: &str) -> Result<&str, String> {
     if text.is_empty() || !text.chars().all(|character| character.is_ascii_hexdigit()) {
         return Err("This is not a commit.".into());
     }
