@@ -91,7 +91,10 @@ pub fn start(name: String, cx: &mut App) -> Entity<Link> {
     let ticking = link.clone();
     cx.spawn(async move |cx| {
         loop {
-            ticking.update(cx, |link, _| link.dial());
+            ticking.update(cx, |link, cx| {
+                link.dial();
+                crate::alerts::keep(crate::prefs::get(cx).notifications && !link.devices.is_empty());
+            });
             cx.background_executor().timer(Duration::from_secs(1)).await;
         }
     })
@@ -361,7 +364,7 @@ impl Link {
     fn handle(&mut self, event: NetEvent, cx: &mut Context<Self>) {
         match event {
             NetEvent::Connected(connection) => self.connected(connection),
-            NetEvent::Message(conn, message) => self.message(conn, message),
+            NetEvent::Message(conn, message) => self.message(conn, message, cx),
             NetEvent::Closed(conn) => {
                 let closed: Vec<Key> =
                     self.online.iter().filter(|(_, online)| online.conn == conn).map(|(key, _)| *key).collect();
@@ -459,14 +462,17 @@ impl Link {
         self.save();
     }
 
-    fn message(&mut self, conn: u64, message: Message) {
+    fn message(&mut self, conn: u64, message: Message, cx: &App) {
         let Some(key) = self.online.iter().find(|(_, online)| online.conn == conn).map(|(key, _)| *key) else {
             return;
         };
         match message {
             Message::Catalog(catalog) => {
                 if let Some(online) = self.online.get_mut(&key) {
-                    online.catalog = catalog;
+                    let previous = std::mem::replace(&mut online.catalog, catalog);
+                    if crate::prefs::get(cx).notifications {
+                        self.alert(key, &previous);
+                    }
                 }
             }
             Message::Stop { tab, reason: Stop::Behind } => {
@@ -507,6 +513,24 @@ impl Link {
                 self.save();
             }
             _ => {}
+        }
+    }
+
+    fn alert(&self, key: Key, previous: &Catalog) {
+        let Some(catalog) = self.online.get(&key).map(|online| &online.catalog) else { return };
+        let device = self.device(&key).map(|device| device.name.clone()).unwrap_or_default();
+        for tab in &catalog.tabs {
+            let Some(before) = previous.tabs.iter().find(|old| old.id == tab.id) else { continue };
+            let Some(text) = tab.alert(before) else { continue };
+            if self.is_watched(key, &tab.id) && crate::alerts::active() {
+                continue;
+            }
+            let project = catalog.projects.iter().find(|project| project.path == tab.project);
+            let place = match project.filter(|project| !project.name.is_empty()) {
+                Some(project) => format!("{device} · {}", project.name),
+                None => device.clone(),
+            };
+            crate::alerts::post(&tab.title, &place, &text, &format!("{} {}", wire::encode_key(&key), tab.id));
         }
     }
 

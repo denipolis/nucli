@@ -1,3 +1,4 @@
+mod alerts;
 mod board;
 mod computer;
 mod computers;
@@ -35,6 +36,7 @@ fn main() {
         let _ = opened.unbounded_send(list);
     });
     application.run(|cx: &mut App| {
+        let mut clicks = alerts::clicks();
         if let Err(error) = cx.text_system().add_fonts(nucli_core::fonts::bundled()) {
             eprintln!("fonts: {error}");
         }
@@ -49,6 +51,14 @@ fn main() {
         });
         match window {
             Ok(window) => {
+                cx.spawn(async move |cx| {
+                    while let Some(id) = clicks.next().await {
+                        let Some((key, tab)) = id.split_once(' ') else { continue };
+                        let Some(key) = nucli_core::uplink::wire::decode_key(key) else { continue };
+                        let _ = window.update(cx, |home, window, cx| home.open(key, tab.to_string(), window, cx));
+                    }
+                })
+                .detach();
                 cx.spawn(async move |cx| {
                     while let Some(list) = urls.next().await {
                         let _ = window.update(cx, |home, _, cx| {

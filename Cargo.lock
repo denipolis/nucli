@@ -3530,6 +3530,7 @@ name = "nucli-uplink"
 version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
+ "block2 0.6.2",
  "dirs 7.0.0",
  "dispatch2",
  "futures",
@@ -3544,6 +3545,7 @@ dependencies = [
  "objc2-quartz-core 0.3.2",
  "objc2-ui-kit",
  "objc2-uniform-type-identifiers",
+ "objc2-user-notifications",
  "serde",
  "serde_json",
 ]

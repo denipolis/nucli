@@ -57,7 +57,23 @@ impl Home {
                     .on_click(cx.listener(move |_, _, _, cx| prefs::update(cx, |prefs| prefs.appearance = appearance))),
             );
         }
-        body = body.child(modes).child(ui::section("theme", theme));
+        let notifying = current.notifications;
+        body = body
+            .child(modes)
+            .child(ui::section("notifications", theme))
+            .child(
+                ui::row("notifications", theme)
+                    .child(ui::choice(notifying, theme))
+                    .child(div().flex_1().child("notify this phone"))
+                    .on_click(cx.listener(move |_, _, _, cx| {
+                        prefs::update(cx, |prefs| prefs.notifications = !notifying)
+                    })),
+            )
+            .child(ui::hint(
+                "When an agent finishes or waits for input. Nucli Uplink keeps running in the background to stay connected. Hold a workspace, project or tab to mute it.",
+                theme,
+            ))
+            .child(ui::section("theme", theme));
         for (id, name) in theme::all(&[]) {
             let on = current.theme == id.as_ref();
             let chosen = id.to_string();

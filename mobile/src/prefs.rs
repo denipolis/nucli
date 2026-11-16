@@ -22,6 +22,7 @@ pub struct Prefs {
     pub onboarded: bool,
     pub agent: String,
     pub shell: String,
+    pub notifications: bool,
 }
 
 impl Default for Prefs {
@@ -34,6 +35,7 @@ impl Default for Prefs {
             onboarded: false,
             agent: String::new(),
             shell: String::new(),
+            notifications: true,
         }
     }
 }
