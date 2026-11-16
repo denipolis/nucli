@@ -3456,7 +3456,7 @@ dependencies = [
 
 [[package]]
 name = "nucli"
-version = "2.7.0"
+version = "2.8.0"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
