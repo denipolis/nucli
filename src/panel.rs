@@ -5,7 +5,7 @@ use gpui::{
 };
 
 use crate::icons;
-use crate::persist::PanelTab;
+use crate::persist::View;
 use crate::store;
 use crate::ui;
 use crate::window::WorkspaceView;
@@ -23,78 +23,21 @@ fn panel_project(view: &WorkspaceView, cx: &App) -> Option<std::path::PathBuf> {
     view.current_project_path(cx).filter(|path| !path.as_os_str().is_empty())
 }
 
-pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) -> AnyElement {
+pub fn render(
+    view: &mut WorkspaceView,
+    kind: View,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) -> AnyElement {
     let theme = ui::theme(cx);
-    let tab = view.store(cx).ui.panel_tab;
-    let width = view.state(cx).map(|state| state.window.panel_width).unwrap_or(280.0);
-    let side = view.store(cx).ui.panel_side;
-    let compact = width < 250.0;
-    let header_tab = |id: &'static str, glyph: &'static str, label: &'static str, target: PanelTab| {
-        let active = tab == target;
-        div()
-            .id(id)
-            .flex()
-            .gap(px(8.0))
-            .px(px(4.0))
-            .when(active, |this| this.bg(theme.accent).text_color(theme.on_accent))
-            .when(!active, |this| this.text_color(theme.muted).hover(|style| style.text_color(theme.text)))
-            .child(glyph)
-            .when(active || !compact, |this| this.child(label))
-            .on_click(move |_, _, cx| {
-                store::store(cx).update(cx, |store, cx| {
-                    store.ui.panel_tab = target;
-                    store.changed(cx);
-                })
-            })
-    };
-    let project = panel_project(view, cx);
-    let content: AnyElement = match project {
+    match panel_project(view, cx) {
         None => div().p(px(10.0)).text_color(theme.faint).child("no project selected").into_any_element(),
-        Some(path) => match tab {
-            PanelTab::Files => crate::files::panel(view, &path, window, cx),
-            PanelTab::Changes => crate::changes::panel(view, &path, window, cx),
-            PanelTab::Commits => crate::commits::panel(view, &path, window, cx),
+        Some(path) => match kind {
+            View::Changes => crate::changes::panel(view, &path, window, cx),
+            View::Commits => crate::commits::panel(view, &path, window, cx),
+            _ => crate::files::panel(view, &path, window, cx),
         },
-    };
-    div()
-        .flex()
-        .flex_col()
-        .flex_none()
-        .w(px(width))
-        .h_full()
-        .bg(theme.surface)
-        .when(side == crate::persist::Side::Left, |this| this.border_r_1())
-        .when(side == crate::persist::Side::Right, |this| this.border_l_1())
-        .border_color(theme.border)
-        .child(
-            div()
-                .id("panel-header")
-                .on_mouse_down(MouseButton::Left, cx.listener(crate::resize::start(crate::resize::Drag::PanelSide)))
-                .flex()
-                .flex_none()
-                .items_center()
-                .gap(px(6.0))
-                .px(px(8.0))
-                .py(px(4.0))
-                .overflow_hidden()
-                .border_b_1()
-                .border_color(theme.border)
-                .child(header_tab("panel-files", icons::FILES, "Files", PanelTab::Files))
-                .child(header_tab("panel-changes", icons::CHANGES, "Changes", PanelTab::Changes))
-                .child(header_tab("panel-commits", icons::COMMIT, "History", PanelTab::Commits))
-                .on_mouse_down(
-                    MouseButton::Right,
-                    cx.listener(|view, event: &gpui::MouseDownEvent, _, cx| {
-                        let items = vec![
-                            crate::menu::command("Move Panel to Other Side", "move_panel", cx),
-                            crate::menu::command("Hide Panel", "toggle_panel", cx),
-                        ];
-                        view.open_menu(event.position, items, cx);
-                    }),
-                ),
-        )
-        .child(div().flex_1().min_h_0().child(content))
-        .into_any_element()
+    }
 }
 
 pub fn terminal_panel(
@@ -238,7 +181,7 @@ pub fn terminal_panel(
     let panel = if shown {
         panel
             .h(px(height))
-            .child(crate::resize::handle_vertical(view, cx))
+            .child(crate::resize::handle_vertical(crate::resize::Drag::Terminal, cx))
             .child(strip)
             .child(div().flex_1().min_h_0().child(session))
     } else {

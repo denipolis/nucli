@@ -26,10 +26,12 @@ Paths are under `src/` unless they start with `core/`.
 | `window.rs` | `WorkspaceView`, the window root: title bar, layout, overlays, focus. |
 | `actions.rs` | Handlers for commands, launching, closing, renaming, moving, context menus, quit and close prompts. |
 | `commands.rs` | The command table: name, title, action, keys per platform, the menus shared by the native menu bar and the title bar, `keybindings.json`. |
-| `sidebar.rs` | Projects tree, agents board, history, filter, workspace popup. |
+| `docks.rs` | Dock layout rules: default layout, moving a view to a drop target, pruning empty panels and stacks, normalizing a hand-edited layout. The shapes (`Docks`, `Stack`, `Panel`, `View`, `Dock`) live in `persist.rs`, inside `Ui`, so every window shares one layout. |
+| `docks_view.rs` | Docks around the viewport: stacks, panels with their tab strips, collapsed strips, resize handles, and the drop zones shown while a view tab is dragged. |
+| `sidebar.rs` | The list views: Projects tree, Agents board, History, each with its filter. |
 | `overview.rs` | Project overview and empty viewport. |
-| `panel.rs` | Panel frame and the terminal panel. |
-| `files.rs`, `changes.rs`, `commits.rs` | Files, Changes and History panel views. |
+| `panel.rs` | Files, Changes and History (commits) view content and the terminal panel. |
+| `files.rs`, `changes.rs`, `commits.rs` | Files, Changes and History (commits) views. |
 | `drag_out.rs` | Hands a file dragged past the window edge to the system: `NSDraggingSession` on macOS, `SHDoDragDrop` on Windows, XDND on X11. |
 | `file_ops.rs` | File operations of the Files tree: create, rename, move, duplicate, cut, copy, paste, delete, drag and drop, and its context menu. |
 | `file_view.rs` | File tabs, path bar, images, Open With, close and save prompts. |
@@ -55,7 +57,7 @@ Paths are under `src/` unless they start with `core/`.
 | `menu.rs` | Context menu overlay. |
 | `prompt.rs` | Confirmation dialogs, installed with `set_prompt_builder`. |
 | `text_input.rs` | Single line input with IME. |
-| `resize.rs` | Pane resize handles. |
+| `resize.rs` | Resize handles of stacks, panels and the terminal panel. A drag keeps its start point and start sizes, so sizes follow the pointer's distance from where the drag began. |
 | `titlebar.rs` | Title bar: workspace name, menus on Linux and Windows, location, status messages and their list, Windows caption buttons. |
 | `statusbar.rs` | Status chips under the viewport: `Chip` ids and toggles, agent chips, their comboboxes and menus. |
 | `settings_view.rs` | Settings page in the viewport. |
@@ -202,6 +204,7 @@ A mirror draws at the remote terminal's size, scaled down when it is wider than 
 - `alacritty_terminal`'s parser holds everything after `CSI ? 2026 h` until the matching end or a 150 ms timeout that only its caller can fire, so the parser runs apart from the blocking pty read.
 - Prompt anchoring moves the cursor, which breaks ConPTY: it owns the screen and tracks the cursor itself, and a resize during startup, which every new tab gets, left the terminal blank for good. So on Windows (`LIFTS_PROMPT`) nothing is sent or rewritten. `TerminalElement` paints the grid lower by the blank rows under the content, and the same offset goes into `view.layout` for the mouse.
 - GPUI runs key bindings before key listeners. Recording a shortcut uses `App::intercept_keystrokes`, which runs first, so the key does not also trigger its command. A plain `on_key_down` would.
+- GPUI gives a drop to the topmost hovered element with a matching `on_drop` and stops there, and render code cannot ask which type is being dragged. So `on_drag_move::<DraggedView>` on the window root sets `view_drag`, the render then adds absolute drop zones over panels and the viewport, and `drag_over` fills the zone under the pointer as the preview. The flag clears on the first render without an active drag.
 - GPUI drags never leave the window: `on_drag` keeps a value inside the app and GPUI has no OS drag source. `WorkspaceView` watches drags of files with `on_drag_move` on the root, which fires even outside the window because each platform keeps the pointer while a button is held, and once the pointer leaves it hands the file to the system and stops the GPUI drag. Each drag offers the file and the path as plain text.
   - macOS starts an `NSDraggingSession` from the current `mouseDragged` event, so it must run inside that event. GPUI reads only `NSFilenamesPboardType` on drop.
   - Windows takes the shell's data object of the file and runs `SHDoDragDrop`, which pumps messages until the drop, so it runs in a spawned task outside any update (see the modal dialog gotcha).

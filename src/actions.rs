@@ -8,12 +8,13 @@ use gpui::{
 
 use crate::agents;
 use crate::commands::*;
+use crate::docks_view;
 use crate::history::Conversation;
 use crate::hold::{self, Launch};
 use crate::icons;
 use crate::menu::{self, Item};
 use crate::palette::{self, Palette};
-use crate::persist::{PanelTab, Selected, Side, SidebarTab};
+use crate::persist::{Dock, Selected, View};
 use crate::session::Kind;
 use crate::settings;
 use crate::store::{self, Launcher, Workspace};
@@ -1207,38 +1208,6 @@ fn select_number(view: &mut WorkspaceView, number: usize, window: &mut Window, c
     }
 }
 
-fn set_ui(cx: &mut App, change: impl FnOnce(&mut store::Store)) {
-    store::store(cx).update(cx, |store, cx| {
-        change(store);
-        store.changed(cx);
-    });
-}
-
-fn set_window(view: &WorkspaceView, cx: &mut App, change: impl FnOnce(&mut crate::persist::WindowState)) {
-    let id = view.workspace.clone();
-    store::store(cx).update(cx, |store, cx| {
-        if let Some(state) = store.workspace_mut(&id) {
-            change(&mut state.window);
-        }
-        store.changed(cx);
-    });
-}
-
-fn show_sidebar_tab(view: &mut WorkspaceView, tab: SidebarTab, cx: &mut Context<WorkspaceView>) {
-    set_window(view, cx, |state| state.sidebar_hidden = false);
-    set_ui(cx, |store| store.ui.sidebar_tab = tab);
-    if tab == SidebarTab::History {
-        store::store(cx).update(cx, |store, cx| store.refresh_history(cx));
-    }
-}
-
-fn show_panel_tab(tab: PanelTab, cx: &mut App) {
-    set_ui(cx, |store| {
-        store.ui.panel_hidden = false;
-        store.ui.panel_tab = tab;
-    });
-}
-
 fn change_font(delta: f32, cx: &mut App) {
     settings::update(cx, |settings| {
         settings.font_size = if delta == 0.0 { 13.0 } else { (settings.font_size + delta).clamp(6.0, 48.0) };
@@ -1349,27 +1318,39 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|view, _: &SelectTab7, window, cx| select_number(view, 7, window, cx)))
         .on_action(cx.listener(|view, _: &SelectTab8, window, cx| select_number(view, 8, window, cx)))
         .on_action(cx.listener(|view, _: &SelectTab9, window, cx| select_number(view, 9, window, cx)))
-        .on_action(cx.listener(|view, _: &ToggleSidebar, _, cx| {
-            set_window(view, cx, |state| state.sidebar_hidden = !state.sidebar_hidden)
-        }))
         .on_action(
-            cx.listener(|_, _: &TogglePanel, _, cx| set_ui(cx, |store| store.ui.panel_hidden = !store.ui.panel_hidden)),
+            cx.listener(|_, _: &ToggleLeftDock, _, cx| docks_view::update(cx, |docks| docks.toggle_dock(Dock::Left))),
         )
-        .on_action(cx.listener(|_, _: &MovePanel, _, cx| {
-            set_ui(cx, |store| {
-                store.ui.panel_side = if store.ui.panel_side == Side::Left { Side::Right } else { Side::Left }
-            })
+        .on_action(
+            cx.listener(|_, _: &ToggleRightDock, _, cx| docks_view::update(cx, |docks| docks.toggle_dock(Dock::Right))),
+        )
+        .on_action(
+            cx.listener(|_, _: &ToggleTopDock, _, cx| docks_view::update(cx, |docks| docks.toggle_dock(Dock::Top))),
+        )
+        .on_action(
+            cx.listener(|_, _: &ToggleBottomDock, _, cx| {
+                docks_view::update(cx, |docks| docks.toggle_dock(Dock::Bottom))
+            }),
+        )
+        .on_action(cx.listener(|_, _: &ResetLayout, _, cx| docks_view::update(cx, |docks| *docks = Default::default())))
+        .on_action(cx.listener(|view, _: &FilterList, window, cx| {
+            let docks = &view.store(cx).ui.docks;
+            let kind = View::ALL
+                .into_iter()
+                .filter(|kind| kind.list())
+                .find(|kind| docks.shown(*kind) && (*kind != View::Uplink || crate::uplink::Uplink::enabled(cx)))
+                .unwrap_or(View::Projects);
+            docks_view::show(kind, cx);
+            if let Some(filter) = view.filters.get(&kind) {
+                window.focus(&filter.focus_handle(cx), cx);
+            }
         }))
-        .on_action(cx.listener(|view, _: &FilterSidebar, window, cx| {
-            show_sidebar_tab(view, view.store(cx).ui.sidebar_tab, cx);
-            window.focus(&view.filter.focus_handle(cx), cx);
-        }))
-        .on_action(cx.listener(|view, _: &ShowProjects, _, cx| show_sidebar_tab(view, SidebarTab::Projects, cx)))
-        .on_action(cx.listener(|view, _: &ShowAgents, _, cx| show_sidebar_tab(view, SidebarTab::Agents, cx)))
-        .on_action(cx.listener(|view, _: &ShowHistory, _, cx| show_sidebar_tab(view, SidebarTab::History, cx)))
+        .on_action(cx.listener(|_, _: &ShowProjects, _, cx| docks_view::show(View::Projects, cx)))
+        .on_action(cx.listener(|_, _: &ShowAgents, _, cx| docks_view::show(View::Agents, cx)))
+        .on_action(cx.listener(|_, _: &ShowHistory, _, cx| docks_view::show(View::History, cx)))
         .on_action(cx.listener(|view, _: &ShowUplink, window, cx| {
             if crate::uplink::Uplink::enabled(cx) {
-                show_sidebar_tab(view, SidebarTab::Uplink, cx);
+                docks_view::show(View::Uplink, cx);
             } else {
                 crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx);
             }
@@ -1379,9 +1360,9 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
             settings::update(cx, |settings| settings.uplink.enabled = true);
             crate::uplink::pairing::show(view, window, cx);
         }))
-        .on_action(cx.listener(|_, _: &ShowFiles, _, cx| show_panel_tab(PanelTab::Files, cx)))
-        .on_action(cx.listener(|_, _: &ShowChanges, _, cx| show_panel_tab(PanelTab::Changes, cx)))
-        .on_action(cx.listener(|_, _: &ShowCommits, _, cx| show_panel_tab(PanelTab::Commits, cx)))
+        .on_action(cx.listener(|_, _: &ShowFiles, _, cx| docks_view::show(View::Files, cx)))
+        .on_action(cx.listener(|_, _: &ShowChanges, _, cx| docks_view::show(View::Changes, cx)))
+        .on_action(cx.listener(|_, _: &ShowCommits, _, cx| docks_view::show(View::Commits, cx)))
         .on_action(cx.listener(|_, _: &ToggleFullScreen, window, _| window.toggle_fullscreen()))
         .on_action(cx.listener(|_, _: &Minimize, window, _| window.minimize_window()))
         .on_action(cx.listener(|_, _: &Zoom, window, _| window.zoom_window()))

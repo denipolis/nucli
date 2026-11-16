@@ -10,12 +10,12 @@ The full behavior is specified in `docs/SPEC.md`. Keep it in sync with the code.
 
 - **Terminology**: a **project** is one folder (fixed path) with any number of tabs and a terminal panel. A **tab** runs an agent or a shell. A **workspace** is a named window with its own projects (e.g. Personal, Work); one window = one workspace.
 - **A project is optional**: with nothing selected, tabs and terminals run in the home folder and list below the projects with no header. Running ones can move in and out of projects.
-- **Two side panes**: the sidebar on the left (Projects, Agents, History) and the panel, on the right by default (Files, Changes, History of commits). Both can be hidden; the panel can sit on either side of the viewport.
+- **Docks around the viewport**: views (Projects, Agents, History, Uplink, Files, Changes, History of commits) sit in tabbed panels, and panels sit in docks on any side of the viewport (left, right, top, bottom), stacked or side by side. Views move by drag and drop. By default the left dock holds Projects, Agents, History and Uplink, and the right dock holds Files, Changes and History of commits. The terminal panel always stays under the viewport.
 - A project path **never follows a shell's cwd**.
 - **Remember everything**: the app recalls the user's last choice so a repeated action is one keystroke (`⌘T` reopens the last shell, `⇧⌘T` the last agent; hold either to choose).
 - **Every command is in the command palette.** macOS also gets a native menu bar; Linux and Windows get the same menus in the title bar.
 - **Settings are files**: `settings.json` and `keybindings.json`, opened in Nucli's own file view and reloaded live. The settings page edits the same `settings.json`.
-- Every pane is hideable except the main viewport.
+- Every panel collapses to a strip of titles or glyphs; only the main viewport cannot.
 - Keybindings: see `docs/KEYBINDINGS.md`. Keep it updated when shortcuts change.
 
 ## Look

@@ -468,7 +468,8 @@ pub struct Store {
 
 impl Store {
     pub fn load() -> Store {
-        let state = StateFile::read().unwrap_or_default();
+        let mut state = StateFile::read().unwrap_or_default();
+        state.ui.docks.normalize();
         let mut workspaces: Vec<Workspace> = state.workspaces.into_iter().map(Workspace::from_file).collect();
         if workspaces.is_empty() {
             workspaces.push(Workspace::new("Personal"));

@@ -11,16 +11,16 @@ macOS 12+, Linux (X11 and Wayland) and Windows 10+. Everything below applies to 
 One window per open workspace. From top to bottom:
 
 1. **Title bar**: the workspace name in plain bold text on the left (click: workspace menu), the location in the middle, status messages on the right (see Title bar). On Linux and Windows the File, Edit, View and Window menus follow the workspace name, since those systems have no global menu bar; File also holds Settings, About and Quit. On macOS the traffic lights sit at the left edge of this bar. On Windows this bar replaces the system title bar: it moves the window, and minimize, maximize and close sit at its right edge. On Linux window controls sit there when the compositor asks the app to draw them.
-2. **Body**: sidebar, panel, viewport. The panel sits between the sidebar and the viewport (left, default) or right of the viewport. Sidebar and panel widths are draggable and remembered. The viewport holds the selected tab or file, the status chips and the terminal panel.
+2. **Body**: the viewport with docks on its four sides (see Docks). The viewport holds the selected tab or file, the status chips and the terminal panel. By default the left dock holds Projects, Agents, History and Uplink, and the right dock holds Files, Changes and History of commits.
 
-Every pane except the viewport can be hidden. With all panes hidden the viewport fills the window.
+Every panel can be collapsed; the viewport cannot. With every panel collapsed the viewport fills the window except for thin strips.
 
 ## Look
 
 - Square corners, 1px rules between panes, no shadows or blur.
 - The bundled Maple Mono NF for the whole interface at `ui_font_size`. Terminals and the file view use `font` (Maple Mono NF by default, or any installed font, with Maple Mono NF as the fallback for missing glyphs) at `font_size`.
 - Icons are Nerd Font glyphs, colored by the theme. File types and known agents get their own glyph and color.
-- Sidebar and panel tabs are a glyph and a name. The active tab, the selected row, focused list items and mode labels are inverted: accent background, background-colored text.
+- View tabs in panels are a glyph and a name. The active tab, the selected row, focused list items and mode labels are inverted: accent background, background-colored text.
 - Key hints in brackets: `[enter] open  [esc] close`.
 - Spinners are character animations (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`).
 - If the graphics system cannot start or no window can be opened, for example without a working driver, Nucli reports why (a message box on Windows, stderr elsewhere) and quits instead of running invisibly.
@@ -37,7 +37,7 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 ## Workspaces
 
 - `⌘N` asks for a name and opens a new workspace window. The first launch creates "Personal".
-- Switch windows with the workspace popup at the bottom of the sidebar, the command palette, or the system window switcher.
+- Switch windows with the workspace popup (click the workspace name in the title bar), the command palette, or the system window switcher.
 - **Closing a workspace window closes the workspace**: its tabs are saved like on quit (conversations and terminal output included), the processes end, and the workspace is marked closed. It asks first only when processes are running or files are unsaved.
 - A closed workspace reopens from the workspace popup or the palette ("Reopen Workspace: Work"). Its tabs come back as they were.
 - Rename Workspace… and Delete Workspace… live in the workspace popup and the palette. Delete confirms, ends the workspace's processes and removes its projects.
@@ -47,12 +47,12 @@ Every pane except the viewport can be hidden. With all panes hidden the viewport
 ## Projects
 
 - A project is a folder. Open one with `⌘O`, by dropping a folder on the window, from a History entry, by opening a tab in a new folder (`⌥⇧⌘T`), by dropping it on the Dock icon on macOS, or from the command line with `nucli <folder>`.
-- Projects list in the sidebar in a user-defined order (drag to reorder). Each row shows the folder glyph, the name and the uncommitted diff against `HEAD` as green `+N` and red `-M` (hidden when clean or not a git repository). The numbers update live. A collapsed project also shows the status of its hidden tabs: waiting first, then working, then done.
+- Projects list in the Projects view in a user-defined order (drag to reorder). Each row shows the folder glyph, the name and the uncommitted diff against `HEAD` as green `+N` and red `-M` (hidden when clean or not a git repository). The numbers update live. A collapsed project also shows the status of its hidden tabs: waiting first, then working, then done.
 - Rename (double-click or context menu; empty restores the folder name), Color (12 theme colors or none; tints the folder glyph and the rows of its tabs), Move to Workspace (another workspace or a new one), Reveal in File Manager, Copy Path, Close Project (`⇧⌘W`, ends its tabs after confirming running agents).
 - Collapsing a project hides its tabs; the state is remembered.
 - Clicking a project shows its active file when one is open, otherwise its overview. `⌂` in the file view's tab strip goes to the overview.
-- **Without a project**: a project is optional. Clicking the empty space of the sidebar deselects, and with nothing selected new tabs and panel terminals open in the home folder. Those tabs list below the projects with no header, in line with the project rows. They have no Files, Changes or quick open, and the title bar shows `~` in place of a project name.
-- A running tab or panel terminal moves between projects by dragging it onto a project row. Dragging it onto the empty space of the sidebar, its context menu or "Move Out of Project" takes it out of its project. A move never restarts the process or changes its working folder.
+- **Without a project**: a project is optional. Clicking the empty space of the Projects view deselects, and with nothing selected new tabs and panel terminals open in the home folder. Those tabs list below the projects with no header, in line with the project rows. They have no Files, Changes or quick open, and the title bar shows `~` in place of a project name.
+- A running tab or panel terminal moves between projects by dragging it onto a project row. Dragging it onto the empty space of the Projects view, its context menu or "Move Out of Project" takes it out of its project. A move never restarts the process or changes its working folder.
 
 ### Project overview
 
@@ -66,7 +66,7 @@ Shown in the viewport for a selected project, and after its last tab closes:
 
 ## Tabs
 
-A tab is an agent or a shell living in a project. Agents and shells look the same in the sidebar; only the glyph differs.
+A tab is an agent or a shell living in a project. Agents and shells look the same in the Projects view; only the glyph differs.
 
 - `⌘T`: new tab with the last used shell (fallback: the first shell). Holding it for 100 ms opens the **shell picker** instead.
 - `⇧⌘T`: new tab with the agent last used in this project (fallback: last used anywhere, then the first agent). Holding it for 100 ms opens the **agent picker** instead: agents, then the project's recent conversations.
@@ -74,14 +74,14 @@ A tab is an agent or a shell living in a project. Agents and shells look the sam
 - **New Tab…** (`+` button, palette, project menu): one picker with agents, shells and conversations.
 - `⌥⇧⌘T`: New Tab…, but asks for a folder first (and opens it as a project).
 - With nothing selected, the tab opens without a project.
-- `⌘1`…`⌘9`: tab by position in this window's sidebar. The sidebar shows the number before each tab (`1 claude`).
-- `⇧⌘]` / `⇧⌘[`: next / previous tab in sidebar order. `⌃Tab` / `⌃⇧Tab` open the tab switcher.
-- Rename (double-click, context menu, palette "Rename Tab"; empty restores the automatic title, which follows the terminal title) and Color (12 theme colors or none; marks the tab's sidebar row and split header with a stripe on the left edge and a light wash of the color, and tints its title in the terminal panel).
+- `⌘1`…`⌘9`: tab by position in this window's Projects view, which shows the number before each tab (`1 claude`).
+- `⇧⌘]` / `⇧⌘[`: next / previous tab in Projects view order. `⌃Tab` / `⌃⇧Tab` open the tab switcher.
+- Rename (double-click, context menu, palette "Rename Tab"; empty restores the automatic title, which follows the terminal title) and Color (12 theme colors or none; marks the tab's row and split header with a stripe on the left edge and a light wash of the color, and tints its title in the terminal panel).
 - `⌘W`: closes the shown file tab if a file is shown, else the current tab. A running agent asks first, unless it printed nothing for 2 hours or "don't ask again for 1 hour" was checked. `⌘W` never closes a project.
 - After closing, the next tab of the same project is selected (previous when it was the last), then the project overview.
 - A process that exits with code 0 closes its tab. Any other code keeps the tab, marks it red and prints `[process exited with code N]`.
 - Tabs keep running when not shown, also in other projects and windows.
-- Drag a tab in the sidebar to reorder it or move it into another project (the process keeps running), or onto the viewport to split.
+- Drag a tab in the Projects view to reorder it or move it into another project (the process keeps running), or onto the viewport to split.
 
 ### Tab switcher
 
@@ -123,13 +123,13 @@ An agent profile is `{name, executable, arguments, config_dir, env, theme}` in `
 - Other agents: output based. Output gaps under 1.5s are one busy run; busy for 2s is working; after at least 5s of work, 2s of silence is done.
 - The bell and OSC `9` / `777;notify` notifications also mark a tab done. A process that exits with an error does too.
 - Any CLI started by hand in a shell tab is detected from the terminal's foreground process, gets its agent glyph, and gets the same status.
-- Shown in the sidebar on the right of the tab row: spinner (working), `?` in orange (waiting), `✓` in green with a green title (done), `✗` in red (exited with an error).
+- Shown on the right of the tab row: spinner (working), `?` in orange (waiting), `✓` in green with a green title (done), `✗` in red (exited with an error).
 - Done and waiting are ignored for the tab the user is looking at, and cleared when the tab is shown.
 - A desktop notification is posted when a tab becomes done or waiting and is not the one being watched, if `notifications` is on: the tab's title, its project, and "Claude finished", "Claude is waiting for input" or "Needs attention" (the bell). On macOS they group by project. Clicking it shows the tab. On macOS the Dock icon shows the number of tabs that need attention; on Linux and Windows the window title does.
 
 ### Subagents
 
-Running Claude Code subagents of a tab are listed under it in the sidebar (description and type), read from `<config>/projects/<cwd>/<session>/subagents/agent-*.jsonl`. A subagent counts as running until its transcript ends its turn or was not written for 10 minutes. Clicking one selects its tab.
+Running Claude Code subagents of a tab are listed under it in the Projects view (description and type), read from `<config>/projects/<cwd>/<session>/subagents/agent-*.jsonl`. A subagent counts as running until its transcript ends its turn or was not written for 10 minutes. Clicking one selects its tab.
 
 ## Terminal
 
@@ -157,39 +157,56 @@ Running Claude Code subagents of a tab are listed under it in the sidebar (descr
 
 ## Splits
 
-- `⌘D` / `⇧⌘D` open a new tab (the last used agent or shell) to the right of / below the focused pane. `⌥⌘W` closes the split; the tab keeps running in the sidebar.
+- `⌘D` / `⇧⌘D` open a new tab (the last used agent or shell) to the right of / below the focused pane. `⌥⌘W` closes the split; the tab keeps running.
 - Only tabs of the same project split together. A tab without a project that joins a project's split moves into that project. Panel terminals do not split.
-- Dragging a tab over a pane (from the sidebar or a pane header) previews the resulting layout: the new pane is filled and labeled with its title and the action (`split right`, `swap`, `replace`, plus `· moves to <project>` for a tab without a project), the other panes are outlined. The outer quarter of each edge splits that pane on that side; the center replaces the pane, or swaps the two panes when both are in the split. A band along the outer edge of the whole split places the tab beside all panes at once (`bottom, full width`), so `w1 | w2` over `w3` is one drag. Over a tab of another project the pane turns red and the drop does nothing.
+- Dragging a tab over a pane (from the Projects view or a pane header) previews the resulting layout: the new pane is filled and labeled with its title and the action (`split right`, `swap`, `replace`, plus `· moves to <project>` for a tab without a project), the other panes are outlined. The outer quarter of each edge splits that pane on that side; the center replaces the pane, or swaps the two panes when both are in the split. A band along the outer edge of the whole split places the tab beside all panes at once (`bottom, full width`), so `w1 | w2` over `w3` is one drag. Over a tab of another project the pane turns red and the drop does nothing.
 - In a split every pane has a one-line header: glyph, title, status and `×`. The focused pane's header is an inverted block. Dragging a header moves the pane; `×` removes it from the split and the tab keeps running. Right-clicking a header opens the tab's context menu.
 - `⌥⌘←→↑↓` move focus. Clicking a pane focuses it. Unfocused panes are dimmed.
-- Tabs in a split form a group. The sidebar keeps a group's tabs next to each other in layout order and joins them with a bracket, in the accent color while the group is shown. Selecting a tab of the group focuses its pane; selecting another tab shows that tab alone and keeps the group, which comes back when one of its tabs is selected.
-- Hovering a tab row in the sidebar shows a split button (adds the tab next to the focused pane, along the pane's longer side) or, on a grouped tab, an unsplit button. `⌘`-click on a row does the same. Dragging a grouped tab within its group reorders the panes; dragging it out of the group removes it from the split.
+- Tabs in a split form a group. The Projects view keeps a group's tabs next to each other in layout order and joins them with a bracket, in the accent color while the group is shown. Selecting a tab of the group focuses its pane; selecting another tab shows that tab alone and keeps the group, which comes back when one of its tabs is selected.
+- Hovering a tab row in the Projects view shows a split button (adds the tab next to the focused pane, along the pane's longer side) or, on a grouped tab, an unsplit button. `⌘`-click on a row does the same. Dragging a grouped tab within its group reorders the panes; dragging it out of the group removes it from the split.
 - Context menu of a tab: Split with Shown Tab, Remove from Split, Unsplit All.
 - Splits are saved with the workspace.
 
-## Sidebar
+## Docks
 
-- Tabs at the top: Projects (the tree), Agents (the board), History, and Uplink while Uplink is on. `⌥⌘1`/`⌥⌘2`/`⌥⌘3`/`⌥⌘4` switch (and show the sidebar). The choice is remembered. In a narrow sidebar only the active tab shows its name.
-- `⌘B` hides and shows the sidebar.
+- The viewport has a dock on each side: left, right, top and bottom. The top and bottom docks span the width between the left and right docks, and the bottom dock sits under the terminal panel.
+- A dock holds stacks side by side: columns in the left and right docks, rows in the top and bottom docks. A stack holds panels, one above the other in a column and side by side in a row. A panel is a tab strip of views and shows its active view.
+- Views: Projects, Agents, History (conversations), Uplink (while Uplink is on), Files, Changes and History (commits). Each view lives in exactly one panel.
+- Drag a view's tab to move it. While dragging, the drop target is filled:
+  - a tab: the view goes before that tab;
+  - a tab strip or the middle of a panel: the view joins that panel;
+  - the top or bottom part of a panel in a column (left or right part in a row): a new panel there;
+  - the outer or inner side of a panel: a new column (row in the top and bottom docks) on that side of its stack;
+  - an edge of the viewport: a new column or row in that dock, next to the viewport.
+- A panel that loses its last view disappears, and so does an empty stack.
+- Right-clicking a view's tab offers Move to Left, Right, Top or Bottom (joins the first panel of that dock's innermost stack, or starts the dock) and Reset Panel Layout.
+- The chevron at the right of a tab strip collapses the panel. A collapsed panel in a column keeps only its tab strip; in a row it shrinks to a column of glyphs. A stack whose panels are all collapsed shrinks to a strip: glyphs in the left and right docks, view names in the top and bottom docks. Clicking a view in a strip or a collapsed tab strip expands its panel and shows the view; a strip's chevron expands its panels.
+- Drag the rule on the inner side of a stack to resize it, and the rule between two expanded panels to share the space between them.
+- The layout, the sizes and collapsed panels are shared by all windows and remembered. In a narrow panel only the active tab shows its name.
+- Palette: Show Projects, Show Agents, Show Conversation History, Show Uplink, Show Files, Show Changes and Show Commit History show a view and expand its panel. "Collapse or Expand Left Dock" (Right, Top, Bottom) collapses every panel of that dock, or expands them when all are collapsed. "Reset Panel Layout" restores the default layout.
+
+## Lists
+
+Projects (the tree), Agents (the board), History and Uplink are lists.
+
 - **Projects**: projects and their tabs. Tab rows: number, the agent's glyph and color, title (the terminal's title, or the profile name until there is one), the running program when the title does not name it (`exited` when the process ended), status on the right.
 - **Agents**: this workspace's running agent tabs grouped by status: Waiting, Done, Working, Idle. While Uplink is on, running agents shared by connected devices join the same groups with `device · project` beside the title. Clicking selects the tab, or opens a remote one.
 - **History**: every conversation of every agent profile, newest first (max 150). Clicking resumes it in the project for its folder (opened as a project if needed).
 - **Uplink**: paired devices and what they share (see Uplink).
-- **Filter** (`⌥⌘F`) at the bottom filters the visible list by name, path and title; a matching project shows all its tabs; `enter` selects the first match, `esc` clears.
-- **Workspace popup** at the bottom: all workspaces (closed ones marked), New, Rename, Delete.
-- **`+` button**: New Shell, New Agent, New Tab…, New Tab Without Project…, New Terminal, Open Project….
+- **Filter** at the bottom of each list filters it by name, path and title; a matching project shows all its tabs; `enter` selects the first match, `esc` clears. `⌥⌘F` focuses the filter of the shown list, or shows Projects when no list is shown.
+- **`+` button** beside the Projects filter: New Shell, New Agent, New Tab…, New Tab Without Project…, New Terminal, Open Project….
 - Clicking empty space deselects: empty viewport with key hints and "or drop a folder here".
 - Context menus: project (New Terminal, New Tab…, Rename, Color, Move to Workspace, Reveal, Copy Path, `[x] Share over Uplink` while Uplink is on, Close Project), tab (Rename, Color, Split with Shown Tab, Remove from Split, Unsplit All, Move Out of Project, `[x] Share over Uplink` while Uplink is on, Close Tab), conversation in History (Resume, Copy Title, Copy Conversation ID, Copy Path, Reveal), empty space (Open Project, Rename Workspace, New Workspace, Delete Workspace).
 
-## Panel
+## Project views
 
-Tabs for Files, Changes and History (`⌃⌘1`/`⌃⌘2`/`⌃⌘3`, also showing a hidden panel). `⌥⌘B` hides and shows it in every window. It starts on the right. Drag its header across the window middle, use its context menu or "Move Panel to Other Side" to switch sides; the side is shared by all windows. Everything follows the current project; with no project it says so.
+Files, Changes and History (commits) follow the current project; with no project they say so.
 
 ### Files
 
 - Lazy file tree of the project. Folders first, then files, by name. Git status letters on the right (`M` modified, `A` added, `D` deleted, `U` untracked); folders get a dot (green when everything inside is new, orange when mixed). Ignored files are dimmed. Expanded folders are remembered per project.
 - Clicking a file opens it in the file view. Context menu: New File…, New Folder… (a name with `/` creates the folders on the way), Open as Project (folders), Open in Default App, Open With…, Reveal in File Manager, Copy Path, Copy Relative Path, Cut, Copy, Paste, Duplicate (`name copy.ext`), Rename…, Move… (a path relative to the project), Delete (to the trash, confirmed). Empty space: New File…, New Folder…, Paste, Reveal, Copy Path. New files open in the file view; renamed and moved files keep their open tabs, unsaved edits included; deleted files close theirs. A name that is taken gets ` copy`, ` copy 2`, … when pasting.
-- Drag and drop: dragging a row onto a folder (or onto a file, meaning its folder, or onto empty space, meaning the project root) moves it there, `⌥` copies. Files dropped from the file manager are copied into the folder under the pointer. A row dropped on a terminal, the commit message or any other text field types its path; on the file view it opens; a folder dropped on the sidebar opens as a project. A row or file tab dragged out of the window becomes a file for other apps: file managers and mail take the file, apps that only take text get its path. This works on macOS, Windows and Linux under X11, not under Wayland.
+- Drag and drop: dragging a row onto a folder (or onto a file, meaning its folder, or onto empty space, meaning the project root) moves it there, `⌥` copies. Files dropped from the file manager are copied into the folder under the pointer. A row dropped on a terminal, the commit message or any other text field types its path; on the file view it opens; a folder dropped on a list opens as a project. A row or file tab dragged out of the window becomes a file for other apps: file managers and mail take the file, apps that only take text get its path. This works on macOS, Windows and Linux under X11, not under Wayland.
 - Updates live.
 
 ### Changes
@@ -291,7 +308,7 @@ Uplink lets computers running Nucli control each other's tabs: run agents on one
 
 - Settings › Uplink starts with the **Uplink** toggle (`uplink.enabled`, off by default). Everything else on the page shows only while it is on. "Turn Uplink On or Off" in the palette does the same.
 - Off means off: no port is open, nothing is announced, every connection closes and every remote view closes at once.
-- On, Nucli listens on TCP port `uplink.port` (47100, the development build 47101) on every network interface and announces itself with multicast DNS (`_nucli-uplink._tcp`, with its name and public key) so devices on the same network find each other. On macOS the system asks once for Local Network access; on Windows the firewall asks once whether Nucli may accept connections. Turning Uplink off while its sidebar tab is shown shows Projects.
+- On, Nucli listens on TCP port `uplink.port` (47100, the development build 47101) on every network interface and announces itself with multicast DNS (`_nucli-uplink._tcp`, with its name and public key) so devices on the same network find each other. On macOS the system asks once for Local Network access; on Windows the firewall asks once whether Nucli may accept connections. Turning Uplink off hides the Uplink view; its panel shows the next view, and a panel with only Uplink disappears until Uplink is on again.
 - The toggle then shows the status (`On as laptop · port 47100 · 1 of 2 devices online`) and the latest event ("laptop removed this device."). Below it are **Devices** (with `connect device`) and **This computer**: name, Share tabs by default, port, the networks it can be reached on, and its fingerprint.
 - **Addresses** under This computer lists every network this computer is on, each with a checkbox. Unchecking one (`uplink.excluded_networks`, by interface name such as `en0`) refuses connections that arrive on it before any handshake, stops announcing and looking for devices there, and leaves its address out of the pairing link. Connections that other devices opened are dropped and come back over the remaining networks. Nucli may still reach paired devices through an unchecked network. An unchecked network stays listed while it is down.
 
@@ -299,7 +316,7 @@ Uplink lets computers running Nucli control each other's tabs: run agents on one
 
 Two devices pair once; after that they find and connect to each other by themselves whenever both are on.
 
-- **Connect a device** is a full-window dialog in three steps: connect, confirm, permissions. `connect device` under Devices in Settings › Uplink, `connect device` in the Uplink sidebar and "Uplink: Connect a Device…" in the palette open it (the palette turns Uplink on first). `[esc]` closes it at any step.
+- **Connect a device** is a full-window dialog in three steps: connect, confirm, permissions. `connect device` under Devices in Settings › Uplink, `connect device` in the Uplink view and "Uplink: Connect a Device…" in the palette open it (the palette turns Uplink on first). `[esc]` closes it at any step.
 - **Connect** shows this computer's QR code and `copy pairing link` for a phone or a device on another network, the **Computers nearby** that run Uplink and are not paired yet, each with `connect`, and **Not listed**: a field for a name, an address (`host`, `host:port`, an IP address, also over a VPN) or a pairing link copied on the other device, with `connect` (or `enter`). The code inside the QR code and the link works once and is replaced every 5 minutes and after 3 wrong tries; pasting a computer's own link into it is refused with a hint.
 - **Confirm**: connecting needs no code. The device that connects waits ("Waiting for studio"); the other one opens the same dialog by itself, brings its window to the front and asks "laptop wants to connect" with **allow** and **deny**. Both show the same six digits (`123 456`), taken from the encrypted handshake; the dialog says to deny when they are not the same. The question waits up to 2 minutes; `[esc]` on the waiting side cancels and takes the question away on the other side. A link or QR code also ends in this question. Requests from a blocked device are refused without asking, one question is shown at a time, and when two computers connect to each other at once only one of them asks.
 - **Permissions**: both devices then list each other under Devices with view, and the dialog asks what the other device can do with this computer's shared tabs and projects: **view** (watch tabs, read files, changes and history) or **control** (also type into tabs, start agents, change files and git). `[enter] done` closes it; Settings › Uplink changes it any time.
@@ -320,7 +337,7 @@ Clicking a row opens its details: the fingerprint, **also reach it at**, and the
 - What a paired device sees is decided on the computer that runs the tabs. **Share tabs by default** (`uplink.share`, on by default): every tab and panel terminal is shared unless excluded. Off: only what is shared explicitly.
 - `[x] Share over Uplink` in a project's menu shares or excludes the whole project; the same item in a tab's menu overrides its project. Both are saved with the workspace.
 - Stopping sharing, changing a device to view, blocking or forgetting it applies at once: open remote views of tabs that stop being shared close.
-- A tab being watched from another device shows an eye glyph in the sidebar, and the Uplink status chip names the devices watching it.
+- A tab being watched from another device shows an eye glyph in the Projects view, and the Uplink status chip names the devices watching it.
 - A paired device can also ask for more than the tabs of shared projects: their files and file contents (up to 1 MB per file), git changes and diffs, git history and commit details, and the agent conversations that ran in them. This works with view or control. Paths cannot leave the project, symbolic links included.
 - With control it can also browse folders and add one as a project, and resume a conversation of a shared project in a new tab.
 - A paired device can download any file of a shared project, whole and in pieces; with control it can upload files into a shared project's folders. An upload never replaces a file: a name that exists gets ` copy`. The receiving side writes to a hidden temporary file next to the target and renames it when the transfer completes, so a broken transfer leaves nothing behind.
@@ -328,10 +345,10 @@ Clicking a row opens its details: the fingerprint, **also reach it at**, and the
 
 ### Remote tabs
 
-- The Uplink sidebar tab lists every paired device: online ones with their shared projects and tabs (glyph, title, program, status), offline ones with when they were last seen. The filter applies. Right-click a device for Disconnect and Uplink Settings…. Below the devices, `connect device` (also `[connect a device]` while none are paired) opens Connect a device.
+- The Uplink view lists every paired device: online ones with their shared projects and tabs (glyph, title, program, status), offline ones with when they were last seen. The filter applies. Right-click a device for Disconnect and Uplink Settings…. Below the devices, `connect device` (also `[connect a device]` while none are paired) opens Connect a device.
 - Clicking a remote tab opens it in the viewport like a local tab: the full terminal with its scrollback, live, with selection, copy, find and links (file paths of the other computer are not opened locally). The title bar shows `device › project › tab`, the status chips show the device (and `view only` or `offline`), its folder, branch and program. Typing, pasting text, mouse reporting and `⌘K` go to the other computer when this device can control it. Files dropped on a remote tab are not typed, since their paths exist only here, and images in the clipboard stay on this computer.
 - The terminal has one size, the size of the device that typed into it last, as with `tmux`: typing on the other computer takes the size back. A device with view access never resizes it.
-- `⌘W` or Close View closes the remote view; the tab keeps running on its computer. Remote views are not saved and reopen from the sidebar.
+- `⌘W` or Close View closes the remote view; the tab keeps running on its computer. Remote views are not saved and reopen from the Uplink view.
 - Hovering a remote project shows `+`, and its context menu lists the other computer's agents and shells: choosing one opens a new tab there and shows it here (control only).
 - A remote project's context menu also has Download File…, which lists the project's files (those git knows, or every file outside hidden folders when it is not a repository, up to 20000) and saves the chosen one where the save dialog says, and Upload Files… (control only), which sends the chosen files into the project's folder. Dropping files on a remote project uploads them too. A transfer shows in the status bar while it runs and an alert if it fails.
 - Status follows the other computer once per second: working, waiting, done and exited. When a remote tab starts waiting or rings for attention, a desktop notification is posted (if `notifications` is on) titled with the tab and `device · project`; clicking it opens the remote tab. Seeing a remote tab here clears its done mark on its computer too.
@@ -360,11 +377,11 @@ Nucli Uplink is the phone app: a remote control for the computers running Nucli.
 - After pairing, the phone connects to each computer by itself whenever both are on and reachable: addresses it finds on the network first, then the ones under "also reach it at", then the ones that worked before. Computers never dial the phone.
 - Every screen below the computers list has a back button at the top left. A new screen fades in with a short slide from the right, or from the left when going back; a tab's content fades in when the tab changes.
 - **Computers** (the home screen): each paired computer with its system, its projects and agents, how many agents are working and waiting, or why it is offline and when it was last seen. `add computer` opens Add a computer; the gear opens Settings.
-- **Computer**: its name, a details button (Computer details) and three tabs like the desktop sidebar, the active one inverted:
+- **Computer**: its name, a details button (Computer details) and three tabs like the desktop's Projects, Agents and History views, the active one inverted:
   - `projects`: the computer's shared projects (grouped by workspace when it has several), each with its agents and shells and how many wait or work, and `home` for tabs outside projects. `add project` (control only) opens a folder browser that starts in the computer's home folder: tap a folder to go in, `..` to go up, `[add <folder>]` to add it as a project in the computer's window and open it.
   - `agents`: every agent of this computer grouped like the desktop Agents board (waiting, done, working, idle), with its project and status.
   - `history`: the agent conversations in shared projects, newest first, with project, profile and age. `resume` (control only) resumes one on the computer and opens its project.
-- **Project**: the project's path, then one list: `new agent` and `new shell` (control only), which start the computer's first agent profile or shell in the project and open it, and the project's tabs in the computer's order with branch and status (tap to open). The `files`, `changes` and `history` buttons at the top open a drawer from the right, like the desktop panel; it slides in over the dimmed project; tapping outside it or `x` closes it, and back closes it first.
+- **Project**: the project's path, then one list: `new agent` and `new shell` (control only), which start the computer's first agent profile or shell in the project and open it, and the project's tabs in the computer's order with branch and status (tap to open). The `files`, `changes` and `history` buttons at the top open a drawer from the right, like the desktop's Files, Changes and History views; it slides in over the dimmed project; tapping outside it or `x` closes it, and back closes it first.
   - `files`: the project's folders and files; tap a folder to go in, the top row to go up, a file to view it with line numbers (up to 1 MB; binary files are not shown). With control, `new file or folder` opens the folder's menu. `download` saves a file in the app's Documents folder, shown by the Files app under Nucli Uplink; `upload files` opens the system file picker and sends the picked files into the folder. A running transfer shows its name and percentage at the bottom.
   - `changes`: the branch (tap to switch or create one), with control a commit message and `[commit]`, and the staged and unstaged changes with status letter and added and removed lines; tap one for its diff, `+` or `−` to stage or unstage it; the section headers stage or unstage all, and discard all unstaged changes.
   - `history`: the commits with refs, subject, short hash, author and age; tap one for its message, date, stats and changed files, and a file for its diff in that commit.
@@ -397,7 +414,7 @@ Nucli Uplink is the phone app: a remote control for the computers running Nucli.
 
 - When `restore_tabs` is on, quitting, also when the app is asked to terminate on Linux and macOS, saves every tab: kind, profile or shell, name, color, conversation id, folder, and the last 5000 lines of terminal output.
 - On launch tabs reopen without stealing focus, then each window selects its saved tab. Agents resume their conversation (a Claude conversation whose file is gone starts fresh). Shells start in their last folder and show the previous output dimmed above a `── restored ──` line.
-- Per project: open files and their split groups, active file, active tab, recent files, last used launcher. Per window: selection, splits, sidebar and panel state, size and position.
+- Per project: open files and their split groups, active file, active tab, recent files, last used launcher. Per window: selection, splits, terminal panel height, size and position. For all windows: the dock layout.
 
 ## Files and folders
 

@@ -21,40 +21,60 @@ pub enum SettingsSection {
     Keybindings,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "lowercase")]
-pub enum SidebarTab {
-    #[default]
+pub enum View {
     Projects,
     Agents,
     History,
     Uplink,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum PanelTab {
-    #[default]
     Files,
     Changes,
     Commits,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "lowercase")]
-pub enum Side {
+pub enum Dock {
     Left,
-    #[default]
     Right,
+    Top,
+    Bottom,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub struct Panel {
+    pub views: Vec<View>,
+    pub active: View,
+    #[serde(default)]
+    pub collapsed: bool,
+    #[serde(default = "one")]
+    pub weight: f32,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub struct Stack {
+    pub size: f32,
+    pub panels: Vec<Panel>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[serde(default)]
+pub struct Docks {
+    pub left: Vec<Stack>,
+    pub right: Vec<Stack>,
+    pub top: Vec<Stack>,
+    pub bottom: Vec<Stack>,
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 #[serde(default)]
 pub struct Ui {
-    pub sidebar_tab: SidebarTab,
-    pub panel_tab: PanelTab,
-    pub panel_side: Side,
-    pub panel_hidden: bool,
+    pub docks: Docks,
     pub settings_section: SettingsSection,
     pub find: crate::find::Options,
 }
@@ -62,10 +82,7 @@ pub struct Ui {
 impl Default for Ui {
     fn default() -> Self {
         Ui {
-            sidebar_tab: SidebarTab::Projects,
-            panel_tab: PanelTab::Files,
-            panel_side: Side::Right,
-            panel_hidden: false,
+            docks: Docks::default(),
             settings_section: SettingsSection::General,
             find: crate::find::Options::default(),
         }
@@ -76,21 +93,12 @@ impl Default for Ui {
 #[serde(default)]
 pub struct WindowState {
     pub bounds: Option<[f32; 4]>,
-    pub sidebar_width: f32,
-    pub panel_width: f32,
     pub terminal_height: f32,
-    pub sidebar_hidden: bool,
 }
 
 impl Default for WindowState {
     fn default() -> Self {
-        WindowState {
-            bounds: None,
-            sidebar_width: 260.0,
-            panel_width: 280.0,
-            terminal_height: 240.0,
-            sidebar_hidden: false,
-        }
+        WindowState { bounds: None, terminal_height: 240.0 }
     }
 }
 

@@ -2,16 +2,17 @@ use std::path::PathBuf;
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, AppContext, Context, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    AnyElement, App, AppContext, Context, Entity, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement,
     SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
 use crate::history::relative_age;
 use crate::icons;
-use crate::persist::{Selected, SidebarTab};
+use crate::persist::{Selected, View};
 use crate::session::{Activity, Kind, Session};
 use crate::settings;
 use crate::store::{self, Project};
+use crate::text_input::TextInput;
 use crate::ui;
 use crate::window::{Rename, WorkspaceView};
 
@@ -141,50 +142,6 @@ pub fn tab_glyph(session: &Session) -> (&'static str, Option<crate::theme::ItemC
         (None, Kind::Agent) => (icons::AGENT, None),
         _ => (icons::TERMINAL, None),
     }
-}
-
-fn header(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoElement {
-    let theme = ui::theme(cx);
-    let uplink = crate::uplink::Uplink::enabled(cx);
-    let current = shown_tab(view, cx);
-    let wide = if uplink { 340.0 } else { 260.0 };
-    let compact = view.state(cx).is_some_and(|state| state.window.sidebar_width < wide);
-    let tab = |id: &'static str, glyph: &'static str, label: &'static str, tab: SidebarTab| {
-        let active = current == tab;
-        div()
-            .id(id)
-            .flex()
-            .gap(px(8.0))
-            .px(px(4.0))
-            .when(active, |this| this.bg(theme.accent).text_color(theme.on_accent))
-            .when(!active, |this| this.text_color(theme.muted).hover(|style| style.text_color(theme.text)))
-            .child(glyph)
-            .when(active || !compact, |this| this.child(label))
-            .on_click(move |_, window, cx| {
-                store::store(cx).update(cx, |store, cx| {
-                    store.ui.sidebar_tab = tab;
-                    if tab == SidebarTab::History {
-                        store.refresh_history(cx);
-                    }
-                    store.changed(cx);
-                });
-                window.refresh();
-            })
-    };
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(px(6.0))
-        .px(px(8.0))
-        .py(px(4.0))
-        .overflow_hidden()
-        .border_b_1()
-        .border_color(theme.border)
-        .child(tab("sidebar-projects", icons::FOLDER, "Projects", SidebarTab::Projects))
-        .child(tab("sidebar-agents", icons::AGENT, "Agents", SidebarTab::Agents))
-        .child(tab("sidebar-history", icons::HISTORY, "History", SidebarTab::History))
-        .when(uplink, |this| this.child(tab("sidebar-uplink", icons::UPLINK, "Uplink", SidebarTab::Uplink)))
 }
 
 fn rename_field(view: &WorkspaceView, matches_target: impl Fn(&Rename) -> bool) -> Option<AnyElement> {
@@ -702,78 +659,44 @@ fn history(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -
     rows
 }
 
-fn footer(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> impl IntoElement {
+fn filter_row(kind: View, filter: Entity<TextInput>, cx: &mut Context<WorkspaceView>) -> impl IntoElement {
     let theme = ui::theme(cx);
-    let name = view.state(cx).map(|state| state.name.clone()).unwrap_or_default();
     div()
         .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(6.0))
+        .px(px(8.0))
+        .py(px(2.0))
         .border_t_1()
         .border_color(theme.border)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.0))
-                .px(px(8.0))
-                .py(px(2.0))
-                .border_b_1()
-                .border_color(theme.border)
-                .child(div().text_color(theme.faint).child("/"))
-                .child(view.filter.clone()),
-        )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .px(px(8.0))
-                .py(px(3.0))
-                .child(
-                    div()
-                        .id("workspace-popup")
-                        .flex()
-                        .gap(px(6.0))
-                        .text_color(theme.muted)
-                        .hover(|style| style.text_color(theme.text))
-                        .child(icons::WINDOW)
-                        .child(name)
-                        .child(icons::CHEVRON_UP)
-                        .on_click(cx.listener(|view, event: &gpui::ClickEvent, _, cx| {
-                            let items = crate::actions::workspace_menu(view, cx);
-                            view.open_menu(event.position(), items, cx);
-                        })),
-                )
-                .child(
-                    div()
-                        .id("sidebar-add")
-                        .px(px(4.0))
-                        .text_color(theme.muted)
-                        .hover(|style| style.text_color(theme.accent))
-                        .child(icons::ADD)
-                        .on_click(cx.listener(|view, event: &gpui::ClickEvent, _, cx| {
-                            let items = crate::actions::add_menu(cx);
-                            view.open_menu(event.position(), items, cx);
-                        })),
-                ),
-        )
+        .child(div().text_color(theme.faint).child("/"))
+        .child(div().flex_1().min_w_0().child(filter))
+        .when(kind == View::Projects, |this| {
+            this.child(
+                div()
+                    .id("projects-add")
+                    .px(px(4.0))
+                    .text_color(theme.muted)
+                    .hover(|style| style.text_color(theme.accent))
+                    .child(icons::ADD)
+                    .on_click(cx.listener(|view, event: &gpui::ClickEvent, _, cx| {
+                        let items = crate::actions::add_menu(cx);
+                        view.open_menu(event.position(), items, cx);
+                    })),
+            )
+        })
 }
 
-fn shown_tab(view: &WorkspaceView, cx: &App) -> SidebarTab {
-    match view.store(cx).ui.sidebar_tab {
-        SidebarTab::Uplink if !crate::uplink::Uplink::enabled(cx) => SidebarTab::Projects,
-        tab => tab,
-    }
-}
-
-pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<WorkspaceView>) -> AnyElement {
+pub fn render(view: &mut WorkspaceView, kind: View, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
-    let width = view.state(cx).map(|state| state.window.sidebar_width).unwrap_or(260.0);
-    let query = view.filter.read(cx).text.clone();
-    let rows = match shown_tab(view, cx) {
-        SidebarTab::Projects => projects(view, &query, cx),
-        SidebarTab::Agents => board(view, &query, cx),
-        SidebarTab::History => history(view, &query, cx),
-        SidebarTab::Uplink => crate::uplink::sidebar::rows(view, &query, cx),
+    let Some(filter) = view.filters.get(&kind).cloned() else { return div().into_any_element() };
+    let query = filter.read(cx).text.clone();
+    let rows = match kind {
+        View::Projects => projects(view, &query, cx),
+        View::Agents => board(view, &query, cx),
+        View::History => history(view, &query, cx),
+        _ => crate::uplink::sidebar::rows(view, &query, cx),
     };
     let empty_click = cx.listener(|view, _: &gpui::MouseDownEvent, window, cx| {
         view.select(None, window, cx);
@@ -786,13 +709,7 @@ pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<W
     div()
         .flex()
         .flex_col()
-        .flex_none()
-        .w(px(width))
-        .h_full()
-        .bg(theme.surface)
-        .border_r_1()
-        .border_color(theme.border)
-        .child(header(view, cx))
+        .size_full()
         .child(
             div()
                 .id("sidebar-list")
@@ -822,6 +739,6 @@ pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<W
                         })),
                 ),
         )
-        .child(footer(view, cx))
+        .child(filter_row(kind, filter, cx))
         .into_any_element()
 }

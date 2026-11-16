@@ -29,15 +29,14 @@ On Linux and Windows every default uses the same key as on macOS with the modifi
 | Tab switcher (hold the modifier, release to switch) | `tab_switcher` / `tab_switcher_back` | `ctrl-tab` / `ctrl-shift-tab` | `ctrl-tab` / `ctrl-shift-tab` |
 | Next / previous tab | `next_tab` / `previous_tab` | `cmd-shift-]` / `cmd-shift-[` | `ctrl-alt-shift-]` / `ctrl-alt-shift-[` |
 | Tab 1 … 9 | `select_tab_1` … | `cmd-1` … `cmd-9` | `ctrl-shift-1` … `ctrl-shift-9` |
-| Toggle sidebar | `toggle_sidebar` | `cmd-b` | `ctrl-shift-b` |
-| Toggle panel | `toggle_panel` | `cmd-alt-b` | `ctrl-alt-b` |
-| Move panel to the other side | `move_panel` | | |
-| Filter sidebar | `filter_sidebar` | `cmd-alt-f` | `ctrl-alt-f` |
-| Sidebar: Projects / Agents / History | `show_projects` … | `cmd-alt-1` … `3` | `ctrl-alt-1` … `3` |
-| Sidebar: Uplink (opens Settings, Uplink while it is off) | `show_uplink` | `cmd-alt-4` | `ctrl-alt-4` |
+| Collapse or expand a dock | `toggle_left_dock` / `toggle_right_dock` / `toggle_top_dock` / `toggle_bottom_dock` | | |
+| Reset the panel layout | `reset_layout` | | |
+| Filter the shown list | `filter_list` | `cmd-alt-f` | `ctrl-alt-f` |
+| Show Projects / Agents / History (conversations) | `show_projects` / `show_agents` / `show_history` | | |
+| Show Uplink (opens Settings, Uplink while it is off) | `show_uplink` | | |
 | Turn Uplink on or off | `toggle_uplink` | | |
 | Uplink: pair a device (shows a one-time code) | `pair_device` | | |
-| Panel: Files / Changes / History | `show_files` … | `ctrl-cmd-1` … `3` | `ctrl-alt-shift-1` … `3` |
+| Show Files / Changes / History (commits) | `show_files` / `show_changes` / `show_commits` | | |
 | Full screen | `toggle_full_screen` | `ctrl-cmd-f` | `ctrl-alt-shift-f` |
 | Font bigger / smaller / reset | `font_bigger` … | `cmd-=` / `cmd--` / `cmd-0` | `ctrl-=` / `ctrl--` / `ctrl-0` |
 | Clear terminal and scrollback | `clear` | `cmd-k` | `ctrl-shift-k` |
@@ -66,4 +65,4 @@ Find and replace in the file view: `enter` / `shift-enter` next and previous mat
 
 New tab picker: arrows, `enter`, `1`–`9` launch the numbered agent or shell, `esc` closes. Rows under CONVERSATIONS resume that conversation.
 
-Sidebar: double-click a project or tab to rename it inline (`enter` saves, `esc` cancels, empty restores the default name).
+Projects view: double-click a project or tab to rename it inline (`enter` saves, `esc` cancels, empty restores the default name).

@@ -11,7 +11,7 @@ use gpui::{
 
 use crate::menu::{self, Menu};
 use crate::palette::{Palette, PaletteEvent};
-use crate::persist::{Selected, Side};
+use crate::persist::{Selected, View};
 use crate::session::Session;
 use crate::settings::{self, FONT};
 use crate::store::{self, Store, Workspace};
@@ -26,7 +26,7 @@ pub enum Rename {
 pub struct WorkspaceView {
     pub workspace: String,
     pub focus: FocusHandle,
-    pub filter: Entity<TextInput>,
+    pub filters: HashMap<View, Entity<TextInput>>,
     pub rename: Option<(Rename, Entity<TextInput>)>,
     pub menu: Option<Menu>,
     pub palette: Option<Entity<Palette>>,
@@ -38,7 +38,9 @@ pub struct WorkspaceView {
     pub switcher: Option<crate::switcher::Switcher>,
     pub panel: crate::panel::PanelState,
     pub files: crate::file_view::Files,
-    pub resizing: Option<crate::resize::Drag>,
+    pub resizing: Option<crate::resize::Resizing>,
+    pub view_drag: bool,
+    pub dock_bounds: crate::docks_view::PanelBounds,
     pub pane_bounds: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
     pub drop_target: Option<crate::splits_view::DropTarget>,
     pub drop_area: Rc<std::cell::Cell<Bounds<Pixels>>>,
@@ -106,7 +108,7 @@ pub fn open(workspace: &str, cx: &mut App) -> Option<WindowHandle<WorkspaceView>
     });
     let _ = handle.update(cx, |view, window, cx| view.focus_current(window, cx));
     store.update(cx, |store, cx| {
-        if store.ui.sidebar_tab == crate::persist::SidebarTab::History && store.history.is_none() {
+        if store.ui.docks.shown(View::History) && store.history.is_none() {
             store.refresh_history(cx);
         }
     });
@@ -117,8 +119,26 @@ impl WorkspaceView {
     pub fn new(workspace: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
         ui::watch_appearance(window, cx);
         let store = store::store(cx);
-        let filter = cx.new(|cx| TextInput::new("filter", cx));
-        let subscriptions = vec![
+        let filters: HashMap<View, Entity<TextInput>> = View::ALL
+            .into_iter()
+            .filter(|kind| kind.list())
+            .map(|kind| (kind, cx.new(|cx| TextInput::new("filter", cx))))
+            .collect();
+        let mut subscriptions: Vec<Subscription> = filters
+            .iter()
+            .map(|(kind, filter)| {
+                let kind = *kind;
+                cx.subscribe_in(filter, window, move |view, filter, event, window, cx| match event {
+                    InputEvent::Cancel => {
+                        filter.update(cx, |input, cx| input.clear(cx));
+                        view.focus_current(window, cx);
+                    }
+                    InputEvent::Submit => view.select_first_match(kind, window, cx),
+                    _ => cx.notify(),
+                })
+            })
+            .collect();
+        subscriptions.extend([
             cx.observe_in(&store, window, |view, store, window, cx| {
                 let gone = view.shown_tab.as_ref().is_some_and(|tab| !store.read(cx).sessions.contains_key(tab));
                 view.shown_tab = view.state(cx).and_then(|state| state.selected_tab()).map(String::from);
@@ -132,14 +152,6 @@ impl WorkspaceView {
                 cx.notify();
             }),
             cx.observe_global::<settings::Settings>(|_, cx| cx.notify()),
-            cx.subscribe_in(&filter, window, |view, _, event, window, cx| match event {
-                InputEvent::Cancel => {
-                    view.filter.update(cx, |input, cx| input.clear(cx));
-                    view.focus_current(window, cx);
-                }
-                InputEvent::Submit => view.select_first_match(window, cx),
-                _ => cx.notify(),
-            }),
             cx.observe_window_bounds(window, |view, window, cx| {
                 let bounds = window.bounds();
                 let rect = [
@@ -176,7 +188,7 @@ impl WorkspaceView {
                     });
                 }
             }),
-        ];
+        ]);
         let id = workspace.clone();
         window.on_window_should_close(cx, move |window, cx| {
             crate::actions::close_workspace_window(&id, window, cx);
@@ -185,7 +197,7 @@ impl WorkspaceView {
         WorkspaceView {
             workspace,
             focus: cx.focus_handle(),
-            filter,
+            filters,
             rename: None,
             menu: None,
             palette: None,
@@ -198,6 +210,8 @@ impl WorkspaceView {
             panel: Default::default(),
             files: Default::default(),
             resizing: None,
+            view_drag: false,
+            dock_bounds: Default::default(),
             pane_bounds: Default::default(),
             drop_target: None,
             drop_area: Default::default(),
@@ -329,10 +343,11 @@ impl WorkspaceView {
         }
     }
 
-    fn select_first_match(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let query = self.filter.read(cx).text.clone();
+    fn select_first_match(&mut self, kind: View, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(filter) = self.filters.get(&kind).cloned() else { return };
+        let query = filter.read(cx).text.clone();
         if let Some(target) = crate::sidebar::first_match(self, &query, cx) {
-            self.filter.update(cx, |input, cx| input.clear(cx));
+            filter.update(cx, |input, cx| input.clear(cx));
             self.select(Some(target), window, cx);
         }
     }
@@ -374,35 +389,25 @@ impl Render for WorkspaceView {
         }
         if !cx.has_active_drag() {
             self.drop_target = None;
+            self.view_drag = false;
         }
         let theme = ui::theme(cx);
         let ui_size = settings::get(cx).ui_font_size();
-        let Some(state) = self.state(cx).cloned() else { return div().into_any_element() };
-        let ui_state = self.store(cx).ui.clone();
+        if self.state(cx).is_none() {
+            return div().into_any_element();
+        }
         let terminal = crate::panel::terminal_panel(self, window, cx);
         let content = self.viewport(window, cx);
         let status = crate::statusbar::render(self, cx);
         let viewport = div()
             .flex()
             .flex_col()
-            .flex_1()
-            .min_w_0()
-            .h_full()
+            .size_full()
             .child(div().flex_1().min_h_0().child(content))
             .children(status)
-            .children(terminal);
-        let panel = (!ui_state.panel_hidden).then(|| crate::panel::render(self, window, cx));
-        let mut body = div().flex().flex_row().flex_1().min_h_0().overflow_hidden();
-        if !state.window.sidebar_hidden {
-            body = body
-                .child(crate::sidebar::render(self, window, cx))
-                .child(crate::resize::handle_horizontal(crate::resize::Drag::Sidebar, cx));
-        }
-        let panel_handle = panel.is_some().then(|| crate::resize::handle_horizontal(crate::resize::Drag::Panel, cx));
-        match ui_state.panel_side {
-            Side::Left => body = body.children(panel).children(panel_handle).child(viewport),
-            Side::Right => body = body.child(viewport).children(panel_handle).children(panel),
-        }
+            .children(terminal)
+            .into_any_element();
+        let body = crate::docks_view::render(self, viewport, window, cx);
         let mut root = div()
             .id("workspace")
             .key_context("Workspace")
@@ -431,6 +436,12 @@ impl Render for WorkspaceView {
                     }
                 },
             ))
+            .on_drag_move(cx.listener(|view, _: &gpui::DragMoveEvent<crate::docks_view::DraggedView>, _, cx| {
+                if !view.view_drag {
+                    view.view_drag = true;
+                    cx.notify();
+                }
+            }))
             .on_mouse_move(cx.listener(crate::resize::mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(|view, _, _, cx| crate::resize::mouse_up(view, cx)))
             .on_modifiers_changed(cx.listener(crate::switcher::modifiers_changed))
