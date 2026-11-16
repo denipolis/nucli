@@ -2,6 +2,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use super::vault;
 use super::wire::{self, Identity, Key};
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
@@ -51,12 +52,17 @@ pub fn load(path: &Path) -> (Identity, Vec<Device>) {
         Ok(text) => {
             let stored: Option<DeviceFile> = serde_json::from_str(&text).ok();
             if let Some(stored) = stored
-                && let (Some(secret), Some(public)) =
-                    (wire::decode_key(&stored.secret), wire::decode_key(&stored.public))
+                && let Some(public) = wire::decode_key(&stored.public)
+                && let Some(secret) = wire::decode_key(&stored.secret)
+                    .or_else(|| vault::load(path).and_then(|text| wire::decode_key(&text)))
             {
                 let mut devices = stored.devices;
                 devices.retain(|device| device.public().is_some_and(|key| key != public));
-                return (Identity { secret, public }, devices);
+                let identity = Identity { secret, public };
+                if !stored.secret.is_empty() {
+                    save(path, &identity, &devices);
+                }
+                return (identity, devices);
             }
             set_aside(path);
         }
@@ -75,8 +81,9 @@ fn set_aside(path: &Path) {
 }
 
 pub fn save(path: &Path, identity: &Identity, devices: &[Device]) {
+    let secret = wire::encode_key(&identity.secret);
     let file = DeviceFile {
-        secret: wire::encode_key(&identity.secret),
+        secret: if vault::store(path, &secret) { String::new() } else { secret },
         public: wire::encode_key(&identity.public),
         devices: devices.to_vec(),
     };
@@ -128,6 +135,7 @@ mod tests {
             let mode = std::fs::metadata(&path).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o600);
         }
+        vault::forget(&path);
         let _ = std::fs::remove_dir_all(folder);
     }
 }
