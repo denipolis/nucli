@@ -175,6 +175,7 @@ fn project(root: &Path, action: Action, cx: &mut App) -> Result<(), String> {
             }
             store.changed(cx);
         }),
+        Action::MuteProject { muted } => actions::set_project_notifications(&workspace, root, !muted, cx),
         Action::MoveProject { workspace: name } => {
             let name = name.trim().to_string();
             if name.is_empty() {
@@ -235,6 +236,7 @@ pub fn act(outbox: Outbox, id: u64, root: PathBuf, source: Option<PathBuf>, acti
         | Action::RenameProject { .. }
         | Action::ColorProject { .. }
         | Action::MoveProject { .. }
+        | Action::MuteProject { .. }
         | Action::CloseProject => reply(&outbox, id, project(&root, action, cx)),
         action => {
             cx.background_executor().spawn(async move { reply(&outbox, id, repository(&root, action)) }).detach();
@@ -270,6 +272,7 @@ pub fn tab(outbox: &Outbox, id: u64, tab: String, action: TabAction, cx: &mut Ap
                 actions::move_tab(view, &tab, Path::new(""), None, window, cx)
             });
         }
+        TabAction::Mute { muted } => actions::set_tab_notifications(&tab, !muted, cx),
         TabAction::Close => store::store(cx).update(cx, |store, cx| store.close_tab(&tab, cx)),
     }
     reply(outbox, id, Ok(()));

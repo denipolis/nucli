@@ -352,6 +352,21 @@ impl Uplink {
                     reply(&outbox, Response::Done);
                 });
             }
+            Request::MuteWorkspace { workspace, muted } => {
+                let id = store::store(cx)
+                    .read(cx)
+                    .workspaces
+                    .iter()
+                    .find(|item| item.name == workspace)
+                    .map(|item| item.id.clone());
+                match id {
+                    Some(id) => {
+                        actions::set_workspace_notifications(&id, !muted, cx);
+                        reply(&outbox, Response::Done);
+                    }
+                    None => reply(&outbox, failed("This workspace does not exist.")),
+                }
+            }
             Request::Resume { conversation } => {
                 let sources = history::sources(&settings::get(cx).agents);
                 cx.spawn(async move |_, cx| {

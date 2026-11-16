@@ -949,16 +949,7 @@ impl Uplink {
         let device = self.device_name(&key);
         for tab in &catalog.tabs {
             let Some(before) = previous.tabs.iter().find(|old| old.id == tab.id) else { continue };
-            let text = if tab.activity == crate::session::Activity::Waiting
-                && before.activity != crate::session::Activity::Waiting
-            {
-                Some("is waiting for input".to_string())
-            } else if tab.attention && !before.attention {
-                Some(tab.notice.clone().unwrap_or_else(|| "finished".into()))
-            } else {
-                None
-            };
-            let Some(text) = text else { continue };
+            let Some(text) = tab.alert(before) else { continue };
             let id = mirror_id(&key, &tab.id);
             if store::store(cx).update(cx, |store, cx| store.watched(&id, cx)) {
                 continue;
@@ -1170,7 +1161,11 @@ fn catalog(device: &Device, cx: &App) -> Catalog {
     catalog.workspaces = store
         .workspaces
         .iter()
-        .map(|workspace| RemoteWorkspace { name: workspace.name.clone(), open: !workspace.closed })
+        .map(|workspace| RemoteWorkspace {
+            name: workspace.name.clone(),
+            open: !workspace.closed,
+            muted: !workspace.notifications.unwrap_or(true),
+        })
         .collect();
     for workspace in store.workspaces.iter().filter(|workspace| !workspace.closed) {
         for project in workspace.all_projects() {
@@ -1202,6 +1197,7 @@ fn catalog(device: &Device, cx: &App) -> Catalog {
                     cwd: session.cwd.as_deref().map(crate::paths::display),
                     branch: session.branch.clone(),
                     notice: session.notice.as_ref().map(|(text, _)| text.clone()),
+                    muted: !store.notifies(id, cx),
                 });
             }
             if project_on || any {
@@ -1210,6 +1206,7 @@ fn catalog(device: &Device, cx: &App) -> Catalog {
                     name: if project.is_scratch() { String::new() } else { project.display_name() },
                     color: project.color,
                     workspace: workspace.name.clone(),
+                    muted: !project.notifications.or(workspace.notifications).unwrap_or(true),
                 });
             }
         }

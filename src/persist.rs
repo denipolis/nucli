@@ -121,6 +121,8 @@ pub struct SavedTab {
     pub cwd: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uplink: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notifications: Option<bool>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
@@ -152,6 +154,8 @@ pub struct ProjectFile {
     pub last_agent: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uplink: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notifications: Option<bool>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
@@ -188,6 +192,8 @@ pub struct WorkspaceFile {
     pub projects: Vec<ProjectFile>,
     pub scratch: ProjectFile,
     pub layouts: Vec<Layout>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notifications: Option<bool>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]

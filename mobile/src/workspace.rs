@@ -22,7 +22,7 @@ pub fn workspaces(catalog: &Catalog) -> Vec<RemoteWorkspace> {
     let mut found: Vec<RemoteWorkspace> = Vec::new();
     for project in &catalog.projects {
         if !found.iter().any(|workspace| workspace.name == project.workspace) {
-            found.push(RemoteWorkspace { name: project.workspace.clone(), open: true });
+            found.push(RemoteWorkspace { name: project.workspace.clone(), open: true, muted: false });
         }
     }
     found
@@ -140,7 +140,7 @@ impl Home {
     fn workspace_hold(&self, key: Key, name: &str, cx: &mut Context<Self>) -> impl IntoElement {
         let name = name.to_string();
         ui::hold(cx.listener(move |home, _, _, cx| {
-            let sheet = home.workspace_menu(key, &name);
+            let sheet = home.workspace_menu(key, &name, cx);
             home.show(sheet, cx)
         }))
     }

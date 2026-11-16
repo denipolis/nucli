@@ -55,6 +55,7 @@ pub struct Project {
     pub expanded: BTreeSet<String>,
     pub languages: BTreeMap<String, String>,
     pub uplink: Option<bool>,
+    pub notifications: Option<bool>,
 }
 
 impl Project {
@@ -287,6 +288,7 @@ impl Project {
             saved: file.tabs,
             saved_terminals: file.terminals,
             uplink: file.uplink,
+            notifications: file.notifications,
             ..Default::default()
         };
         project.repair_files();
@@ -305,6 +307,7 @@ pub struct Workspace {
     pub selected: Option<Selected>,
     pub mru: Vec<String>,
     pub layouts: Vec<Layout>,
+    pub notifications: Option<bool>,
 }
 
 impl Workspace {
@@ -319,6 +322,7 @@ impl Workspace {
             selected: None,
             mru: Vec::new(),
             layouts: Vec::new(),
+            notifications: None,
         }
     }
 
@@ -427,6 +431,7 @@ impl Workspace {
             selected: file.selected,
             mru: Vec::new(),
             layouts: file.layouts,
+            notifications: file.notifications,
         }
     }
 }
@@ -840,6 +845,7 @@ impl Store {
             last_launcher: project.last_launcher.clone(),
             last_agent: project.last_agent.clone(),
             uplink: project.uplink,
+            notifications: project.notifications,
             ..Default::default()
         };
         let state = StateFile {
@@ -855,6 +861,7 @@ impl Store {
                     projects: workspace.projects.iter().map(project_file).collect(),
                     scratch: project_file(&workspace.scratch),
                     layouts: workspace.layouts.clone(),
+                    notifications: workspace.notifications,
                 })
                 .collect(),
             last_launcher: self.last_launcher.clone(),
@@ -913,6 +920,7 @@ impl Store {
                     session.name = tab.name.clone();
                     session.color = tab.color;
                     session.uplink = tab.uplink;
+                    session.notifications = tab.notifications;
                 });
             }
             if let Some(project) = self.workspace_mut(workspace).and_then(|workspace| workspace.project_mut(&path)) {

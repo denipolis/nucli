@@ -34,6 +34,10 @@ pub fn full(project: &str, path: &str) -> String {
     if path.is_empty() { project.to_string() } else { format!("{project}/{path}") }
 }
 
+fn notifications(muted: bool) -> &'static str {
+    if muted { "[ ] notifications" } else { "[x] notifications" }
+}
+
 fn short(hash: &str) -> String {
     hash.chars().take(7).collect()
 }
@@ -472,6 +476,12 @@ impl Home {
             items
                 .push(action("move out of project", move |home, _, cx| home.tab_act(key, &id, TabAction::MoveOut, cx)));
         }
+        {
+            let (id, muted) = (id.clone(), tab.muted);
+            items.push(action(notifications(muted), move |home, _, cx| {
+                home.tab_act(key, &id, TabAction::Mute { muted: !muted }, cx)
+            }));
+        }
         let asks = tab.kind == Kind::Agent && tab.running;
         let label = if asks { "close tab…" } else { "close tab" };
         items.push(Item::Action { label: label.into(), danger: asks, run: close_tab(key, tab) });
@@ -520,6 +530,12 @@ impl Home {
             }));
         }
         items.extend(self.location_items(key, project, "", false));
+        {
+            let (root, muted) = (project.to_string(), remote.muted);
+            items.push(action(notifications(muted), move |home, _, cx| {
+                home.act(key, &root, Action::MuteProject { muted: !muted }, cx)
+            }));
+        }
         items.push(Item::Action {
             label: "close project…".into(),
             danger: true,
@@ -540,12 +556,21 @@ impl Home {
         Sheet::Menu { title: if agent { "new agent" } else { "new shell" }.into(), items }
     }
 
-    pub fn workspace_menu(&self, key: Key, workspace: &str) -> Sheet {
+    pub fn workspace_menu(&self, key: Key, workspace: &str, cx: &Context<Self>) -> Sheet {
+        let link = self.link.read(cx);
+        let catalog = link.online.get(&key).map(|online| &online.catalog);
+        let muted = catalog
+            .and_then(|catalog| catalog.workspaces.iter().find(|item| item.name == workspace))
+            .is_some_and(|item| item.muted);
         let current = workspace.to_string();
         let rename = ask("rename", "rename workspace", workspace, move |name, home, _, cx| {
             home.send(key, Request::RenameWorkspace { workspace: current.clone(), name }, cx)
         });
-        Sheet::Menu { title: workspace.to_string(), items: vec![rename] }
+        let current = workspace.to_string();
+        let mute = action(notifications(muted), move |home, _, cx| {
+            home.send(key, Request::MuteWorkspace { workspace: current.clone(), muted: !muted }, cx)
+        });
+        Sheet::Menu { title: workspace.to_string(), items: vec![rename, mute] }
     }
 
     pub fn conversation_menu(&self, key: Key, item: &RemoteConversation, control: bool) -> Sheet {

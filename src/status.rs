@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use gpui::Context;
+use gpui::{App, Context};
 
 use crate::agent_info::{self, AgentInfo};
 use crate::agents::{self, AgentKind, AgentProfile};
@@ -283,6 +283,16 @@ impl Store {
         workspace.shows(id) && window.update(cx, |_, window, _| window.is_window_active()).unwrap_or(false)
     }
 
+    pub fn notifies(&self, id: &str, cx: &App) -> bool {
+        let workspace = self.workspace_of(id);
+        let project = workspace.and_then(|workspace| workspace.project_of(id));
+        let session = self.sessions.get(id).and_then(|session| session.read(cx).notifications);
+        session
+            .or(project.and_then(|project| project.notifications))
+            .or(workspace.and_then(|workspace| workspace.notifications))
+            .unwrap_or(true)
+    }
+
     pub fn mark_attention(&mut self, id: &str, text: Option<String>, cx: &mut Context<Self>) {
         if self.watched(id, cx) {
             return;
@@ -300,6 +310,7 @@ impl Store {
         });
         if let Some(text) = text
             && settings::get(cx).notifications
+            && self.notifies(id, cx)
         {
             let project = self
                 .workspace_of(id)

@@ -697,7 +697,45 @@ pub fn workspace_menu(view: &WorkspaceView, cx: &App) -> Vec<Item> {
     items.push(menu::command("New Workspace…", "new_workspace", cx));
     items.push(menu::command("Rename Workspace…", "rename_workspace", cx));
     items.push(menu::command("Delete Workspace…", "delete_workspace", cx));
+    if let Some(workspace) = view.state(cx) {
+        let on = workspace.notifications.unwrap_or(true);
+        let id = workspace.id.clone();
+        items.push(Item::Separator);
+        items.push(menu::action(notifications_label(on), move |_, _, cx| set_workspace_notifications(&id, !on, cx)));
+    }
     items
+}
+
+pub fn notifications_label(on: bool) -> &'static str {
+    if on { "[x] Notifications" } else { "[ ] Notifications" }
+}
+
+pub fn set_workspace_notifications(id: &str, on: bool, cx: &mut App) {
+    store::store(cx).update(cx, |store, cx| {
+        if let Some(workspace) = store.workspace_mut(id) {
+            workspace.notifications = Some(on);
+        }
+        store.changed(cx);
+    });
+}
+
+pub fn set_project_notifications(workspace: &str, path: &Path, on: bool, cx: &mut App) {
+    store::store(cx).update(cx, |store, cx| {
+        if let Some(project) = store.workspace_mut(workspace).and_then(|state| state.project_mut(path)) {
+            project.notifications = Some(on);
+        }
+        store.changed(cx);
+    });
+}
+
+pub fn set_tab_notifications(id: &str, on: bool, cx: &mut App) {
+    if let Some(session) = store::store(cx).read(cx).session(id).cloned() {
+        session.update(cx, |session, cx| {
+            session.notifications = Some(on);
+            cx.notify();
+        });
+    }
+    store::store(cx).update(cx, |store, cx| store.changed(cx));
 }
 
 pub fn add_menu(cx: &App) -> Vec<Item> {
@@ -767,6 +805,13 @@ pub fn project_menu(view: &WorkspaceView, path: &Path, cx: &App) -> Vec<Item> {
     }
     items.push(menu::copy("Copy Path", target.to_string_lossy()));
     items.push(Item::Separator);
+    {
+        let on = project.notifications.or(view.state(cx).and_then(|state| state.notifications)).unwrap_or(true);
+        let (workspace, target) = (view.workspace.clone(), target.clone());
+        items.push(menu::action(notifications_label(on), move |_, _, cx| {
+            set_project_notifications(&workspace, &target, !on, cx)
+        }));
+    }
     if crate::uplink::Uplink::enabled(cx) {
         let shared = crate::uplink::project_shared(path, cx);
         let (workspace, share_target) = (view.workspace.clone(), target.clone());
@@ -863,6 +908,11 @@ pub fn tab_menu(view: &WorkspaceView, id: &str, cx: &App) -> Vec<Item> {
         items.push(menu::action("Move Out of Project", move |view, window, cx| {
             move_tab(view, &id, Path::new(""), None, window, cx)
         }));
+    }
+    {
+        let on = view.store(cx).notifies(id, cx);
+        let tab = id.to_string();
+        items.push(menu::action(notifications_label(on), move |_, _, cx| set_tab_notifications(&tab, !on, cx)));
     }
     if crate::uplink::Uplink::enabled(cx) {
         let shared = crate::uplink::shared(id, cx);

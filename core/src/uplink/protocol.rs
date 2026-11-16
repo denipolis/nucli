@@ -31,6 +31,21 @@ pub struct RemoteTab {
     pub cwd: Option<String>,
     pub branch: Option<String>,
     pub notice: Option<String>,
+    pub muted: bool,
+}
+
+impl RemoteTab {
+    pub fn alert(&self, before: &RemoteTab) -> Option<String> {
+        if self.muted {
+            None
+        } else if self.activity == Activity::Waiting && before.activity != Activity::Waiting {
+            Some("is waiting for input".into())
+        } else if self.attention && !before.attention {
+            Some(self.notice.clone().unwrap_or_else(|| "finished".into()))
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for RemoteTab {
@@ -51,6 +66,7 @@ impl Default for RemoteTab {
             cwd: None,
             branch: None,
             notice: None,
+            muted: false,
         }
     }
 }
@@ -62,6 +78,7 @@ pub struct RemoteProject {
     pub name: String,
     pub color: Option<ItemColor>,
     pub workspace: String,
+    pub muted: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -69,6 +86,7 @@ pub struct RemoteProject {
 pub struct RemoteWorkspace {
     pub name: String,
     pub open: bool,
+    pub muted: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -155,6 +173,7 @@ pub enum Request {
     AddProject { path: String, workspace: Option<String> },
     OpenWorkspace { workspace: String },
     RenameWorkspace { workspace: String, name: String },
+    MuteWorkspace { workspace: String, muted: bool },
     Files { project: String, folder: String },
     File { project: String, path: String },
     Changes { project: String },
@@ -197,6 +216,7 @@ pub enum Action {
     RenameProject { name: String },
     ColorProject { color: Option<ItemColor> },
     MoveProject { workspace: String },
+    MuteProject { muted: bool },
     CloseProject,
 }
 
@@ -214,6 +234,7 @@ pub enum TabAction {
     Rename { title: String },
     Color { color: Option<ItemColor> },
     MoveOut,
+    Mute { muted: bool },
     Close,
 }
 
@@ -432,6 +453,21 @@ mod tests {
         assert!(matches!(decode(&bytes), Some(Frame::Feed(_, Feed::Bytes { local: true, data })) if data == b"hi"));
         assert!(matches!(decode(&input("t", b"ls\r")), Some(Frame::Input(tab, data)) if tab == "t" && data == b"ls\r"));
         assert!(matches!(decode(&chunk(42, b"\x00\xff")), Some(Frame::Chunk(42, data)) if data == b"\x00\xff"));
+    }
+
+    #[test]
+    fn alerts_when_a_tab_starts_waiting_or_finishes() {
+        let idle = RemoteTab::default();
+        let waiting = RemoteTab { activity: Activity::Waiting, ..Default::default() };
+        let done = RemoteTab { attention: true, notice: Some("Claude finished".into()), ..Default::default() };
+        assert_eq!(waiting.alert(&idle).as_deref(), Some("is waiting for input"));
+        assert_eq!(waiting.alert(&waiting), None);
+        assert_eq!(done.alert(&idle).as_deref(), Some("Claude finished"));
+        assert_eq!(done.alert(&done), None);
+        assert_eq!(RemoteTab { muted: true, ..waiting.clone() }.alert(&idle), None);
+        let message =
+            Message::Request { id: 1, request: Request::MuteWorkspace { workspace: "w".into(), muted: true } };
+        assert!(matches!(decode(&self::message(&message)), Some(Frame::Message(decoded)) if decoded == message));
     }
 
     #[test]

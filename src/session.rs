@@ -57,6 +57,7 @@ pub struct Session {
     pub started: SystemTime,
     pub view: terminal::view::ViewState,
     pub uplink: Option<bool>,
+    pub notifications: Option<bool>,
     pub remote: Option<Remote>,
     _events: Task<()>,
 }
@@ -185,6 +186,7 @@ impl Session {
                 started: SystemTime::now(),
                 view: Default::default(),
                 uplink: None,
+                notifications: None,
                 remote: None,
                 _events: task,
             };
@@ -334,6 +336,7 @@ impl Session {
             conversation: self.conversation.clone(),
             cwd: self.cwd.clone(),
             uplink: self.uplink,
+            notifications: self.notifications,
         }
     }
 
