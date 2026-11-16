@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    App, Div, ElementId, InteractiveElement, IntoElement, ParentElement, SharedString, Stateful,
+    Animation, App, Div, ElementId, InteractiveElement, IntoElement, ParentElement, SharedString, Stateful,
     StatefulInteractiveElement, Styled, Window, WindowAppearance, div, px,
 };
 use nucli_core::icons;
@@ -12,6 +12,7 @@ pub const TEXT: f32 = 15.0;
 pub const SMALL: f32 = 12.0;
 pub const ROW: f32 = 48.0;
 pub const SPINNER_MS: u128 = 110;
+pub const SHIFT: f32 = 24.0;
 
 pub fn theme(window: &Window, cx: &App) -> Theme {
     let prefs = prefs::get(cx);
@@ -180,4 +181,8 @@ pub fn label_value(label: &'static str, value: impl IntoElement, theme: &Theme) 
 
 pub fn count(number: usize, noun: &str) -> String {
     if number == 1 { format!("1 {noun}") } else { format!("{number} {noun}s") }
+}
+
+pub fn motion() -> Animation {
+    Animation::new(std::time::Duration::from_millis(220)).with_easing(gpui::ease_out_quint())
 }

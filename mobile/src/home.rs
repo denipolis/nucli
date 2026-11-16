@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AnyElement, AppContext, Autocapitalize, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled,
-    Task, TextInputAction, Window, div, px,
+    AnimationExt, AnyElement, AppContext, Autocapitalize, Context, Entity, Focusable, IntoElement, ParentElement,
+    Render, Styled, Task, TextInputAction, Window, div, px,
 };
 use nucli_core::fonts::FAMILY;
 use nucli_core::session::Activity;
@@ -70,6 +70,8 @@ pub struct Home {
     pub drawer: Option<Drawer>,
     pub notice: Option<String>,
     ticker: Option<Task<()>>,
+    moves: usize,
+    shift: f32,
 }
 
 impl Home {
@@ -81,6 +83,7 @@ impl Home {
             {
                 home.history = vec![Screen::Computers];
                 home.screen = Screen::Computer(key);
+                home.moved(true);
                 home.section = Section::Projects;
             }
             if let Some((key, tab)) = opened {
@@ -140,6 +143,8 @@ impl Home {
             drawer: None,
             notice: None,
             ticker: None,
+            moves: 0,
+            shift: 0.0,
         }
     }
 
@@ -284,6 +289,7 @@ impl Home {
         self.forgetting = None;
         self.notice = None;
         self.history.push(std::mem::replace(&mut self.screen, screen));
+        self.moved(true);
         self.shown = Instant::now();
         self.load(cx);
         cx.notify();
@@ -311,6 +317,7 @@ impl Home {
         if self.screen == Screen::Terminal && self.mirror.is_none() {
             self.screen = self.history.pop().unwrap_or(Screen::Computers);
         }
+        self.moved(false);
         cx.notify();
     }
 
@@ -335,6 +342,7 @@ impl Home {
         self.mirror = Some(mirror);
         if self.screen != Screen::Terminal {
             self.history.push(std::mem::replace(&mut self.screen, Screen::Terminal));
+            self.moved(true);
         }
         cx.notify();
     }
@@ -385,6 +393,7 @@ impl Home {
                     home.screen = home.history.pop().unwrap_or(Screen::Computers);
                     home.history.push(home.screen.clone());
                     home.screen = Screen::Project { key, project };
+                    home.moved(true);
                 }
             },
             cx,
@@ -419,6 +428,7 @@ impl Home {
     pub fn open_url(&mut self, url: &str, cx: &mut Context<Self>) {
         if self.screen != Screen::Pair {
             self.history.push(std::mem::replace(&mut self.screen, Screen::Pair));
+            self.moved(true);
         }
         prefs::update(cx, |prefs| prefs.onboarded = true);
         self.pair_with_link(url, cx);
@@ -432,6 +442,11 @@ impl Home {
 
     pub fn pair_with_link(&mut self, text: &str, cx: &mut Context<Self>) {
         self.link.update(cx, |link, cx| link.pair(text, cx));
+    }
+
+    fn moved(&mut self, forward: bool) {
+        self.moves += 1;
+        self.shift = if forward { ui::SHIFT } else { -ui::SHIFT };
     }
 
     fn animate(&mut self, needed: bool, cx: &mut Context<Self>) {
@@ -590,6 +605,7 @@ impl Home {
 impl Render for Home {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = ui::theme(window, cx);
+        let shift = self.shift;
         let insets = window.insets().effective();
         let animated = match &self.screen {
             Screen::Welcome => self.shown.elapsed() < Duration::from_secs(3),
@@ -634,6 +650,10 @@ impl Render for Home {
             .text_color(theme.text)
             .font_family(FAMILY)
             .text_size(px(ui::TEXT))
-            .child(body)
+            .child(div().flex_1().min_h_0().flex().flex_col().child(body).with_animation(
+                ("screen", self.moves),
+                ui::motion(),
+                move |this, delta| this.opacity(delta).relative().left(px((1.0 - delta) * shift)),
+            ))
     }
 }

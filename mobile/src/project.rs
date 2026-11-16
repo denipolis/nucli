@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement,
-    Styled, div, px, relative,
+    AnimationExt, AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, div, px, relative,
 };
 use nucli_core::icons;
 use nucli_core::theme::Theme;
@@ -239,15 +239,22 @@ impl Home {
             }
             Some(_) => div(),
         };
+        let dim = theme.background;
         div()
             .absolute()
             .inset_0()
             .flex()
             .occlude()
-            .child(div().id("drawer-backdrop").flex_1().on_click(cx.listener(|home, _, _, cx| {
-                home.drawer = None;
-                cx.notify();
-            })))
+            .child(
+                div()
+                    .id("drawer-backdrop")
+                    .flex_1()
+                    .on_click(cx.listener(|home, _, _, cx| {
+                        home.drawer = None;
+                        cx.notify();
+                    }))
+                    .with_animation("drawer-dim", ui::motion(), move |this, delta| this.bg(dim.opacity(0.7 * delta))),
+            )
             .child(
                 div()
                     .flex()
@@ -258,7 +265,14 @@ impl Home {
                     .border_l_1()
                     .border_color(theme.border)
                     .child(header)
-                    .child(div().id("drawer").flex_1().min_h_0().overflow_y_scroll().child(body)),
+                    .child(div().id("drawer").flex_1().min_h_0().overflow_y_scroll().child(body.with_animation(
+                        SharedString::from(format!("drawer-{}-{}", panel_index(drawer.panel), drawer.folder)),
+                        ui::motion(),
+                        |this, delta| this.opacity(delta),
+                    )))
+                    .with_animation("drawer-slide", ui::motion(), |this, delta| {
+                        this.relative().left(relative(0.88 * (1.0 - delta)))
+                    }),
             )
     }
 
