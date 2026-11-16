@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use gpui::{
     App, Entity, KeyUpEvent, Keystroke, LongPressEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    OperatingSystem, PlatformInput, TouchPhase, Window, point, px,
+    OperatingSystem, PlatformInput, TouchEvent, TouchId, TouchPhase, Window, point, px,
 };
 
 use crate::home::Home;
@@ -18,6 +18,24 @@ pub fn start(home: Entity<Home>, window: &mut Window, cx: &mut App) {
             let lines: Vec<String> = text.lines().skip(done).map(String::from).collect();
             done += lines.len();
             for line in lines {
+                if let Some(points) = line.strip_prefix("fling ") {
+                    let numbers: Vec<f32> = points.split(' ').filter_map(|part| part.parse().ok()).collect();
+                    let [x, y, distance] = numbers[..] else { continue };
+                    for step in 0..=6 {
+                        let phase = match step {
+                            0 => TouchPhase::Started,
+                            6 => TouchPhase::Ended,
+                            _ => TouchPhase::Moved,
+                        };
+                        let position = point(px(x), px(y + distance * step.min(5) as f32 / 5.0));
+                        let touch =
+                            TouchEvent { id: TouchId(1), phase, position, predicted_position: None, force: None };
+                        let _ =
+                            handle.update(cx, |_, window, cx| window.dispatch_event(PlatformInput::Touch(touch), cx));
+                        cx.background_executor().timer(Duration::from_millis(16)).await;
+                    }
+                    continue;
+                }
                 let home = home.clone();
                 let _ = handle.update(cx, |_, window, cx| {
                     if let Some(point) = line.strip_prefix("tap ") {
