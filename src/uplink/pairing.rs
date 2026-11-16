@@ -47,6 +47,7 @@ impl Step {
         }
     }
 
+    #[cfg(debug_assertions)]
     pub fn label(&self) -> &'static str {
         match self {
             Step::Connect => "connect",
