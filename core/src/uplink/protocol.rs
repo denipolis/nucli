@@ -154,6 +154,7 @@ pub enum Request {
     Folders { path: String },
     AddProject { path: String, workspace: Option<String> },
     OpenWorkspace { workspace: String },
+    RenameWorkspace { workspace: String, name: String },
     Files { project: String, folder: String },
     File { project: String, path: String },
     Changes { project: String },

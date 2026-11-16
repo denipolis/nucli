@@ -331,6 +331,27 @@ impl Uplink {
                     reply(&outbox, Response::Done);
                 });
             }
+            Request::RenameWorkspace { workspace, name } => {
+                let name = name.trim().to_string();
+                let store = store::store(cx).read(cx);
+                let Some(id) = store.workspaces.iter().find(|item| item.name == workspace).map(|item| item.id.clone())
+                else {
+                    reply(&outbox, failed("This workspace does not exist."));
+                    return;
+                };
+                if name.is_empty() {
+                    reply(&outbox, failed("The workspace needs a name."));
+                    return;
+                }
+                if store.workspaces.iter().any(|item| item.name == name && item.id != id) {
+                    reply(&outbox, failed("Another workspace has this name."));
+                    return;
+                }
+                cx.defer(move |cx| {
+                    actions::set_workspace_name(&id, name, cx);
+                    reply(&outbox, Response::Done);
+                });
+            }
             Request::Resume { conversation } => {
                 let sources = history::sources(&settings::get(cx).agents);
                 cx.spawn(async move |_, cx| {

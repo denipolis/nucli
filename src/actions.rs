@@ -1120,19 +1120,26 @@ fn new_workspace(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context
 
 fn rename_workspace(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     let current = view.state(cx).map(|state| state.name.clone()).unwrap_or_default();
-    prompt(view, "rename workspace", &current, window, cx, |name, view, window, cx| {
-        if name.is_empty() {
-            return;
+    prompt(view, "rename workspace", &current, window, cx, |name, view, _, cx| {
+        if !name.is_empty() {
+            set_workspace_name(&view.workspace.clone(), name, cx);
         }
-        let id = view.workspace.clone();
-        store::store(cx).update(cx, |store, cx| {
-            if let Some(state) = store.workspace_mut(&id) {
-                state.name = name.clone();
-            }
-            store.changed(cx);
-        });
-        window.set_window_title(&name);
     });
+}
+
+pub fn set_workspace_name(id: &str, name: String, cx: &mut App) {
+    let handle = store::store(cx).update(cx, |store, cx| {
+        if let Some(state) = store.workspace_mut(id) {
+            state.name = name.clone();
+        }
+        store.changed(cx);
+        store.windows.get(id).copied()
+    });
+    if let Some(handle) = handle {
+        cx.defer(move |cx| {
+            let _ = handle.update(cx, |_, window, _| window.set_window_title(&name));
+        });
+    }
 }
 
 fn delete_workspace(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {

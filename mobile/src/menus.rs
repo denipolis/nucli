@@ -540,6 +540,14 @@ impl Home {
         Sheet::Menu { title: if agent { "new agent" } else { "new shell" }.into(), items }
     }
 
+    pub fn workspace_menu(&self, key: Key, workspace: &str) -> Sheet {
+        let current = workspace.to_string();
+        let rename = ask("rename", "rename workspace", workspace, move |name, home, _, cx| {
+            home.send(key, Request::RenameWorkspace { workspace: current.clone(), name }, cx)
+        });
+        Sheet::Menu { title: workspace.to_string(), items: vec![rename] }
+    }
+
     pub fn conversation_menu(&self, key: Key, item: &RemoteConversation, control: bool) -> Sheet {
         let mut items = Vec::new();
         if control {

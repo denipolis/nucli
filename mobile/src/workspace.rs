@@ -110,7 +110,8 @@ impl Home {
                     .child(div().flex_none().text_color(theme.faint).child(icons::CHEVRON_RIGHT))
                     .on_click(cx.listener(move |home, _, window, cx| {
                         home.go(Screen::Workspace { key, workspace: name.clone() }, window, cx)
-                    })),
+                    }))
+                    .when(control, |this| this.child(self.workspace_hold(key, &workspace.name, cx))),
             );
         }
         let closed: Vec<&RemoteWorkspace> = all.iter().filter(|workspace| !workspace.open).collect();
@@ -129,10 +130,19 @@ impl Home {
                             .on_click(
                                 cx.listener(move |home, _, window, cx| home.open_workspace(key, &name, window, cx)),
                             )
+                            .child(self.workspace_hold(key, &workspace.name, cx))
                     }),
             );
         }
         list
+    }
+
+    fn workspace_hold(&self, key: Key, name: &str, cx: &mut Context<Self>) -> impl IntoElement {
+        let name = name.to_string();
+        ui::hold(cx.listener(move |home, _, _, cx| {
+            let sheet = home.workspace_menu(key, &name);
+            home.show(sheet, cx)
+        }))
     }
 
     pub fn open_workspace(&mut self, key: Key, name: &str, window: &mut Window, cx: &mut Context<Self>) {
