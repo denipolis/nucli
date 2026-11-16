@@ -80,10 +80,26 @@ pub fn font(family: &str, bold: bool, italic: bool, ligatures: bool) -> Font {
     Font {
         family: family.to_string().into(),
         features: if ligatures { FontFeatures::default() } else { FontFeatures::disable_ligatures() },
-        fallbacks: (family != FAMILY).then(|| gpui::FontFallbacks::from_fonts(vec![FAMILY.into()])),
+        fallbacks: fallbacks(family),
         weight: if bold { FontWeight::BOLD } else { FontWeight::NORMAL },
         style: if italic { FontStyle::Italic } else { FontStyle::Normal },
     }
+}
+
+fn fallbacks(family: &str) -> Option<gpui::FontFallbacks> {
+    let fonts: Vec<String> =
+        (family != FAMILY).then(|| FAMILY.to_string()).into_iter().chain(symbol_fonts().map(String::from)).collect();
+    (!fonts.is_empty()).then(|| gpui::FontFallbacks::from_fonts(fonts))
+}
+
+#[cfg(target_os = "ios")]
+fn symbol_fonts() -> impl Iterator<Item = &'static str> {
+    ["STIX Two Math", "Zapf Dingbats"].into_iter()
+}
+
+#[cfg(not(target_os = "ios"))]
+fn symbol_fonts() -> impl Iterator<Item = &'static str> {
+    std::iter::empty()
 }
 
 struct Run {
