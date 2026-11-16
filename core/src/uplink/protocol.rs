@@ -116,6 +116,13 @@ pub enum Message {
         id: u64,
         request: Request,
     },
+    Sending {
+        id: u64,
+        size: u64,
+    },
+    Sent {
+        id: u64,
+    },
     Response {
         id: u64,
         response: Response,
@@ -140,6 +147,9 @@ pub enum Request {
     Log { project: String },
     Commit { project: String, hash: String },
     Branches { project: String },
+    Tree { project: String },
+    Download { project: String, path: String },
+    Upload { project: String, folder: String, name: String, size: u64 },
     Act { project: String, action: Action },
     Tab { tab: String, action: TabAction },
 }
@@ -204,6 +214,7 @@ pub enum Response {
     Log { commits: Vec<RemoteCommit> },
     Commit { date: String, message: String, stats: String, changes: Vec<RemoteChange> },
     Branches { current: String, branches: Vec<String> },
+    Tree { files: Vec<String> },
     Done,
     Failed { reason: String },
 }
@@ -278,6 +289,7 @@ pub enum Frame {
     Message(Message),
     Feed(String, Feed),
     Input(String, Vec<u8>),
+    Chunk(u64, Vec<u8>),
 }
 
 const MESSAGE: u8 = 0;
@@ -287,6 +299,7 @@ const LOCAL: u8 = 3;
 const SIZE: u8 = 4;
 const FLUSH: u8 = 5;
 const INPUT: u8 = 6;
+const CHUNK: u8 = 7;
 
 pub fn message(message: &Message) -> Vec<u8> {
     let mut frame = vec![MESSAGE];
@@ -335,6 +348,12 @@ pub fn input(tab: &str, data: &[u8]) -> Vec<u8> {
     frame
 }
 
+pub fn chunk(id: u64, data: &[u8]) -> Vec<u8> {
+    let mut frame = tagged(CHUNK, &id.to_string(), data.len());
+    frame.extend_from_slice(data);
+    frame
+}
+
 pub fn decode(frame: &[u8]) -> Option<Frame> {
     let (&kind, rest) = frame.split_first()?;
     if kind == MESSAGE {
@@ -355,6 +374,7 @@ pub fn decode(frame: &[u8]) -> Option<Frame> {
         LOCAL => Feed::Bytes { local: true, data: body.to_vec() },
         FLUSH => Feed::Flush,
         INPUT => return Some(Frame::Input(tab, body.to_vec())),
+        CHUNK => return Some(Frame::Chunk(tab.parse().ok()?, body.to_vec())),
         _ => return None,
     };
     Some(Frame::Feed(tab, feed))
@@ -396,6 +416,7 @@ mod tests {
         let bytes = feed("t", &Feed::Bytes { local: true, data: b"hi".to_vec() });
         assert!(matches!(decode(&bytes), Some(Frame::Feed(_, Feed::Bytes { local: true, data })) if data == b"hi"));
         assert!(matches!(decode(&input("t", b"ls\r")), Some(Frame::Input(tab, data)) if tab == "t" && data == b"ls\r"));
+        assert!(matches!(decode(&chunk(42, b"\x00\xff")), Some(Frame::Chunk(42, data)) if data == b"\x00\xff"));
     }
 
     #[test]

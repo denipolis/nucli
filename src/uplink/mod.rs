@@ -1,9 +1,11 @@
 mod act;
+pub mod files;
 mod host;
 pub mod page;
 pub mod sidebar;
+mod transfers;
 
-pub use nucli_core::uplink::{devices, invite, net, protocol, wire};
+pub use nucli_core::uplink::{devices, invite, net, protocol, transfer, wire};
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -109,6 +111,7 @@ pub struct Uplink {
     outboxes: Arc<Mutex<HashMap<Key, Outbox>>>,
     push: Option<Task<()>>,
     opening: Option<(Key, String)>,
+    transfers: transfers::Transfers,
 }
 
 pub fn init(cx: &mut App) {
@@ -135,6 +138,7 @@ pub fn init(cx: &mut App) {
             outboxes: Default::default(),
             push: None,
             opening: None,
+            transfers: Default::default(),
         };
         uplink.trust();
         uplink
@@ -390,6 +394,11 @@ impl Uplink {
             NetEvent::Connected(connection) => self.connected(connection, cx),
             NetEvent::Message(conn, message) => self.message(conn, message, cx),
             NetEvent::Input(conn, tab, data) => self.host_input(conn, &tab, &data, cx),
+            NetEvent::Chunk(conn, id, data) => {
+                if let Some((key, _)) = self.link_of(conn) {
+                    self.chunk(key, id, data);
+                }
+            }
             NetEvent::Closed(conn) => self.closed(conn, cx),
             NetEvent::DialFailed(key, error) => {
                 if let Some(dialing) = self.dialing.get_mut(&key) {
@@ -510,6 +519,7 @@ impl Uplink {
     fn closed(&mut self, conn: u64, cx: &mut Context<Self>) {
         self.drop_watchers(conn, cx);
         let Some((key, _)) = self.link_of(conn) else { return };
+        self.drop_transfers(key);
         self.links.remove(&key);
         if let Ok(mut outboxes) = self.outboxes.lock() {
             outboxes.remove(&key);
@@ -869,7 +879,9 @@ impl Uplink {
                 }
             }
             Message::Request { id, request } => self.host_request(key, id, request, cx),
-            Message::Response { .. } | Message::Ping | Message::Unknown => {}
+            Message::Response { id, response } => self.answered(key, id, response),
+            Message::Sent { id } => self.sent(key, id),
+            Message::Sending { .. } | Message::Ping | Message::Unknown => {}
         }
     }
 

@@ -28,6 +28,7 @@ pub enum NetEvent {
     Connected(Connection),
     Message(u64, Message),
     Input(u64, String, Vec<u8>),
+    Chunk(u64, u64, Vec<u8>),
     Closed(u64),
     DialFailed(Key, String),
     Paired { key: Key, hello: Hello, address: Option<String>, access: Access },
@@ -107,6 +108,14 @@ pub struct Outbox {
 impl Outbox {
     pub fn send(&self, message: &Message) -> bool {
         self.push(protocol::message(message))
+    }
+
+    pub fn chunk(&self, id: u64, data: &[u8]) -> bool {
+        self.push(protocol::chunk(id, data))
+    }
+
+    pub fn backed_up(&self) -> bool {
+        self.queued.load(Ordering::Acquire) >= BACKLOG
     }
 
     pub fn input(&self, tab: &str, data: &[u8]) -> bool {
@@ -215,6 +224,7 @@ fn start(link: Channel, address: SocketAddr, initiator: bool, shared: &Arc<Share
                     }
                 }
                 Some(Frame::Input(tab, data)) => shared.post(NetEvent::Input(id, tab, data)),
+                Some(Frame::Chunk(transfer, data)) => shared.post(NetEvent::Chunk(id, transfer, data)),
                 Some(Frame::Message(Message::Ping | Message::Unknown)) => {}
                 Some(Frame::Message(message)) => shared.post(NetEvent::Message(id, message)),
                 None => break,

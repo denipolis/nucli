@@ -155,9 +155,61 @@ impl Home {
         items
     }
 
+    fn upload_item(&self, key: Key, project: &str, folder: &str) -> Item {
+        let (root, folder) = (project.to_string(), folder.to_string());
+        action("upload files", move |home, _, cx| home.upload(key, &root, &folder, cx))
+    }
+
+    pub fn download(&mut self, key: Key, project: &str, path: &str, cx: &mut Context<Self>) {
+        let done = self.link.update(cx, |link, cx| link.download(key, project, path, cx));
+        cx.spawn(async move |this, cx| {
+            let outcome = done.await.unwrap_or_else(|_| Err("The transfer stopped.".into()));
+            let _ = this.update(cx, |home, cx| {
+                match outcome {
+                    Ok(saved) => {
+                        let name =
+                            saved.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+                        home.say(format!("saved {name} to {}", crate::picker::PLACE));
+                    }
+                    Err(reason) => home.say(reason),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    pub fn upload(&mut self, key: Key, project: &str, folder: &str, cx: &mut Context<Self>) {
+        let picked = crate::picker::pick(cx);
+        let (project, folder) = (project.to_string(), folder.to_string());
+        cx.spawn(async move |this, cx| {
+            let files = picked.await.unwrap_or_default();
+            let _ = this.update(cx, |home, cx| {
+                for file in files {
+                    let name = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+                    let done = home.link.update(cx, |link, cx| link.upload(key, &project, &folder, file, cx));
+                    cx.spawn(async move |this, cx| {
+                        let outcome = done.await.unwrap_or_else(|_| Err("The transfer stopped.".into()));
+                        let _ = this.update(cx, |home, cx| {
+                            match outcome {
+                                Ok(()) => home.say(format!("uploaded {name}")),
+                                Err(reason) => home.say(reason),
+                            }
+                            home.refresh_drawer(cx);
+                            cx.notify();
+                        });
+                    })
+                    .detach();
+                }
+            });
+        })
+        .detach();
+    }
+
     pub fn folder_menu(&self, key: Key, project: &str, folder: &str) -> Sheet {
         let mut items = self.create_items(key, project, folder);
         items.extend(self.paste_item(key, project, folder));
+        items.push(self.upload_item(key, project, folder));
         items.extend(self.location_items(key, project, folder, false));
         Sheet::Menu { title: if folder.is_empty() { "project".into() } else { folder.to_string() }, items }
     }
@@ -170,6 +222,12 @@ impl Home {
             items.push(action("open as project", move |home, _, cx| {
                 home.send(key, Request::AddProject { path: absolute.clone() }, cx)
             }));
+        }
+        if is_folder {
+            items.push(self.upload_item(key, project, path));
+        } else {
+            let (root, file) = (project.to_string(), path.to_string());
+            items.push(action("download", move |home, _, cx| home.download(key, &root, &file, cx)));
         }
         items.extend(self.location_items(key, project, path, true));
         for (label, cut) in [("cut", true), ("copy", false)] {

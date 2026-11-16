@@ -181,6 +181,7 @@ fn answer(request: Request, root: PathBuf) -> Response {
             },
             None => failed("The commit was not found."),
         },
+        Request::Tree { .. } => Response::Tree { files: super::transfers::tree(&root) },
         Request::Branches { .. } => Response::Branches {
             current: git::status(&root).map(|status| status.branch).unwrap_or_default(),
             branches: git::branches(&root, BRANCH_LIMIT),
@@ -198,6 +199,9 @@ fn project_of(request: &Request) -> Option<&str> {
         | Request::Log { project }
         | Request::Commit { project, .. }
         | Request::Branches { project }
+        | Request::Tree { project }
+        | Request::Download { project, .. }
+        | Request::Upload { project, .. }
         | Request::Act { project, .. } => Some(project),
         _ => None,
     }
@@ -229,6 +233,18 @@ impl Uplink {
                     _ => None,
                 };
                 act::act(outbox, id, root, source, action, cx);
+                return;
+            }
+            if let Request::Download { path, .. } = request {
+                super::transfers::serve(outbox, id, root, path, cx);
+                return;
+            }
+            if let Request::Upload { .. } = request {
+                if control {
+                    self.accept_upload(key, outbox, id, root, request, cx);
+                } else {
+                    reply(&outbox, failed("This computer lets this device view only."));
+                }
                 return;
             }
             cx.background_executor().spawn(async move { reply(&outbox, answer(request, root)) }).detach();

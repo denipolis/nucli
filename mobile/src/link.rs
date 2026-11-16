@@ -11,6 +11,7 @@ use nucli_core::uplink::devices::{self, Access, Device};
 use nucli_core::uplink::invite;
 use nucli_core::uplink::net::{self, Connection, Nearby, NetEvent, Outbox, Routes, Shared};
 use nucli_core::uplink::protocol::{Catalog, Hello, Message, Request, Response, Stop};
+use nucli_core::uplink::transfer::Piece;
 use nucli_core::uplink::wire::{self, Key};
 
 const PORT: u16 = 47100;
@@ -18,7 +19,7 @@ const PORT: u16 = 47100;
 pub struct Online {
     conn: u64,
     address: String,
-    outbox: Outbox,
+    pub(crate) outbox: Outbox,
     routes: Routes,
     pub catalog: Catalog,
 }
@@ -44,8 +45,11 @@ pub struct Link {
     opening: Option<Key>,
     pub nearby: Vec<Nearby>,
     _browser: Option<crate::nearby::Browser>,
-    asks: HashMap<u64, (Key, futures::channel::oneshot::Sender<Response>)>,
-    next_ask: u64,
+    pub(crate) asks: HashMap<u64, (Key, futures::channel::oneshot::Sender<Response>)>,
+    pub(crate) next_ask: u64,
+    pub transfers: HashMap<u64, crate::transfers::Transfer>,
+    pub(crate) sinks: HashMap<u64, futures::channel::mpsc::UnboundedSender<Piece>>,
+    pub(crate) stops: HashMap<u64, Arc<std::sync::atomic::AtomicBool>>,
 }
 
 pub fn start(name: String, cx: &mut App) -> Entity<Link> {
@@ -71,6 +75,9 @@ pub fn start(name: String, cx: &mut App) -> Entity<Link> {
         _browser: browser,
         asks: HashMap::new(),
         next_ask: 0,
+        transfers: HashMap::new(),
+        sinks: HashMap::new(),
+        stops: HashMap::new(),
     });
     let handling = link.clone();
     cx.spawn(async move |cx| {
@@ -184,6 +191,10 @@ impl Link {
     fn drop_asks(&mut self, key: Key) {
         let ids: Vec<u64> = self.asks.iter().filter(|(_, (asked, _))| *asked == key).map(|(id, _)| *id).collect();
         for id in ids {
+            self.sinks.remove(&id);
+            if let Some(stop) = self.stops.remove(&id) {
+                stop.store(true, std::sync::atomic::Ordering::Release);
+            }
             if let Some((_, sender)) = self.asks.remove(&id) {
                 let _ = sender.send(Response::Failed { reason: "The computer went offline.".into() });
             }
@@ -368,6 +379,7 @@ impl Link {
                 self.dial();
             }
             NetEvent::Gone(fullname) => self.nearby.retain(|nearby| nearby.fullname != fullname),
+            NetEvent::Chunk(_, id, data) => self.chunk(id, data),
             NetEvent::Input(..) | NetEvent::PairingFailed { .. } => return,
         }
         cx.notify();
@@ -429,6 +441,7 @@ impl Link {
                 self.watched.remove(&(key, tab));
             }
             Message::Response { id, response } => {
+                self.finish_transfer(id, &response);
                 if let Some((_, sender)) = self.asks.remove(&id) {
                     let _ = sender.send(response);
                 }
@@ -445,6 +458,7 @@ impl Link {
                 }
                 self.save();
             }
+            Message::Sending { id, size } => self.sending(id, size),
             Message::Unpair => {
                 self.devices.retain(|device| device.public().as_ref() != Some(&key));
                 if let Some(online) = self.online.remove(&key) {

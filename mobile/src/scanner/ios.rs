@@ -82,7 +82,7 @@ impl Scanner {
     }
 }
 
-fn root(mtm: MainThreadMarker) -> Option<Retained<UIViewController>> {
+pub fn root(mtm: MainThreadMarker) -> Option<Retained<UIViewController>> {
     let scenes = UIApplication::sharedApplication(mtm).connectedScenes();
     scenes.iter().find_map(|scene| {
         let scene = scene.downcast::<UIWindowScene>().ok()?;

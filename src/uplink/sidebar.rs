@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, Context, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, div, px,
+    AnyElement, App, Context, ExternalPaths, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    SharedString, StatefulInteractiveElement, Styled, div, px,
 };
 
 use super::devices::Device;
@@ -119,8 +119,24 @@ fn project_row(
     let name = if project.name.is_empty() { "~".to_string() } else { project.name.clone() };
     let group = SharedString::from(format!("uplink-project-{}-{}", &super::wire::encode_key(&key)[..12], project.path));
     let can_open = catalog.control && !catalog.launchers.is_empty();
-    let menu_items = launcher_menu(key, project, catalog, device);
-    let button_items = menu_items.clone();
+    let button_items = launcher_menu(key, project, catalog, device);
+    let mut menu_items = if can_open { button_items.clone() } else { Vec::new() };
+    if can_open {
+        menu_items.push(Item::Separator);
+    }
+    {
+        let path = project.path.clone();
+        menu_items.push(menu::action("Download File…", move |view, window, cx| {
+            super::files::pick_download(view, key, path.clone(), window, cx)
+        }));
+    }
+    if catalog.control {
+        let path = project.path.clone();
+        menu_items.push(menu::action("Upload Files…", move |view, _, cx| {
+            super::files::pick_upload(key, path.clone(), view.workspace.clone(), cx)
+        }));
+    }
+    let (drop_path, control) = (project.path.clone(), catalog.control);
     div()
         .id(group.clone())
         .group(group.clone())
@@ -151,11 +167,16 @@ fn project_row(
         .on_mouse_down(
             MouseButton::Right,
             cx.listener(move |view, event: &gpui::MouseDownEvent, _, cx| {
-                if can_open {
-                    view.open_menu(event.position, menu_items.clone(), cx);
-                }
+                view.open_menu(event.position, menu_items.clone(), cx);
             }),
         )
+        .when(control, |this| {
+            this.drag_over::<ExternalPaths>(move |style, _, _, _| style.bg(theme.selection)).on_drop(cx.listener(
+                move |view, paths: &ExternalPaths, _, cx| {
+                    super::files::upload(key, &drop_path, paths.paths().to_vec(), &view.workspace.clone(), cx);
+                },
+            ))
+        })
         .into_any_element()
 }
 

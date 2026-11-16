@@ -37,20 +37,7 @@ fn name(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }
 
-pub(crate) fn free_name(path: &Path) -> PathBuf {
-    if path.symlink_metadata().is_err() {
-        return path.to_path_buf();
-    }
-    let stem = path.file_stem().map(|stem| stem.to_string_lossy().into_owned()).unwrap_or_default();
-    let extension = path.extension().map(|ext| format!(".{}", ext.to_string_lossy())).unwrap_or_default();
-    (1..)
-        .map(|count| {
-            let suffix = if count == 1 { " copy".to_string() } else { format!(" copy {count}") };
-            path.with_file_name(format!("{stem}{suffix}{extension}"))
-        })
-        .find(|candidate| candidate.symlink_metadata().is_err())
-        .unwrap_or_else(|| path.to_path_buf())
-}
+pub(crate) use nucli_core::uplink::transfer::free_name;
 
 pub(crate) fn copy_all(from: &Path, to: &Path) -> io::Result<()> {
     if !from.symlink_metadata()?.is_dir() {

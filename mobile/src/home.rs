@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use gpui::{
@@ -667,6 +668,24 @@ impl Home {
                 self.address.update(cx, |field, cx| field.set(address, cx));
                 self.pair_with_code(cx);
             }
+            "download" => {
+                if let Screen::Project { key, project } = self.screen.clone() {
+                    self.download(key, &project, rest, cx);
+                }
+            }
+            "upload" => {
+                if let Screen::Project { key, project } = self.screen.clone() {
+                    let done = self.link.update(cx, |link, cx| link.upload(key, &project, "", PathBuf::from(rest), cx));
+                    cx.spawn(async move |this, cx| {
+                        let outcome = done.await.unwrap_or_else(|_| Err("The transfer stopped.".into()));
+                        let _ = this.update(cx, |home, cx| {
+                            home.say(outcome.map_or_else(|reason| reason, |()| "uploaded".into()));
+                            cx.notify();
+                        });
+                    })
+                    .detach();
+                }
+            }
             "new" => {
                 if let Screen::Project { key, project } = self.screen.clone() {
                     self.new_tab(key, &project, rest != "shell", cx);
@@ -719,7 +738,19 @@ impl Render for Home {
             }
             _ => self.any_working(cx),
         };
-        let toast = self.toast.clone().filter(|(_, shown)| shown.elapsed() < TOAST).map(|(text, _)| text);
+        let moving = self.link.read(cx).transfers.values().next().map(|transfer| {
+            let more = self.link.read(cx).transfers.len().saturating_sub(1);
+            let verb = if transfer.upload { "uploading" } else { "downloading" };
+            let share = if !transfer.upload && transfer.size > 0 {
+                format!(" {}%", transfer.done * 100 / transfer.size)
+            } else {
+                String::new()
+            };
+            let others = if more > 0 { format!(" and {more} more") } else { String::new() };
+            format!("{} {verb} {}{share}{others}", ui::spinner(self.shown.elapsed().as_millis()), transfer.name)
+        });
+        let toast =
+            moving.or_else(|| self.toast.clone().filter(|(_, shown)| shown.elapsed() < TOAST).map(|(text, _)| text));
         self.animate(animated || toast.is_some(), cx);
         if window.focused(cx).is_none() {
             window.focus(&self.focus, cx);

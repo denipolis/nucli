@@ -1,7 +1,7 @@
 use futures::channel::oneshot::Sender;
 
 #[cfg(target_os = "ios")]
-mod ios;
+pub mod ios;
 
 #[cfg(target_os = "ios")]
 pub fn scan(found: Sender<String>) -> Result<(), String> {
