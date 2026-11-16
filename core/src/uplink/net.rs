@@ -16,6 +16,7 @@ use crate::terminal::Feed;
 pub const SERVICE: &str = "_nucli-uplink._tcp.local.";
 const HANDSHAKE: Duration = Duration::from_secs(10);
 const PING: Duration = Duration::from_secs(15);
+const APPROVAL: Duration = Duration::from_secs(120);
 const SILENCE: Duration = Duration::from_secs(45);
 const DIAL: Duration = Duration::from_secs(4);
 const BACKLOG: usize = 8388608;
@@ -33,6 +34,9 @@ pub enum NetEvent {
     DialFailed(Key, String),
     Paired { key: Key, hello: Hello, address: Option<String>, access: Access },
     PairingFailed { attempts: u32, ended: bool },
+    Approve { key: Key, hello: Hello, sas: String, answer: std::sync::mpsc::Sender<Option<Access>> },
+    Declined(String),
+    Confirm { name: String, sas: String },
     JoinFailed(String),
     Nearby(Nearby),
     Gone(String),
@@ -51,13 +55,12 @@ pub struct Pairing {
     pub code: String,
     pub expires: Instant,
     pub attempts: u32,
-    pub access: Access,
     busy: bool,
 }
 
-impl Pairing {
-    pub fn new(access: Access) -> Pairing {
-        Pairing { code: wire::new_code(), expires: Instant::now() + PAIRING_TIME, attempts: 0, access, busy: false }
+impl Default for Pairing {
+    fn default() -> Pairing {
+        Pairing { code: wire::new_code(), expires: Instant::now() + PAIRING_TIME, attempts: 0, busy: false }
     }
 }
 
@@ -311,14 +314,14 @@ fn incoming(mut stream: TcpStream, address: SocketAddr, shared: &Arc<Shared>) {
         if arrived_excluded(&stream, &shared) {
             return;
         }
-        let Ok(_watchdog) = prepare(&stream).and_then(|_| watchdog(&stream, HANDSHAKE)) else { return };
+        let Ok(watchdog) = prepare(&stream).and_then(|_| watchdog(&stream, HANDSHAKE)) else { return };
         match wire::read_preamble(&mut stream) {
             Ok(Mode::Session) => {
                 if let Ok(link) = wire::accept(stream, &shared.identity, |key| shared.trusts(key)) {
                     let _ = start(link, address, false, &shared);
                 }
             }
-            Ok(Mode::Pair) => host_pairing(stream, address, &shared),
+            Ok(Mode::Pair) => host_pairing(stream, address, watchdog, &shared),
             Err(_) => {}
         }
     });
@@ -340,17 +343,18 @@ fn arrived_excluded(stream: &TcpStream, shared: &Shared) -> bool {
         .any(|interface| interface.ip() == ip && excluded.contains(&interface.name))
 }
 
-fn exchange_hello(channel: Channel, ours: &Hello) -> io::Result<(Key, Hello)> {
+fn exchange_hello(channel: Channel, ours: &Hello) -> io::Result<(Key, Hello, wire::Reader, wire::Writer)> {
     let remote = channel.remote;
+    channel.stream.set_read_timeout(Some(APPROVAL))?;
     let (mut reader, mut writer) = channel.split()?;
     writer.write(&protocol::message(&Message::Hello(ours.clone())))?;
     match protocol::decode(&reader.read()?) {
-        Some(Frame::Message(Message::Hello(hello))) => Ok((remote, hello)),
+        Some(Frame::Message(Message::Hello(hello))) => Ok((remote, hello, reader, writer)),
         _ => Err(io::Error::other("unexpected pairing reply")),
     }
 }
 
-fn host_pairing(stream: TcpStream, address: SocketAddr, shared: &Arc<Shared>) {
+fn host_pairing(stream: TcpStream, address: SocketAddr, watchdog: Sender<()>, shared: &Arc<Shared>) {
     let code = {
         let Ok(mut pairing) = shared.pairing.lock() else { return };
         match pairing.as_mut() {
@@ -368,19 +372,18 @@ fn host_pairing(stream: TcpStream, address: SocketAddr, shared: &Arc<Shared>) {
         if !current(shared) {
             return Err(io::Error::other("pairing ended"));
         }
-        exchange_hello(channel, &shared.hello())
+        let sas = channel.sas.clone();
+        exchange_hello(channel, &shared.hello()).map(|exchanged| (sas, exchanged))
     });
-    let Ok(mut pairing) = shared.pairing.lock() else { return };
-    let Some(current) = pairing.as_mut().filter(|current| current.code == code) else { return };
-    match result {
-        Ok((key, hello)) => {
-            let access = current.access;
-            *pairing = None;
-            let address = (hello.port > 0).then(|| SocketAddr::new(address.ip(), hello.port).to_string());
-            shared.post(NetEvent::Paired { key, hello, address, access });
-        }
-        Err(_) => {
+    let (sas, (key, hello, _reader, mut writer)) = match result {
+        Ok(paired) => paired,
+        Err(error) => {
+            let Ok(mut pairing) = shared.pairing.lock() else { return };
+            let Some(current) = pairing.as_mut().filter(|current| current.code == code) else { return };
             current.busy = false;
+            if error.kind() != io::ErrorKind::PermissionDenied {
+                return;
+            }
             current.attempts += 1;
             let attempts = current.attempts;
             let ended = attempts >= PAIRING_ATTEMPTS;
@@ -388,7 +391,24 @@ fn host_pairing(stream: TcpStream, address: SocketAddr, shared: &Arc<Shared>) {
                 *pairing = None;
             }
             shared.post(NetEvent::PairingFailed { attempts, ended });
+            return;
         }
+    };
+    drop(watchdog);
+    let (answer, answered) = channel();
+    shared.post(NetEvent::Approve { key, hello: hello.clone(), sas, answer });
+    let verdict = answered.recv_timeout(APPROVAL).ok().flatten();
+    let Ok(mut pairing) = shared.pairing.lock() else { return };
+    if pairing.as_ref().is_none_or(|current| current.code != code) {
+        return;
+    }
+    *pairing = None;
+    match verdict {
+        Some(access) if writer.write(&protocol::message(&Message::Approved)).is_ok() => {
+            let address = (hello.port > 0).then(|| SocketAddr::new(address.ip(), hello.port).to_string());
+            shared.post(NetEvent::Paired { key, hello, address, access });
+        }
+        _ => shared.post(NetEvent::Declined(hello.name)),
     }
 }
 
@@ -462,14 +482,20 @@ pub fn join(
     let shared = shared.clone();
     std::thread::spawn(move || {
         let result = dial_any(&addresses, default_port).and_then(|(stream, socket)| {
-            let _watchdog = watchdog(&stream, HANDSHAKE)?;
+            let watchdog = watchdog(&stream, HANDSHAKE)?;
             let channel = wire::join(stream, &shared.identity, &code)?;
-            let (key, hello) = exchange_hello(channel, &shared.hello())
+            let sas = channel.sas.clone();
+            let (key, hello, mut reader, _writer) = exchange_hello(channel, &shared.hello())
                 .map_err(|_| io::Error::other("The code did not match, or pairing ended on the other device."))?;
             if expected.is_some_and(|expected| expected != key) {
                 return Err(io::Error::other("A different device answered at this address."));
             }
-            Ok((key, hello, socket))
+            drop(watchdog);
+            shared.post(NetEvent::Confirm { name: hello.name.clone(), sas });
+            match reader.read().ok().and_then(|frame| protocol::decode(&frame)) {
+                Some(Frame::Message(Message::Approved)) => Ok((key, hello, socket)),
+                _ => Err(io::Error::other(format!("{} did not allow this device.", hello.name))),
+            }
         });
         match result {
             Ok((key, hello, socket)) => {
@@ -642,13 +668,17 @@ mod tests {
         let _server = listen(port, &host).unwrap();
         let address = format!("127.0.0.1:{port}");
 
-        *host.pairing.lock().unwrap() = Some(Pairing::new(Access::View));
+        *host.pairing.lock().unwrap() = Some(Pairing::default());
         join(vec![address.clone()], "WRONGCDE".into(), None, Access::Control, port, &guest);
         assert!(matches!(next(&mut guest_events), NetEvent::JoinFailed(_)));
         assert!(matches!(next(&mut host_events), NetEvent::PairingFailed { attempts: 1, ended: false }));
 
         let code = host.pairing.lock().unwrap().as_ref().unwrap().code.clone();
         join(vec![address.clone()], code, Some(host.identity.public), Access::Control, port, &guest);
+        let NetEvent::Approve { sas, answer, .. } = next(&mut host_events) else { panic!("host not asked") };
+        let NetEvent::Confirm { sas: shown, .. } = next(&mut guest_events) else { panic!("guest not told") };
+        assert_eq!(sas, shown);
+        answer.send(Some(Access::View)).unwrap();
         let NetEvent::Paired { key, hello, access, .. } = next(&mut host_events) else { panic!("host not paired") };
         assert_eq!((key, hello.name.as_str(), access), (guest.identity.public, "guest", Access::View));
         let NetEvent::Paired { key, .. } = next(&mut guest_events) else { panic!("guest not paired") };
@@ -686,7 +716,7 @@ mod tests {
         let (guest, mut guest_events) = node("guest");
         let port = free_port();
         let _server = listen(port, &host).unwrap();
-        *host.pairing.lock().unwrap() = Some(Pairing::new(Access::Control));
+        *host.pairing.lock().unwrap() = Some(Pairing::default());
         for attempt in 1..=PAIRING_ATTEMPTS {
             join(vec![format!("127.0.0.1:{port}")], "00000000".into(), None, Access::Control, port, &guest);
             assert!(matches!(next(&mut guest_events), NetEvent::JoinFailed(_)));
@@ -697,6 +727,30 @@ mod tests {
         let code = wire::new_code();
         join(vec![format!("127.0.0.1:{port}")], code, None, Access::Control, port, &guest);
         assert!(matches!(next(&mut guest_events), NetEvent::JoinFailed(_)));
+    }
+
+    #[test]
+    fn denied_pairing_pairs_nobody() {
+        let (host, mut host_events) = node("host");
+        let (guest, mut guest_events) = node("guest");
+        let port = free_port();
+        let _server = listen(port, &host).unwrap();
+        *host.pairing.lock().unwrap() = Some(Pairing::default());
+        for _ in 0..PAIRING_ATTEMPTS {
+            let mut junk = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            io::Write::write_all(&mut junk, &wire::preamble(Mode::Pair)).unwrap();
+            drop(junk);
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(host.pairing.lock().unwrap().is_some());
+        let code = host.pairing.lock().unwrap().as_ref().unwrap().code.clone();
+        join(vec![format!("127.0.0.1:{port}")], code, None, Access::View, port, &guest);
+        let NetEvent::Approve { answer, .. } = next(&mut host_events) else { panic!("host not asked") };
+        assert!(matches!(next(&mut guest_events), NetEvent::Confirm { .. }));
+        answer.send(None).unwrap();
+        assert!(matches!(next(&mut host_events), NetEvent::Declined(name) if name == "guest"));
+        assert!(matches!(next(&mut guest_events), NetEvent::JoinFailed(_)));
+        assert!(host.pairing.lock().unwrap().is_none());
     }
 
     #[test]

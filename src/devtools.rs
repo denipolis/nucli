@@ -28,7 +28,7 @@ fn uplink(line: &str, cx: &mut App) {
     let (command, rest) = line.split_once(' ').unwrap_or((line, ""));
     let workspace = crate::store::store(cx).read(cx).windows.keys().next().cloned().unwrap_or_default();
     entity.update(cx, |uplink, cx| match command {
-        "pair" => uplink.start_pairing(crate::uplink::devices::Access::Control, cx),
+        "pair" => uplink.start_pairing(cx),
         "join" => {
             let (address, code) = rest.split_once(' ').unwrap_or((rest, ""));
             uplink.start_join(address, code, crate::uplink::devices::Access::Control, cx);

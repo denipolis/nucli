@@ -50,7 +50,7 @@ fn failed(error: impl std::fmt::Display) -> io::Error {
     io::Error::new(io::ErrorKind::PermissionDenied, error.to_string())
 }
 
-fn preamble(mode: Mode) -> [u8; 9] {
+pub(crate) fn preamble(mode: Mode) -> [u8; 9] {
     let mut bytes = [0u8; 9];
     bytes[..7].copy_from_slice(MAGIC);
     bytes[7] = VERSION;
@@ -111,14 +111,21 @@ fn remote_key(noise: &HandshakeState) -> io::Result<Key> {
 }
 
 fn finish(stream: TcpStream, noise: HandshakeState, remote: Key) -> io::Result<Channel> {
+    let sas = comparison(noise.get_handshake_hash());
     let transport = noise.into_stateless_transport_mode().map_err(failed)?;
-    Ok(Channel { stream, transport: Arc::new(transport), remote })
+    Ok(Channel { stream, transport: Arc::new(transport), remote, sas })
+}
+
+pub fn comparison(hash: &[u8]) -> String {
+    let number = hash.iter().take(8).fold(0u64, |number, byte| number << 8 | *byte as u64) % 1000000;
+    format!("{:03} {:03}", number / 1000, number % 1000)
 }
 
 pub struct Channel {
     pub stream: TcpStream,
     transport: Arc<StatelessTransportState>,
     pub remote: Key,
+    pub sas: String,
 }
 
 impl Channel {
@@ -278,7 +285,8 @@ pub fn host_pairing(mut stream: TcpStream, identity: &Identity, code: &str) -> i
         .map_err(failed)?;
     read_handshake(&mut stream, &mut noise)?;
     write_handshake(&mut stream, &mut noise)?;
-    read_handshake(&mut stream, &mut noise).map_err(|_| failed("wrong pairing code"))?;
+    read_handshake(&mut stream, &mut noise)
+        .map_err(|_| io::Error::new(io::ErrorKind::PermissionDenied, "wrong pairing code"))?;
     let remote = remote_key(&noise)?;
     finish(stream, noise, remote)
 }

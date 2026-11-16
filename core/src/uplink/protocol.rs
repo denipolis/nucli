@@ -128,6 +128,7 @@ pub enum Message {
         response: Response,
     },
     Unpair,
+    Approved,
     Ping,
     #[serde(other)]
     Unknown,

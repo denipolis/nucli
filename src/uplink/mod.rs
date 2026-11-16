@@ -82,6 +82,7 @@ pub struct Target {
 pub enum Join {
     Idle,
     Working,
+    Confirm(String),
     Failed(String),
     Done(String),
 }
@@ -211,11 +212,11 @@ impl Uplink {
         self.device(key).map(|device| device.name.clone()).unwrap_or_else(|| wire::fingerprint(key))
     }
 
-    pub fn pairing(&self) -> Option<(String, Duration, u32, Access)> {
+    pub fn pairing(&self) -> Option<(String, Duration, u32)> {
         let pairing = self.shared.pairing.lock().ok()?;
         let current = pairing.as_ref()?;
         let left = current.expires.saturating_duration_since(Instant::now());
-        (!left.is_zero()).then(|| (current.code.clone(), left, current.attempts, current.access))
+        (!left.is_zero()).then(|| (current.code.clone(), left, current.attempts))
     }
 
     fn apply(&mut self, cx: &mut Context<Self>) {
@@ -410,6 +411,17 @@ impl Uplink {
                 cx.notify();
             }
             NetEvent::Paired { key, hello, address, access } => self.paired(key, hello, address, access, cx),
+            NetEvent::Approve { hello, sas, answer, .. } => approve(hello, sas, answer, cx),
+            NetEvent::Declined(name) => {
+                self.note = Some(format!("{} was not allowed to pair.", name.chars().take(64).collect::<String>()));
+                self.announce();
+                cx.notify();
+            }
+            NetEvent::Confirm { name, sas } => {
+                let name: String = name.chars().take(64).collect();
+                self.join = Join::Confirm(format!("Check that {name} shows {sas}, then allow this device there."));
+                cx.notify();
+            }
             NetEvent::PairingFailed { attempts, ended } => {
                 self.note = Some(if ended {
                     format!("Pairing stopped after {attempts} wrong codes.")
@@ -599,9 +611,9 @@ impl Uplink {
         self.dial(cx);
     }
 
-    pub fn start_pairing(&mut self, access: Access, cx: &mut Context<Self>) {
+    pub fn start_pairing(&mut self, cx: &mut Context<Self>) {
         if let Ok(mut pairing) = self.shared.pairing.lock() {
-            *pairing = Some(Pairing::new(access));
+            *pairing = Some(Pairing::default());
         }
         self.note = None;
         self.announce();
@@ -881,7 +893,7 @@ impl Uplink {
             Message::Request { id, request } => self.host_request(key, id, request, cx),
             Message::Response { id, response } => self.answered(key, id, response),
             Message::Sent { id } => self.sent(key, id),
-            Message::Sending { .. } | Message::Ping | Message::Unknown => {}
+            Message::Sending { .. } | Message::Approved | Message::Ping | Message::Unknown => {}
         }
     }
 
@@ -1215,6 +1227,40 @@ pub fn project_shared(path: &Path, cx: &App) -> bool {
     let project =
         store.workspaces.iter().filter(|workspace| !workspace.closed).find_map(|workspace| workspace.project(path));
     project.is_some_and(|project| project.uplink.unwrap_or(settings::get(cx).uplink.share))
+}
+
+fn approve(hello: Hello, sas: String, answer: std::sync::mpsc::Sender<Option<Access>>, cx: &mut App) {
+    let Some(handle) = store::store(cx).read(cx).windows.values().next().copied() else {
+        let _ = answer.send(None);
+        return;
+    };
+    let name: String = hello.name.chars().take(64).collect();
+    let shown = handle.update(cx, |_, window, cx| {
+        window.activate_window();
+        let detail = format!(
+            "Check that {name} shows {sas}. If it shows another number, someone else is pairing: deny.\n\nControl lets {name} type into, open and change shared tabs and projects. View lets it watch and read them."
+        );
+        let choice = window.prompt(
+            gpui::PromptLevel::Warning,
+            &format!("Pair with {name}?"),
+            Some(&detail),
+            &["Allow Control", "Allow View Only", "Deny"],
+            cx,
+        );
+        let answer = answer.clone();
+        cx.spawn(async move |_, _| {
+            let access = match choice.await {
+                Ok(0) => Some(Access::Control),
+                Ok(1) => Some(Access::View),
+                _ => None,
+            };
+            let _ = answer.send(access);
+        })
+        .detach();
+    });
+    if shown.is_err() {
+        let _ = answer.send(None);
+    }
 }
 
 fn project_key(path: &Path) -> String {

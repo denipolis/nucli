@@ -299,9 +299,10 @@ Uplink lets computers running Nucli control each other's tabs: run agents on one
 
 Two devices pair once; after that they find and connect to each other by themselves whenever both are on.
 
-- Choose **add device** under Devices on both computers (also "Uplink: Pair a Device…" in the palette). Each shows its own one-time code of 8 letters and digits (`K7QM-4XRP`), a QR code and a "copy pairing link" button, and a field for the code of the other computer. Typing the code of either computer into the other pairs them. A code works once, for 5 minutes, and pairing stops after 3 wrong codes; cancel stops it at once.
+- Choose **add device** under Devices on both computers (also "Uplink: Pair a Device…" in the palette). Each shows its own one-time code of 8 letters and digits (`K7QM-4XRP`), a QR code and a "copy pairing link" button, and a field for the code of the other computer. Typing the code of either computer into the other pairs them. A code works once, for 5 minutes, and pairing stops after 3 wrong codes (a connection that gives up before trying a code does not count); cancel stops it at once.
 - Nearby computers that are adding a device are listed under the field. With one, it is chosen; with several, click one. With none, type its name or address (`host`, `host:port`, an IP address) next to the code. Press `enter` or `join`. Codes ignore case and dashes, and `O`/`I`/`L` read as `0`/`1`. Pasting the pairing link (from the QR code or "copy pairing link") into the code field fills in the addresses too and pins the device's key, so it works across networks where multicast does not reach.
-- Both devices then list each other under Devices with control; change it any time. Adding a device stops on both computers once they are paired.
+- When the code is right, the computer whose code was typed asks "Pair with <name>?" with **Allow Control**, **Allow View Only** and **Deny**, and both devices show the same six digits (`123 456`), taken from the encrypted handshake. Different digits mean someone in between knows the code: deny. The device that typed the code waits up to 2 minutes for the answer and says when it was not allowed.
+- Both devices then list each other under Devices: the computer that asked with what was allowed, the one that typed the code with view; change either any time. Adding a device stops on both computers once they are paired.
 
 ### Devices
 
@@ -353,7 +354,7 @@ Nucli Uplink is the phone app: a remote control for the computers running Nucli.
   - `[scan qr code]`: a full-screen camera view that closes as soon as it sees a Nucli pairing code; tap to cancel. The system Camera app works too: its link opens Nucli Uplink and pairs.
   - `[paste pairing link]`: reads the link from the clipboard.
   - its code: the phone looks for computers on the same network that are adding a device (multicast DNS) and lists them; with one it is chosen, otherwise tap one. Only the code is left to type. With none found, type the computer's name or address next to the code.
-  - While pairing a spinner shows; a wrong code or an unreachable computer shows why. When paired, the new computer's screen opens.
+  - While pairing a spinner shows, then six digits to check against the computer, which asks whether to allow this phone; a wrong code, an unreachable computer or a refusal shows why. When allowed, the new computer's screen opens.
 - After pairing, the phone connects to each computer by itself whenever both are on and reachable: addresses it finds on the network first, then the ones under "also reach it at", then the ones that worked before. Computers never dial the phone.
 - Every screen below the computers list has a back button at the top left. A new screen fades in with a short slide from the right, or from the left when going back; a tab's content fades in when the tab changes.
 - **Computers** (the home screen): each paired computer with its system, its projects and agents, how many agents are working and waiting, or why it is offline and when it was last seen. `add computer` opens Add a computer; the gear opens Settings.

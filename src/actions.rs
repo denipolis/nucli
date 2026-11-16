@@ -1378,7 +1378,7 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|view, _: &PairDevice, window, cx| {
             settings::update(cx, |settings| settings.uplink.enabled = true);
             if let Some(uplink) = crate::uplink::uplink(cx) {
-                uplink.update(cx, |uplink, cx| uplink.start_pairing(crate::uplink::devices::Access::Control, cx));
+                uplink.update(cx, |uplink, cx| uplink.start_pairing(cx));
             }
             crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx);
         }))

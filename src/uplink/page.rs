@@ -47,7 +47,7 @@ fn page_inputs(view: &WorkspaceView) -> Option<&Inputs> {
 fn join(view: &mut WorkspaceView, cx: &mut Context<WorkspaceView>) {
     let Some(inputs) = page_inputs(view) else { return };
     let (address, code) = (inputs.address.read(cx).text.clone(), inputs.code.read(cx).text.clone());
-    with_uplink(cx, |uplink, cx| uplink.start_join(&address, &code, Access::Control, cx));
+    with_uplink(cx, |uplink, cx| uplink.start_join(&address, &code, Access::View, cx));
 }
 
 pub fn ensure(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
@@ -215,7 +215,7 @@ fn adding(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme: 
             .child(div().text_color(theme.faint).child(
                 "Choose add device on the other computer too, then type the code of one computer into the other.",
             ));
-    if let Some((code, left, attempts, _)) = uplink.pairing() {
+    if let Some((code, left, attempts)) = uplink.pairing() {
         let excluded = &settings::get(cx).uplink.excluded_networks;
         let addresses = uplink.port().map(|port| invite::local_addresses(port, excluded)).unwrap_or_default();
         let link = invite::link(&code, uplink.identity(), &addresses);
@@ -284,6 +284,7 @@ fn adding(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme: 
     }
     let status = match &uplink.join {
         Join::Working => Some((format!("{} pairing…", icons::SPINNER[tick % icons::SPINNER.len()]), theme.accent)),
+        Join::Confirm(text) => Some((format!("{} {text}", icons::SPINNER[tick % icons::SPINNER.len()]), theme.accent)),
         Join::Failed(reason) => Some((reason.clone(), theme.red)),
         Join::Idle | Join::Done(_) => None,
     };
@@ -461,11 +462,11 @@ fn forget(key: Key, name: &str, window: &mut Window, cx: &mut Context<WorkspaceV
 }
 
 fn devices(inputs: &Inputs, uplink: &Uplink, cx: &Context<WorkspaceView>, theme: &Theme) -> AnyElement {
-    let busy = uplink.pairing().is_some() || matches!(uplink.join, Join::Working | Join::Failed(_));
+    let busy = uplink.pairing().is_some() || matches!(uplink.join, Join::Working | Join::Confirm(_) | Join::Failed(_));
     let mut list = group(theme).child(header("Devices", theme).when(!busy, |this| {
         this.child(
             button("uplink-add", "add device", theme)
-                .on_click(|_, _, cx| with_uplink(cx, |uplink, cx| uplink.start_pairing(Access::Control, cx))),
+                .on_click(|_, _, cx| with_uplink(cx, |uplink, cx| uplink.start_pairing(cx))),
         )
     }));
     if busy {

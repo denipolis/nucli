@@ -389,7 +389,13 @@ impl Link {
                     self.chunk(id, data);
                 }
             }
-            NetEvent::Input(..) | NetEvent::PairingFailed { .. } => return,
+            NetEvent::Confirm { name, sas } => {
+                let name: String = name.chars().take(64).collect();
+                self.note = Some(format!("Check that {name} shows {sas}, then allow this phone there."));
+            }
+            NetEvent::Input(..) | NetEvent::PairingFailed { .. } | NetEvent::Approve { .. } | NetEvent::Declined(_) => {
+                return;
+            }
         }
         cx.notify();
     }
