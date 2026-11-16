@@ -78,7 +78,8 @@ impl Mirror {
     }
 
     pub fn press(&mut self, key: &str, cx: &mut Context<Self>) {
-        let modifiers = Modifiers { control: std::mem::take(&mut self.ctrl), ..Default::default() };
+        let (shift, key) = key.strip_prefix("shift-").map_or((false, key), |key| (true, key));
+        let modifiers = Modifiers { control: std::mem::take(&mut self.ctrl), shift, ..Default::default() };
         self.encode(&Keystroke { modifiers, key: key.into(), key_char: None }, cx);
     }
 
@@ -102,8 +103,14 @@ impl Mirror {
             return;
         }
         self.ctrl = false;
-        let text = text.replace('\n', "\r");
-        self.send(text.as_bytes(), cx);
+        for (index, line) in text.split('\n').enumerate() {
+            if index > 0 {
+                self.press("shift-enter", cx);
+            }
+            if !line.is_empty() {
+                self.send(line.as_bytes(), cx);
+            }
+        }
     }
 
     fn document(&self) -> String {

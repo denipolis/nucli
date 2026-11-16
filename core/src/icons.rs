@@ -4,6 +4,7 @@ pub const PLAY: &str = "\u{f04b}";
 pub const SETTINGS: &str = "\u{eb51}";
 pub const KEYBOARD: &str = "\u{eae4}";
 pub const PASTE: &str = "\u{f0192}";
+pub const SEND: &str = "\u{f048a}";
 pub const REPLACE: &str = "\u{eb3d}";
 pub const REPLACE_ALL: &str = "\u{eb3c}";
 pub const FOLDER: &str = "\u{e5ff}";

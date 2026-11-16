@@ -11,8 +11,21 @@ use crate::home::Home;
 use crate::mirror::Mirror;
 use crate::ui;
 
-const KEYS: [(&str, &str); 7] =
-    [("escape", "esc"), ("tab", "tab"), ("up", "↑"), ("down", "↓"), ("left", "←"), ("right", "→"), ("enter", "⏎")];
+const KEYS: [(&str, &str); 11] = [
+    ("escape", "esc"),
+    ("tab", "tab"),
+    ("shift-tab", "⇧tab"),
+    ("up", "↑"),
+    ("down", "↓"),
+    ("left", "←"),
+    ("right", "→"),
+    ("home", "home"),
+    ("end", "end"),
+    ("pageup", "pgup"),
+    ("pagedown", "pgdn"),
+];
+
+const SYMBOLS: [&str; 6] = ["/", "|", "~", "-", "`", "\\"];
 
 impl Home {
     pub fn terminal(
@@ -71,18 +84,7 @@ impl Home {
                     .child(div().truncate().text_size(px(ui::SMALL)).text_color(theme.faint).child(detail)),
             )
             .child(div().flex_none().pr(px(10.0)).text_size(px(ui::SMALL)).text_color(color).child(state));
-        let mut keys = div()
-            .id("keys")
-            .flex()
-            .flex_none()
-            .items_center()
-            .justify_between()
-            .px(px(4.0))
-            .overflow_x_scroll()
-            .border_t_1()
-            .border_color(theme.border)
-            .bg(theme.surface)
-            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default());
+        let mut keys = div().id("keys").flex().flex_1().min_w_0().items_center().overflow_x_scroll();
         let on_mirror = |action: fn(&mut Mirror, &mut Window, &mut Context<Mirror>)| {
             cx.listener(move |home: &mut Home, _, window, cx| {
                 if let Some(mirror) = &home.mirror {
@@ -105,8 +107,30 @@ impl Home {
                 }
             })));
         }
-        keys = keys
-            .child(ui::key("paste", icons::PASTE, theme).on_click(on_mirror(|mirror, _, cx| mirror.paste(cx))))
+        for symbol in SYMBOLS {
+            keys = keys.child(ui::key(symbol, symbol, theme).on_click(cx.listener(move |home, _, _, cx| {
+                if let Some(mirror) = &home.mirror {
+                    mirror.update(cx, |mirror, cx| mirror.type_text(symbol, cx));
+                }
+            })));
+        }
+        keys = keys.child(ui::key("paste", icons::PASTE, theme).on_click(on_mirror(|mirror, _, cx| mirror.paste(cx))));
+        let footer = div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .px(px(4.0))
+            .border_t_1()
+            .border_color(theme.border)
+            .bg(theme.surface)
+            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+            .child(keys)
+            .child(div().flex_none().w(px(1.0)).h(px(24.0)).bg(theme.border))
+            .child(ui::key("enter", icons::SEND, theme).on_click(cx.listener(|home, _, _, cx| {
+                if let Some(mirror) = &home.mirror {
+                    mirror.update(cx, |mirror, cx| mirror.press("enter", cx));
+                }
+            })))
             .child(
                 ui::key("keyboard", icons::KEYBOARD, theme)
                     .when(focused, |button| button.bg(theme.accent).text_color(theme.on_accent))
@@ -122,7 +146,7 @@ impl Home {
             .flex_col()
             .child(header)
             .child(div().flex_1().min_h_0().child(mirror))
-            .when(control && online.is_some(), |this| this.child(keys))
+            .when(control && online.is_some(), |this| this.child(footer))
             .into_any_element()
     }
 }
