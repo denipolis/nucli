@@ -33,13 +33,21 @@ impl Query {
         Ok(Query { regex, multiline: options.regex && text.contains("\\n") })
     }
 
-    pub fn walk(&self, rows: &[Row], mut visit: impl FnMut(Hit, &Captures<'_, str>)) {
+    pub fn walk(&self, rows: &[Row], visit: impl FnMut(Hit, &Captures<'_, str>)) {
+        self.walk_lines(rows.iter().map(|row| (row.text.as_str(), row.kind == LineKind::Removed)), visit);
+    }
+
+    pub fn walk_lines<'a>(
+        &self,
+        lines: impl Iterator<Item = (&'a str, bool)>,
+        mut visit: impl FnMut(Hit, &Captures<'_, str>),
+    ) {
         if self.multiline {
-            self.walk_joined(rows, &mut visit);
+            self.walk_joined(lines, &mut visit);
             return;
         }
-        for (index, row) in rows.iter().enumerate() {
-            for captures in self.regex.captures_iter(row.text.as_str()).map_while(Result::ok) {
+        for (index, (line, _)) in lines.enumerate() {
+            for captures in self.regex.captures_iter(line).map_while(Result::ok) {
                 let Some(found) = captures.get(0) else { continue };
                 let start = Pos { row: index, col: found.start() };
                 let end = Pos { row: index, col: found.end() };
@@ -48,13 +56,20 @@ impl Query {
         }
     }
 
-    fn walk_joined(&self, rows: &[Row], visit: &mut impl FnMut(Hit, &Captures<'_, str>)) {
+    fn walk_joined<'a>(
+        &self,
+        lines: impl Iterator<Item = (&'a str, bool)>,
+        visit: &mut impl FnMut(Hit, &Captures<'_, str>),
+    ) {
         let mut text = String::new();
         let mut starts = Vec::new();
-        for (index, row) in rows.iter().enumerate().filter(|(_, row)| row.kind != LineKind::Removed) {
+        for (index, (line, _)) in lines.enumerate().filter(|(_, (_, removed))| !removed) {
             starts.push((text.len(), index));
-            text.push_str(&row.text);
+            text.push_str(line);
             text.push('\n');
+        }
+        if starts.is_empty() {
+            return;
         }
         text.pop();
         let position = |offset: usize| {

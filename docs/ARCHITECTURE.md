@@ -30,14 +30,16 @@ Paths are under `src/` unless they start with `core/`.
 | `docks_view.rs` | Docks around the viewport: stacks, panels with their tab strips, collapsed strips, resize handles, and the drop zones shown while a view tab is dragged. |
 | `sidebar.rs` | The list views: Projects tree, Agents board, History, each with its filter. |
 | `overview.rs` | Project overview and empty viewport. |
-| `panel.rs` | Files, Changes and History (commits) view content and the terminal panel. |
+| `panel.rs` | Files, Search, Changes and History (commits) view content and the terminal panel. |
 | `files.rs`, `changes.rs`, `commits.rs` | Files, Changes and History (commits) views. |
 | `drag_out.rs` | Hands a file dragged past the window edge to the system: `NSDraggingSession` on macOS, `SHDoDragDrop` on Windows, XDND on X11. |
 | `file_ops.rs` | File operations of the Files tree: create, rename, move, duplicate, cut, copy, paste, delete, drag and drop, and its context menu. |
 | `file_view.rs` | File tabs, path bar, images, Open With, close and save prompts. |
 | `editor.rs` | Text view: diff rows, highlighting, editing, undo, IME. |
 | `editor/find_bar.rs` | Find and replace bar of the text view: fields, toggles, hits and edits. |
-| `find.rs` | Find and replace: query building, matching across rows, replacement templates, case preservation. |
+| `find.rs` | Find and replace: query building, matching across rows or plain lines, replacement templates, case preservation. |
+| `search.rs` | Search in files: include and exclude globs, the parallel scan of the project's files with a result cap and cancellation, previews, and replacing chosen matches in a file on disk. |
+| `search_view.rs` | Search view: fields, toggles, results list, opening a match, replace and dismiss. A search runs on the background executor; a newer search bumps a generation counter that the scan threads poll, so a stale one stops early and its results are dropped. A replace reads the file again and only rewrites matches that are still at the same positions. |
 | `highlight.rs` | Tree-sitter grammars and capture to token mapping. |
 | `hold.rs` | Tap or hold on the new shell and new agent keys. A key bound without a modifier, or run from a menu or the palette, acts at once. macOS sends no key-up while Cmd is held, so there it polls `CGEventSourceKeyState`. |
 | `git.rs` | `git` CLI wrapper, parsers, commit graph lanes. |

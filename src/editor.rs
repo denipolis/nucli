@@ -21,7 +21,7 @@ use crate::text_input::TextInput;
 use crate::theme::Theme;
 use crate::ui;
 
-mod find_bar;
+pub(crate) mod find_bar;
 
 actions!(
     editor,
@@ -309,7 +309,7 @@ pub struct Editor {
     scroll_drag: Option<(Axis, Pixels, Pixels)>,
     code_origin: Point<Pixels>,
     marked: Option<String>,
-    pending_line: Option<usize>,
+    pending_line: Option<(usize, Range<usize>)>,
     first_load: bool,
     pub added: usize,
     pub removed: usize,
@@ -467,8 +467,8 @@ impl Editor {
         self.modified = loaded.modified;
         self.added = self.rows.iter().filter(|row| row.kind == LineKind::Added).count();
         self.removed = self.rows.iter().filter(|row| row.kind == LineKind::Removed).count();
-        if let Some(target) = self.pending_line.take() {
-            self.goto_line(target);
+        if let Some((target, cols)) = self.pending_line.take() {
+            self.goto(target, cols);
         } else if self.first_load {
             if let Some(first) = self.rows.iter().position(|row| row.kind != LineKind::Context) {
                 self.cursor = Pos { row: first, col: 0 };
@@ -494,13 +494,18 @@ impl Editor {
     }
 
     pub fn goto_line(&mut self, line: usize) {
+        self.goto(line, 0..0);
+    }
+
+    pub fn goto(&mut self, line: usize, cols: Range<usize>) {
         if self.rows.is_empty() {
-            self.pending_line = Some(line);
+            self.pending_line = Some((line, cols));
             return;
         }
         let row = self.rows.iter().position(|row| row.new == Some(line)).unwrap_or(self.rows.len() - 1);
-        self.cursor = Pos { row, col: 0 };
-        self.anchor = None;
+        let (start, end) = (self.clamp_col(row, cols.start), self.clamp_col(row, cols.end));
+        self.cursor = Pos { row, col: end };
+        self.anchor = (start != end).then_some(Pos { row, col: start });
         self.scroll.scroll_to_item(row, ScrollStrategy::Center);
     }
 
@@ -530,7 +535,7 @@ impl Editor {
         Some(if anchor < self.cursor { (anchor, self.cursor) } else { (self.cursor, anchor) })
     }
 
-    fn selected_text(&self) -> Option<String> {
+    pub(crate) fn selected_text(&self) -> Option<String> {
         let (start, end) = self.selection()?;
         if start.row == end.row {
             return Some(self.rows[start.row].text[start.col..end.col].to_string());

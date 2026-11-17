@@ -47,7 +47,7 @@ fn find_options(cx: &App) -> find::Options {
     store::store(cx).read(cx).ui.find
 }
 
-fn find_toggle(
+pub(crate) fn find_toggle(
     id: &'static str,
     label: &'static str,
     hint: &'static str,
@@ -64,7 +64,7 @@ fn find_toggle(
         .child(label)
 }
 
-fn find_button(id: &'static str, glyph: &'static str, hint: &'static str, theme: &Theme) -> Stateful<Div> {
+pub(crate) fn find_button(id: &'static str, glyph: &'static str, hint: &'static str, theme: &Theme) -> Stateful<Div> {
     div()
         .id(id)
         .flex_none()

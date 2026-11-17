@@ -17,6 +17,7 @@ pub struct PanelState {
     pub files: Option<gpui::Entity<crate::files::FilesPanel>>,
     pub changes: Option<gpui::Entity<crate::changes::ChangesPanel>>,
     pub commits: Option<gpui::Entity<crate::commits::CommitsPanel>>,
+    pub search: Option<gpui::Entity<crate::search_view::SearchPanel>>,
     terminal_tabs: gpui::ScrollHandle,
     revealed_terminal: Option<String>,
 }
@@ -37,6 +38,7 @@ pub fn render(
         Some(path) => match kind {
             View::Changes => crate::changes::panel(view, &path, window, cx),
             View::Commits => crate::commits::panel(view, &path, window, cx),
+            View::Search => crate::search_view::panel(view, &path, window, cx),
             _ => crate::files::panel(view, &path, window, cx),
         },
     }

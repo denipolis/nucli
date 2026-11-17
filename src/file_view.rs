@@ -97,6 +97,10 @@ pub fn set_active_language(view: &WorkspaceView, language: Option<&'static str>,
     });
 }
 
+pub fn is_dirty(view: &WorkspaceView, project: &Path, file: &str, cx: &App) -> bool {
+    view.files.open.get(&key(project, file)).is_some_and(|editor| editor.read(cx).dirty)
+}
+
 pub fn active_editor(view: &WorkspaceView, cx: &App) -> Option<Entity<Editor>> {
     let project = view.state(cx)?.current_project()?;
     let file = project.active_file()?;

@@ -2,7 +2,7 @@
 
 Defaults below. Every command can be rebound under Settings, Keybindings, or in `keybindings.json` (palette: "Open Keybindings File"): `{"cmd-t": "new_shell", "cmd-shift-d": null}`. Keys use `cmd`, `ctrl`, `alt`, `shift` and names like `enter`, `escape`, `tab`, `space`, `left`, `pageup`, `f7`; `null` removes a default. The command palette shows each command's name and current key.
 
-On Linux and Windows every default uses the same key as on macOS with the modifiers translated: `cmd` becomes `ctrl-shift`, `cmd-shift` becomes `ctrl-alt-shift`, `cmd-alt` becomes `ctrl-alt` and `ctrl-cmd` becomes `ctrl-alt-shift`. Plain `ctrl` letters belong to the terminal (`ctrl-c`, `ctrl-r`, …). Exceptions: font size and settings use plain `ctrl`, `new_tab_in_folder` is `ctrl-alt-t` because `ctrl-alt-shift-t` is `new_agent`, and inside the file view and text inputs the usual `ctrl-c`, `ctrl-v`, `ctrl-x`, `ctrl-a`, `ctrl-z`, `ctrl-shift-z` and `ctrl-s` work.
+On Linux and Windows every default uses the same key as on macOS with the modifiers translated: `cmd` becomes `ctrl-shift`, `cmd-shift` becomes `ctrl-alt-shift`, `cmd-alt` becomes `ctrl-alt` and `ctrl-cmd` becomes `ctrl-alt-shift`. Plain `ctrl` letters belong to the terminal (`ctrl-c`, `ctrl-r`, …). Exceptions: font size and settings use plain `ctrl`, `new_tab_in_folder` is `ctrl-alt-t` because `ctrl-alt-shift-t` is `new_agent`, full screen is `f11` because `ctrl-alt-shift-f` is `find_in_files`, and inside the file view and text inputs the usual `ctrl-c`, `ctrl-v`, `ctrl-x`, `ctrl-a`, `ctrl-z`, `ctrl-shift-z` and `ctrl-s` work.
 
 | Command | Name | macOS | Linux, Windows |
 |---|---|---|---|
@@ -37,7 +37,9 @@ On Linux and Windows every default uses the same key as on macOS with the modifi
 | Turn Uplink on or off | `toggle_uplink` | | |
 | Uplink: pair a device (shows a one-time code) | `pair_device` | | |
 | Show Files / Changes / History (commits) | `show_files` / `show_changes` / `show_commits` | | |
-| Full screen | `toggle_full_screen` | `ctrl-cmd-f` | `ctrl-alt-shift-f` |
+| Find in files (shows Search) / replace in files | `find_in_files` / `replace_in_files` | `cmd-shift-f` / `cmd-shift-h` | `ctrl-alt-shift-f` / `ctrl-alt-shift-h` |
+| Next / previous search result (file view and Search) | `next_search_result` / `previous_search_result` | `f4` / `shift-f4` | `f4` / `shift-f4` |
+| Full screen | `toggle_full_screen` | `ctrl-cmd-f` | `f11` |
 | Font bigger / smaller / reset | `font_bigger` … | `cmd-=` / `cmd--` / `cmd-0` | `ctrl-=` / `ctrl--` / `ctrl-0` |
 | Clear terminal and scrollback | `clear` | `cmd-k` | `ctrl-shift-k` |
 | Find / next / previous | `find` / `find_next` / `find_previous` | `cmd-f` / `cmd-g` / `cmd-shift-g` | `ctrl-shift-f` / `ctrl-shift-g` / `ctrl-alt-shift-g` |
@@ -64,6 +66,8 @@ While a shell in the terminal panel has focus, `close`, `tab_switcher`, `tab_swi
 Terminal keys on macOS (fixed): `cmd-left` / `cmd-right` line start / end, `cmd-backspace` delete to line start, `alt-left` / `alt-right` word back / forward, `alt-backspace` delete word back, `alt` + key sends Meta (`ESC` prefix).
 
 Find and replace in the file view: `enter` / `shift-enter` next and previous match, `tab` moves between the fields, `enter` in the replace field replaces and moves on, `cmd-enter` (`ctrl-enter`) replaces all, `esc` closes. Toggles: `cmd-alt-c` match case, `cmd-alt-w` whole word, `cmd-alt-r` regular expression, `cmd-alt-p` preserve case, `cmd-alt-l` in selection (`ctrl-alt-c`, `ctrl-alt-w`, `ctrl-alt-r`, `ctrl-alt-p`, `ctrl-alt-l` on Linux and Windows).
+
+Search view: `enter` searches at once, `tab` moves between the fields, `cmd-enter` (`ctrl-enter`) replaces all, `esc` returns focus to the viewport. The toggles use the same keys as the file view's find bar, without `cmd-alt-l`.
 
 New tab picker: arrows, `enter`, `1`–`9` launch the numbered agent or shell, `esc` closes. Rows under CONVERSATIONS resume that conversation.
 

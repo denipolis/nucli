@@ -34,8 +34,16 @@ impl Dock {
 }
 
 impl View {
-    pub const ALL: [View; 7] =
-        [View::Projects, View::Agents, View::History, View::Uplink, View::Files, View::Changes, View::Commits];
+    pub const ALL: [View; 8] = [
+        View::Projects,
+        View::Agents,
+        View::History,
+        View::Uplink,
+        View::Files,
+        View::Search,
+        View::Changes,
+        View::Commits,
+    ];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -44,6 +52,7 @@ impl View {
             View::History | View::Commits => "History",
             View::Uplink => "Uplink",
             View::Files => "Files",
+            View::Search => "Search",
             View::Changes => "Changes",
         }
     }
@@ -55,6 +64,7 @@ impl View {
             View::History => icons::HISTORY,
             View::Uplink => icons::UPLINK,
             View::Files => icons::FILES,
+            View::Search => icons::SEARCH,
             View::Changes => icons::CHANGES,
             View::Commits => icons::COMMIT,
         }
@@ -84,7 +94,7 @@ impl Default for Docks {
             }],
             right: vec![Stack {
                 size: 280.0,
-                panels: vec![Panel::new(vec![View::Files, View::Changes, View::Commits])],
+                panels: vec![Panel::new(vec![View::Files, View::Search, View::Changes, View::Commits])],
             }],
             top: Vec::new(),
             bottom: Vec::new(),
@@ -262,7 +272,7 @@ mod tests {
             Target::Join { dock: Dock::Bottom, stack: 0, panel: 0, before: Some(View::Files) },
         );
         docks.move_view(View::Commits, Target::NewPanel { dock: Dock::Left, stack: 0, panel: 1 });
-        assert!(docks.right.is_empty());
+        assert_eq!(views(&docks, Dock::Right), vec![vec![vec![View::Search]]]);
         assert_eq!(views(&docks, Dock::Bottom), vec![vec![vec![View::Changes, View::Files]]]);
         assert_eq!(
             views(&docks, Dock::Left),
@@ -278,7 +288,10 @@ mod tests {
             View::Commits,
             Target::Join { dock: Dock::Right, stack: 0, panel: 0, before: Some(View::Files) },
         );
-        assert_eq!(views(&docks, Dock::Right), vec![vec![vec![View::Commits, View::Files, View::Changes]]]);
+        assert_eq!(
+            views(&docks, Dock::Right),
+            vec![vec![vec![View::Commits, View::Files, View::Search, View::Changes]]]
+        );
     }
 
     #[test]
@@ -305,7 +318,7 @@ mod tests {
             views(&docks, Dock::Left),
             vec![vec![vec![View::Files, View::Projects, View::Agents, View::History, View::Uplink]]]
         );
-        assert_eq!(views(&docks, Dock::Right), vec![vec![vec![View::Changes, View::Commits]]]);
+        assert_eq!(views(&docks, Dock::Right), vec![vec![vec![View::Search, View::Changes, View::Commits]]]);
     }
 
     #[test]

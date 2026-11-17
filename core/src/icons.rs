@@ -52,6 +52,12 @@ pub const UPLINK: &str = "\u{f0909}";
 pub const EYE: &str = "\u{ea70}";
 pub const LOCK: &str = "\u{ea75}";
 pub const DEVICE: &str = "\u{f0379}";
+pub const SEARCH: &str = "\u{ea6d}";
+pub const REFRESH: &str = "\u{eb37}";
+pub const COLLAPSE_ALL: &str = "\u{eac5}";
+pub const EXPAND_ALL: &str = "\u{eb95}";
+pub const CLEAR_ALL: &str = "\u{eabf}";
+pub const ELLIPSIS: &str = "\u{ea7c}";
 
 pub fn os(name: &str) -> &'static str {
     match name {

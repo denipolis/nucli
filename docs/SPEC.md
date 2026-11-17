@@ -11,7 +11,7 @@ macOS 12+, Linux (X11 and Wayland) and Windows 10+. Everything below applies to 
 One window per open workspace. From top to bottom:
 
 1. **Title bar**: the workspace name in plain bold text on the left (click: workspace menu), the location in the middle, status messages on the right (see Title bar). On Linux and Windows the File, Edit, View and Window menus follow the workspace name, since those systems have no global menu bar; File also holds Settings, About and Quit. On macOS the traffic lights sit at the left edge of this bar. On Windows this bar replaces the system title bar: it moves the window, and minimize, maximize and close sit at its right edge. On Linux window controls sit there when the compositor asks the app to draw them.
-2. **Body**: the viewport with docks on its four sides (see Docks). The viewport holds the selected tab or file, the status chips and the terminal panel. By default the left dock holds Projects, Agents, History and Uplink, and the right dock holds Files, Changes and History of commits.
+2. **Body**: the viewport with docks on its four sides (see Docks). The viewport holds the selected tab or file, the status chips and the terminal panel. By default the left dock holds Projects, Agents, History and Uplink, and the right dock holds Files, Search, Changes and History of commits.
 
 Every panel can be collapsed; the viewport cannot. With every panel collapsed the viewport fills the window except for thin strips.
 
@@ -172,7 +172,7 @@ Running Claude Code subagents of a tab are listed under it in the Projects view 
 
 - The viewport has a dock on each side: left, right, top and bottom. The top and bottom docks span the width between the left and right docks, and the bottom dock sits under the terminal panel.
 - A dock holds stacks side by side: columns in the left and right docks, rows in the top and bottom docks. A stack holds panels, one above the other in a column and side by side in a row. A panel is a tab strip of views and shows its active view.
-- Views: Projects, Agents, History (conversations), Uplink (while Uplink is on), Files, Changes and History (commits). Each view lives in exactly one panel.
+- Views: Projects, Agents, History (conversations), Uplink (while Uplink is on), Files, Search, Changes and History (commits). Each view lives in exactly one panel.
 - Drag a view's tab to move it. While dragging, the drop target is filled:
   - a tab: the view goes before that tab;
   - a tab strip or the middle of a panel: the view joins that panel;
@@ -184,7 +184,7 @@ Running Claude Code subagents of a tab are listed under it in the Projects view 
 - The chevron at the right of a tab strip collapses the panel. A collapsed panel in a column keeps only its tab strip; in a row it shrinks to a column of glyphs. A stack whose panels are all collapsed shrinks to a strip: glyphs in the left and right docks, view names in the top and bottom docks. Clicking a view in a strip or a collapsed tab strip expands its panel and shows the view; a strip's chevron expands its panels.
 - Drag the rule on the inner side of a stack to resize it, and the rule between two expanded panels to share the space between them.
 - The layout, the sizes and collapsed panels are shared by all windows and remembered. In a narrow panel only the active tab shows its name.
-- Palette: Show Projects, Show Agents, Show Conversation History, Show Uplink, Show Files, Show Changes and Show Commit History show a view and expand its panel. "Collapse or Expand Left Dock" (Right, Top, Bottom) collapses every panel of that dock, or expands them when all are collapsed. "Reset Panel Layout" restores the default layout.
+- Palette: Show Projects, Show Agents, Show Conversation History, Show Uplink, Show Files, Find in Files, Show Changes and Show Commit History show a view and expand its panel. "Collapse or Expand Left Dock" (Right, Top, Bottom) collapses every panel of that dock, or expands them when all are collapsed. "Reset Panel Layout" restores the default layout.
 
 ## Lists
 
@@ -201,7 +201,7 @@ Projects (the tree), Agents (the board), History and Uplink are lists.
 
 ## Project views
 
-Files, Changes and History (commits) follow the current project; with no project they say so.
+Files, Search, Changes and History (commits) follow the current project; with no project they say so.
 
 ### Files
 
@@ -209,6 +209,17 @@ Files, Changes and History (commits) follow the current project; with no project
 - Clicking a file opens it in the file view. Context menu: New File…, New Folder… (a name with `/` creates the folders on the way), Open as Project (folders), Open in Default App, Open With…, Reveal in File Manager, Copy Path, Copy Relative Path, Cut, Copy, Paste, Duplicate (`name copy.ext`), Rename…, Move… (a path relative to the project), Delete (to the trash, confirmed). Empty space: New File…, New Folder…, Paste, Reveal, Copy Path. New files open in the file view; renamed and moved files keep their open tabs, unsaved edits included; deleted files close theirs. A name that is taken gets ` copy`, ` copy 2`, … when pasting.
 - Drag and drop: dragging a row onto a folder (or onto a file, meaning its folder, or onto empty space, meaning the project root) moves it there, `⌥` copies. Files dropped from the file manager are copied into the folder under the pointer. A row dropped on a terminal, the commit message or any other text field types its path; on the file view it opens; a folder dropped on a list opens as a project. A row or file tab dragged out of the window becomes a file for other apps: file managers and mail take the file, apps that only take text get its path. This works on macOS, Windows and Linux under X11, not under Wayland.
 - Updates live.
+
+### Search
+
+- `⇧⌘F` (Find in Files) shows Search and focuses its query; `⇧⌘H` (Replace in Files) also opens the replace field. Text selected on one line in the file view seeds the query.
+- Searches the project's files as you type: the files `git` knows plus untracked ones that are not ignored, or a capped folder walk outside git. Binary files, files over 4 MB and files that are not UTF-8 are skipped. At most 20000 results.
+- Toggles, remembered between sessions and separate from the file view's: match case, whole word, regular expression (with lookaround and backreferences; a pattern containing `\n` matches across lines), preserve case.
+- `…` shows "files to include" and "files to exclude": comma separated globs (`*`, `**`, `?`, `[…]`, `{a,b}`). A pattern matches anywhere in the path unless it starts with `./` or `/`, which anchor it to the project folder; a folder name matches everything inside it. Both are remembered.
+- The line under the fields counts results (`12 results in 4 files`) and has `↻` refresh, collapse or expand all, and clear.
+- Results are grouped by file: glyph, name, folder and count. A match row shows its line with the match highlighted and its line number. Clicking a file row collapses it; clicking a match opens the file at the match with the match selected. `F4` / `⇧F4` open the next or previous match. Results refresh when files of the project change while Search is shown.
+- Replace: with the replace field open, matches show the removed text struck through in red and the replacement in green. Regular expressions expand `$1`, `$&`, `${name}`, `\n`, `\U` and the other templates of the file view's replace. Hovering a match offers replace and dismiss; hovering a file offers replace all in the file and dismiss. Replace All (`⌘enter`) asks first. Files with unsaved edits in the file view are skipped and the count says so.
+- Context menu of a file row: Replace All in File, Dismiss, then the file items of Files. File rows can be dragged like Files rows.
 
 ### Changes
 

@@ -29,6 +29,7 @@ pub enum View {
     History,
     Uplink,
     Files,
+    Search,
     Changes,
     Commits,
 }
@@ -77,6 +78,7 @@ pub struct Ui {
     pub docks: Docks,
     pub settings_section: SettingsSection,
     pub find: crate::find::Options,
+    pub search: crate::search::Options,
 }
 
 impl Default for Ui {
@@ -85,6 +87,7 @@ impl Default for Ui {
             docks: Docks::default(),
             settings_section: SettingsSection::General,
             find: crate::find::Options::default(),
+            search: crate::search::Options::default(),
         }
     }
 }

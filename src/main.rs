@@ -37,6 +37,8 @@ mod persist;
 mod process;
 mod prompt;
 mod resize;
+mod search;
+mod search_view;
 mod session;
 mod settings;
 mod settings_view;
