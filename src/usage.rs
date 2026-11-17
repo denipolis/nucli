@@ -46,6 +46,7 @@ pub fn limits(agent: &str, config: &Path, parsed: &Parsed) -> Vec<Limit> {
         "claude" => claude(config),
         "codex" if parsed.limits.is_empty() => codex(config),
         "gemini" => gemini(config, parsed.model.clone()),
+        "pi" => pi(config, parsed.provider.clone()),
         _ => parsed.limits.clone(),
     }
 }
@@ -89,6 +90,32 @@ fn gemini(config: &Path, model: Option<String>) -> Vec<Limit> {
         }
         google(json["access_token"].as_str()?, None, model.as_deref())
     })
+}
+
+fn pi(config: &Path, provider: Option<String>) -> Vec<Limit> {
+    let Some(provider) = provider.filter(|provider| provider == "anthropic" || provider == "openai-codex") else {
+        return Vec::new();
+    };
+    let path = config.join("auth.json");
+    online(format!("pi {} {provider}", path.display()), move || {
+        let json = read_json(&path)?;
+        let credential = &json[&provider];
+        if credential["type"] != "oauth" || expired(&credential["expires"]) {
+            return None;
+        }
+        let token = credential["access"].as_str()?;
+        match provider.as_str() {
+            "anthropic" => anthropic(token),
+            _ => chatgpt(token, chatgpt_account(token).as_deref()),
+        }
+    })
+}
+
+fn chatgpt_account(token: &str) -> Option<String> {
+    use base64::Engine;
+    let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(token.split('.').nth(1)?).ok()?;
+    let claims: Value = serde_json::from_slice(&payload).ok()?;
+    claims["https://api.openai.com/auth"]["chatgpt_account_id"].as_str().map(String::from)
 }
 
 fn read_json(path: &Path) -> Option<Value> {
@@ -295,6 +322,15 @@ mod tests {
 
     fn at(seconds: u64) -> Option<SystemTime> {
         Some(UNIX_EPOCH + Duration::from_secs(seconds))
+    }
+
+    #[test]
+    fn reads_chatgpt_account() {
+        use base64::Engine;
+        let claims = r#"{"https://api.openai.com/auth":{"chatgpt_account_id":"account-1"}}"#;
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims);
+        assert_eq!(chatgpt_account(&format!("header.{payload}.signature")).as_deref(), Some("account-1"));
+        assert_eq!(chatgpt_account("not a token"), None);
     }
 
     #[test]
