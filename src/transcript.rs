@@ -37,6 +37,7 @@ pub struct Parsed {
     pub servers: BTreeMap<String, String>,
     pub calls: BTreeMap<String, usize>,
     pub compactions: usize,
+    pub limits: Vec<crate::usage::Limit>,
 }
 
 #[derive(Default)]
@@ -324,6 +325,11 @@ fn codex(json: &Value, parsed: &mut Parsed) {
             }
             if let Some(window) = info["model_context_window"].as_u64() {
                 parsed.window = Some(window);
+            }
+            let at = json["timestamp"].as_str().and_then(crate::usage::parse_time);
+            let limits = crate::usage::codex(&payload["rate_limits"], at);
+            if !limits.is_empty() {
+                parsed.limits = limits;
             }
         }
         "response_item" => match payload["type"].as_str().unwrap_or_default() {

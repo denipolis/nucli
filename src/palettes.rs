@@ -395,8 +395,11 @@ pub fn status_chips(view: &mut WorkspaceView, selected: usize, window: &mut Wind
         .map(|(index, chip)| {
             let chip = *chip;
             Item::new(chip.title(), move |view, window, cx| {
-                chip.toggle(cx);
-                status_chips(view, index, window, cx);
+                let asks = chip.asks(cx);
+                chip.toggle(window, cx);
+                if !asks {
+                    status_chips(view, index, window, cx);
+                }
             })
             .subtitle(chip.hint())
             .detail(if chip.shown(cx) { "[x]" } else { "[ ]" })

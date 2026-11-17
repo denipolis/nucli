@@ -25,6 +25,7 @@ pub struct AgentInfo {
     pub conversation: Option<String>,
     pub compactions: usize,
     pub compacting: bool,
+    pub limits: Vec<crate::usage::Limit>,
 }
 
 pub struct Request {
@@ -34,6 +35,7 @@ pub struct Request {
     pub started: Option<SystemTime>,
     pub conversation: Option<String>,
     pub dirs: Vec<PathBuf>,
+    pub usage: bool,
 }
 
 struct Layout {
@@ -222,6 +224,9 @@ pub fn probe(request: &Request) -> AgentInfo {
     info.memory = if parsed.memory.is_empty() { found.memory.clone() } else { parsed.memory.clone() };
     info.skills = skills(&parsed, &found);
     info.mcp = servers(&parsed, &found);
+    if request.usage {
+        info.limits = if layout.agent == "claude" { crate::usage::claude(&config) } else { parsed.limits.clone() };
+    }
     info.transcript = transcript;
     info
 }
@@ -745,6 +750,7 @@ mod tests {
             started: Some(started),
             conversation: None,
             dirs: vec![home.clone()],
+            usage: false,
         };
         let info = probe(&request);
         assert_eq!(info.transcript.as_deref(), Some(rollout.as_path()));
@@ -787,6 +793,7 @@ mod tests {
             started: None,
             conversation: Some("s-1".into()),
             dirs: vec![config.clone()],
+            usage: false,
         };
         let info = probe(&request);
         assert_eq!(info.window, Some(1000000));

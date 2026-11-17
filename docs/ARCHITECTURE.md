@@ -46,6 +46,7 @@ Paths are under `src/` unless they start with `core/`.
 | `history.rs` | Agent conversation files and their cache. |
 | `claude.rs` | Claude Code status files and subagents. |
 | `transcript.rs` | Reads agent transcripts (Claude Code, Codex, pi, Gemini CLI) incrementally: model, context tokens, instruction files, skills, MCP servers, compactions. |
+| `usage.rs` | 5-hour and 7-day usage limits: Claude Code's from Anthropic's usage endpoint with the token of Claude Code's own sign-in (fetched with `curl` on a thread, cached per config folder for 5 minutes), Codex's from its rollout. The token is never refreshed: refreshing rotates the refresh token and would sign Claude Code out. |
 | `agent_info.rs` | `AgentInfo` of a running agent: finds its transcript, merges it with what the agent's folders hold by convention (instruction files, skills, MCP config) for every known agent CLI. |
 | `process.rs` | Foreground process name and folder through `sysinfo`. |
 | `agents.rs` | Agent and shell profiles, detection, command lines. |

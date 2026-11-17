@@ -4,7 +4,8 @@ use std::time::SystemTime;
 
 use gpui::{
     AnyElement, App, AppContext, Context, Div, Entity, Hsla, InteractiveElement, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement, Pixels, Point, Stateful, StatefulInteractiveElement, Styled, Window, div, px,
+    MouseDownEvent, ParentElement, Pixels, Point, PromptLevel, Stateful, StatefulInteractiveElement, Styled, Window,
+    div, px,
 };
 
 use crate::agent_info::AgentInfo;
@@ -31,6 +32,7 @@ pub enum Chip {
     Instructions,
     Model,
     Context,
+    Usage,
     Mcp,
     Session,
     Position,
@@ -40,7 +42,7 @@ pub enum Chip {
 }
 
 impl Chip {
-    pub const ALL: [Chip; 15] = [
+    pub const ALL: [Chip; 16] = [
         Chip::Folder,
         Chip::Branch,
         Chip::Changes,
@@ -50,6 +52,7 @@ impl Chip {
         Chip::Instructions,
         Chip::Model,
         Chip::Context,
+        Chip::Usage,
         Chip::Mcp,
         Chip::Session,
         Chip::Position,
@@ -69,6 +72,7 @@ impl Chip {
             Chip::Instructions => "instructions",
             Chip::Model => "model",
             Chip::Context => "context",
+            Chip::Usage => "usage",
             Chip::Mcp => "mcp",
             Chip::Session => "session",
             Chip::Position => "position",
@@ -89,6 +93,7 @@ impl Chip {
             Chip::Instructions => "Instruction files",
             Chip::Model => "Model",
             Chip::Context => "Context",
+            Chip::Usage => "Usage limits",
             Chip::Mcp => "MCP servers",
             Chip::Session => "Session time",
             Chip::Position => "Line and column",
@@ -109,6 +114,7 @@ impl Chip {
             Chip::Instructions => "Instruction files the agent loaded (CLAUDE.md, AGENTS.md, …)",
             Chip::Model => "The agent's current model",
             Chip::Context => "Context window used by the conversation",
+            Chip::Usage => "5-hour and 7-day usage of the Claude Code or Codex plan",
             Chip::Mcp => "MCP servers of the agent, the called ones first",
             Chip::Session => "How long the agent has been running",
             Chip::Position => "Line and column of the cursor",
@@ -127,12 +133,26 @@ impl Chip {
     }
 
     pub fn shown(self, cx: &App) -> bool {
-        !settings::get(cx).hidden_chips.iter().any(|id| id == self.id())
+        let settings = settings::get(cx);
+        match self {
+            Chip::Usage => settings.usage_limits,
+            _ => !settings.hidden_chips.iter().any(|id| id == self.id()),
+        }
     }
 
-    pub fn toggle(self, cx: &mut App) {
+    pub fn asks(self, cx: &App) -> bool {
+        self == Chip::Usage && !self.shown(cx)
+    }
+
+    pub fn toggle(self, window: &mut Window, cx: &mut App) {
+        if self.asks(cx) {
+            ask_usage(window, cx);
+            return;
+        }
         settings::update(cx, |settings| {
-            if settings.hidden_chips.iter().any(|id| id == self.id()) {
+            if self == Chip::Usage {
+                settings.usage_limits = false;
+            } else if settings.hidden_chips.iter().any(|id| id == self.id()) {
                 settings.hidden_chips.retain(|id| id != self.id());
             } else {
                 settings.hidden_chips.push(self.id().to_string());
@@ -141,11 +161,30 @@ impl Chip {
     }
 }
 
+fn ask_usage(window: &mut Window, cx: &mut App) {
+    let actions = ["Turn On", "Details", "Cancel"];
+    let answer = window.prompt(PromptLevel::Info, "Show usage limits?", Some(USAGE_NOTICE), &actions, cx);
+    let handle = window.window_handle();
+    cx.spawn(async move |cx| match answer.await {
+        Ok(0) => cx.update(|cx| settings::update(cx, |settings| settings.usage_limits = true)),
+        Ok(1) => cx.update(|cx| {
+            cx.open_url(USAGE_DETAILS);
+            let _ = handle.update(cx, |_, window, cx| ask_usage(window, cx));
+        }),
+        _ => {}
+    })
+    .detach();
+}
+
 const SKILLS: &str = "\u{eb6d}";
 const INSTRUCTIONS: &str = "\u{eb1d}";
 const MODEL: &str = "\u{f061a}";
 const MCP: &str = "\u{f06a5}";
 const CLOCK: &str = "\u{f0954}";
+const LIMITS: &str = "\u{f051f}";
+
+const USAGE_NOTICE: &str = "Some agents report their usage limits only through their API. For those, Nucli reads your usage with your own sign-in token for that agent. The token is never stored or sent anywhere else.";
+const USAGE_DETAILS: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/blob/main/docs/USAGE_LIMITS.md");
 
 fn frame(id: &'static str, theme: &Theme) -> Stateful<Div> {
     div()
@@ -178,7 +217,7 @@ fn clickable(element: Stateful<Div>, kind: Chip, theme: &Theme, cx: &Context<Wor
 pub fn chip_menu(chip: Option<Chip>, cx: &App) -> Vec<menu::Item> {
     let mut items = Vec::new();
     if let Some(chip) = chip {
-        items.push(menu::action(format!("Hide {}", chip.title()), move |_, _, cx| chip.toggle(cx)));
+        items.push(menu::action(format!("Hide {}", chip.title()), move |_, window, cx| chip.toggle(window, cx)));
         items.push(menu::Item::Separator);
     }
     let mut group = "";
@@ -188,7 +227,7 @@ pub fn chip_menu(chip: Option<Chip>, cx: &App) -> Vec<menu::Item> {
             items.push(menu::Item::Header(group.into()));
         }
         let mark = if chip.shown(cx) { "[x]" } else { "[ ]" };
-        items.push(menu::action(format!("{mark} {}", chip.title()), move |_, _, cx| chip.toggle(cx)));
+        items.push(menu::action(format!("{mark} {}", chip.title()), move |_, window, cx| chip.toggle(window, cx)));
     }
     items.push(menu::Item::Separator);
     items.push(menu::command("Status Chips…", "configure_status_chips", cx));
@@ -521,6 +560,16 @@ fn agent_chips(info: Rc<AgentInfo>, root: PathBuf, theme: &Theme, cx: &Context<W
         }
         chips.push(element.on_click(cx.listener(menu_for(info.clone()))).into_any_element());
     }
+    if !info.limits.is_empty() && Chip::Usage.shown(cx) {
+        let mut element = clickable(chip("status-usage", LIMITS, theme), Chip::Usage, theme, cx);
+        for limit in &info.limits {
+            let percent = limit.current();
+            element = element
+                .child(div().text_color(theme.muted).child(limit.label()))
+                .child(div().text_color(level(percent, theme)).child(format!("{percent}%")));
+        }
+        chips.push(element.on_click(cx.listener(menu_for(info.clone()))).into_any_element());
+    }
     if !info.mcp.is_empty() && Chip::Mcp.shown(cx) {
         let element = clickable(chip("status-mcp", MCP, theme), Chip::Mcp, theme, cx);
         chips.push(
@@ -562,6 +611,13 @@ fn agent_menu(info: &AgentInfo) -> Vec<menu::Item> {
     if info.compactions > 0 {
         let times = if info.compactions == 1 { "once".to_string() } else { format!("{} times", info.compactions) };
         items.push(menu::Item::Header(format!("compacted {times}").into()));
+    }
+    for limit in &info.limits {
+        let mut text = format!("{} limit {}% used", limit.label(), limit.current());
+        if let Some(resets) = limit.resets.and_then(|resets| resets.duration_since(SystemTime::now()).ok()) {
+            text.push_str(&format!(", resets in {}", duration(resets.as_secs())));
+        }
+        items.push(menu::Item::Header(text.into()));
     }
     if let Some(started) = info.started {
         let seconds = SystemTime::now().duration_since(started).unwrap_or_default().as_secs();

@@ -68,6 +68,7 @@ block = "0.1"
 core-graphics = "0.24"
 objc = "0.2"
 plist = "1"
+sha2 = "0.10"
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 notify-rust = "4"

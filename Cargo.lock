@@ -3479,6 +3479,7 @@ dependencies = [
  "qrcode",
  "serde",
  "serde_json",
+ "sha2",
  "sysinfo 0.40.1",
  "trash",
  "tree-sitter",

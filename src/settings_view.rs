@@ -759,7 +759,7 @@ fn chips_page(current: &Settings, theme: &Theme, cx: &App) -> Vec<AnyElement> {
                     .text_color(if on { theme.accent } else { theme.muted })
                     .hover(|style| style.text_color(theme.text))
                     .child(if on { "[x]" } else { "[ ]" })
-                    .on_click(move |_, _, cx| chip.toggle(cx)),
+                    .on_click(move |_, window, cx| chip.toggle(window, cx)),
                 theme,
             ));
         }

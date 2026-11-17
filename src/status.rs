@@ -45,7 +45,7 @@ fn config_dirs(agent: &str, own: Option<&AgentProfile>, profiles: &[AgentProfile
     dirs
 }
 
-fn probe(job: &Job, profiles: &[AgentProfile], agents: &HashSet<String>) -> Probe {
+fn probe(job: &Job, profiles: &[AgentProfile], agents: &HashSet<String>, usage: bool) -> Probe {
     let process = process::inspect(job.pid, job.root);
     let name = process.as_ref().map(|info| info.name.clone()).unwrap_or_default();
     let dirs = config_dirs(&name, job.own.as_ref(), profiles);
@@ -76,6 +76,7 @@ fn probe(job: &Job, profiles: &[AgentProfile], agents: &HashSet<String>) -> Prob
             started: info.started,
             conversation,
             dirs: dirs.clone(),
+            usage,
         })
     });
     Probe { process, claude, subagents, branch, info }
@@ -200,6 +201,7 @@ impl Store {
             self.refresh_diffstats(projects, cx);
         }
         let profiles = settings::get(cx).agents.clone();
+        let usage = settings::get(cx).usage_limits;
         let jobs: Vec<Job> = self
             .sessions
             .values()
@@ -231,7 +233,9 @@ impl Store {
         cx.spawn(async move |this, cx| {
             let results: Vec<(String, Probe)> = cx
                 .background_executor()
-                .spawn(async move { jobs.iter().map(|job| (job.id.clone(), probe(job, &profiles, &known))).collect() })
+                .spawn(async move {
+                    jobs.iter().map(|job| (job.id.clone(), probe(job, &profiles, &known, usage))).collect()
+                })
                 .await;
             let _ = this.update(cx, |store, cx| {
                 let mut events = Vec::new();

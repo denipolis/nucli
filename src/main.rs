@@ -56,6 +56,7 @@ mod titlebar;
 mod transcript;
 mod ui;
 mod uplink;
+mod usage;
 mod watcher;
 mod window;
 
