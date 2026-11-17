@@ -42,6 +42,12 @@ type Cache = HashMap<String, (Option<Instant>, Vec<Limit>)>;
 
 static ONLINE: Mutex<Option<Cache>> = Mutex::new(None);
 
+pub fn other_api(env: &std::collections::BTreeMap<String, String>) -> bool {
+    env.contains_key("ANTHROPIC_API_KEY")
+        || env.contains_key("ANTHROPIC_AUTH_TOKEN")
+        || env.get("ANTHROPIC_BASE_URL").is_some_and(|url| !url.contains("anthropic.com"))
+}
+
 pub fn limits(agent: &str, config: &Path, parsed: &Parsed) -> Vec<Limit> {
     match agent {
         "claude" => claude(config),
@@ -362,6 +368,16 @@ mod tests {
 
     fn at(seconds: u64) -> Option<SystemTime> {
         Some(UNIX_EPOCH + Duration::from_secs(seconds))
+    }
+
+    #[test]
+    fn spots_other_apis() {
+        let env =
+            |pairs: &[(&str, &str)]| pairs.iter().map(|(key, value)| (key.to_string(), value.to_string())).collect();
+        assert!(!other_api(&env(&[])));
+        assert!(!other_api(&env(&[("ANTHROPIC_BASE_URL", "https://api.anthropic.com")])));
+        assert!(other_api(&env(&[("ANTHROPIC_BASE_URL", "https://api.z.ai/api/anthropic")])));
+        assert!(other_api(&env(&[("ANTHROPIC_AUTH_TOKEN", "x")])));
     }
 
     #[test]

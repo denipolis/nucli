@@ -76,7 +76,8 @@ fn probe(job: &Job, profiles: &[AgentProfile], agents: &HashSet<String>, usage: 
             started: info.started,
             conversation,
             dirs: dirs.clone(),
-            usage,
+            usage: usage
+                && !(name == "claude" && job.own.as_ref().is_some_and(|profile| crate::usage::other_api(&profile.env))),
         })
     });
     Probe { process, claude, subagents, branch, info }
