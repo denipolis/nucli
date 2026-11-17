@@ -12,15 +12,17 @@ pub struct Limit {
     pub minutes: u64,
     pub percent: u64,
     pub resets: Option<SystemTime>,
+    pub scope: &'static str,
 }
 
 impl Limit {
     pub fn label(&self) -> String {
-        match self.minutes {
+        let window = match self.minutes {
             minutes if minutes >= 1440 && minutes.is_multiple_of(1440) => format!("{}d", minutes / 1440),
             minutes if minutes >= 60 && minutes.is_multiple_of(60) => format!("{}h", minutes / 60),
             minutes => format!("{minutes}m"),
-        }
+        };
+        if self.scope.is_empty() { window } else { format!("{window} {}", self.scope) }
     }
 
     pub fn current(&self) -> u64 {
@@ -115,17 +117,23 @@ fn fetch_claude(token: &str) -> Option<Vec<Limit>> {
 }
 
 fn claude_limits(json: &Value) -> Vec<Limit> {
-    [("five_hour", 300), ("seven_day", 10080)]
-        .into_iter()
-        .filter_map(|(key, minutes)| {
-            let window = &json[key];
-            Some(Limit {
-                minutes,
-                percent: window["utilization"].as_f64()?.round() as u64,
-                resets: window["resets_at"].as_str().and_then(parse_time),
-            })
+    [
+        ("five_hour", 300, ""),
+        ("seven_day", 10080, ""),
+        ("seven_day_opus", 10080, "opus"),
+        ("seven_day_sonnet", 10080, "sonnet"),
+    ]
+    .into_iter()
+    .filter_map(|(key, minutes, scope)| {
+        let window = &json[key];
+        Some(Limit {
+            minutes,
+            percent: window["utilization"].as_f64()?.round() as u64,
+            resets: window["resets_at"].as_str().and_then(parse_time),
+            scope,
         })
-        .collect()
+    })
+    .collect()
 }
 
 pub fn codex(json: &Value, at: Option<SystemTime>) -> Vec<Limit> {
@@ -141,6 +149,7 @@ pub fn codex(json: &Value, at: Option<SystemTime>) -> Vec<Limit> {
                 minutes: window["window_minutes"].as_u64()?,
                 percent: window["used_percent"].as_f64()?.round() as u64,
                 resets,
+                scope: "",
             })
         })
         .collect()
@@ -190,18 +199,20 @@ mod tests {
     #[test]
     fn reads_limits() {
         let claude: Value = serde_json::from_str(
-            r#"{"five_hour":{"utilization":24.4,"resets_at":"2001-09-09T01:46:40+00:00"},"seven_day":{"utilization":45.0,"resets_at":null},"seven_day_opus":null}"#,
+            r#"{"five_hour":{"utilization":24.4,"resets_at":"2001-09-09T01:46:40+00:00"},"seven_day":{"utilization":45.0,"resets_at":null},"seven_day_opus":null,"seven_day_sonnet":{"utilization":7.0,"resets_at":null}}"#,
         )
         .unwrap();
         let limits = claude_limits(&claude);
         assert_eq!(
             limits,
             vec![
-                Limit { minutes: 300, percent: 24, resets: at(1000000000) },
-                Limit { minutes: 10080, percent: 45, resets: None },
+                Limit { minutes: 300, percent: 24, resets: at(1000000000), scope: "" },
+                Limit { minutes: 10080, percent: 45, resets: None, scope: "" },
+                Limit { minutes: 10080, percent: 7, resets: None, scope: "sonnet" },
             ]
         );
-        assert_eq!((limits[0].label(), limits[1].label()), ("5h".to_string(), "7d".to_string()));
+        let labels: Vec<String> = limits.iter().map(Limit::label).collect();
+        assert_eq!(labels, ["5h", "7d", "7d sonnet"]);
         assert_eq!((limits[0].current(), limits[1].current()), (0, 45));
         let rollout: Value = serde_json::from_str(
             r#"{"primary":{"used_percent":12.5,"window_minutes":300,"resets_in_seconds":60},"secondary":{"used_percent":3.0,"window_minutes":10080,"resets_at":1000000000}}"#,
@@ -210,8 +221,8 @@ mod tests {
         assert_eq!(
             codex(&rollout, at(100)),
             vec![
-                Limit { minutes: 300, percent: 13, resets: at(160) },
-                Limit { minutes: 10080, percent: 3, resets: at(1000000000) },
+                Limit { minutes: 300, percent: 13, resets: at(160), scope: "" },
+                Limit { minutes: 10080, percent: 3, resets: at(1000000000), scope: "" },
             ]
         );
     }
