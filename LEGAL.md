@@ -89,6 +89,7 @@ Nucli collects no telemetry and talks to no server of its own or of anyone else.
 
 - Claude Code: the Keychain item Claude Code created (through the system's `security` tool on macOS), else `.credentials.json` in Claude Code's config folder, to Anthropic (`https://api.anthropic.com/api/oauth/usage`).
 - Codex, only while its session file has no limits yet: `auth.json` in Codex's config folder, to OpenAI (`https://chatgpt.com/backend-api/wham/usage`).
+- Gemini CLI signed in with Google: `oauth_creds.json` in Gemini CLI's config folder, to Google (`https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist` for the account's Code Assist project id, then `:retrieveUserQuota`).
 
 The token reaches `curl` through standard input, never as a command-line argument. Nucli never stores, refreshes or logs it and sends it nowhere else; a token whose saved expiry has passed is not used. Codex limits otherwise come from Codex's own session files, without network calls. Turning the chip off stops the requests. `docs/USAGE_LIMITS.md` lists what each agent uses.
 

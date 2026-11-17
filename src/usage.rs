@@ -35,6 +35,7 @@ impl Limit {
 const INTERVAL: Duration = Duration::from_secs(300);
 const ANTHROPIC_USAGE: &str = "https://api.anthropic.com/api/oauth/usage";
 const CHATGPT_USAGE: &str = "https://chatgpt.com/backend-api/wham/usage";
+const CODE_ASSIST: &str = "https://cloudcode-pa.googleapis.com/v1internal";
 
 type Cache = HashMap<String, (Option<Instant>, Vec<Limit>)>;
 
@@ -44,6 +45,7 @@ pub fn limits(agent: &str, config: &Path, parsed: &Parsed) -> Vec<Limit> {
     match agent {
         "claude" => claude(config),
         "codex" if parsed.limits.is_empty() => codex(config),
+        "gemini" => gemini(config, parsed.model.clone()),
         _ => parsed.limits.clone(),
     }
 }
@@ -75,6 +77,17 @@ fn codex(config: &Path) -> Vec<Limit> {
         let json = read_json(&path)?;
         let tokens = &json["tokens"];
         chatgpt(tokens["access_token"].as_str()?, tokens["account_id"].as_str())
+    })
+}
+
+fn gemini(config: &Path, model: Option<String>) -> Vec<Limit> {
+    let path = config.join("oauth_creds.json");
+    online(format!("gemini {} {model:?}", path.display()), move || {
+        let json = read_json(&path)?;
+        if expired(&json["expiry_date"]) {
+            return None;
+        }
+        google(json["access_token"].as_str()?, None, model.as_deref())
     })
 }
 
@@ -175,6 +188,44 @@ fn claude_limits(json: &Value) -> Vec<Limit> {
         })
     })
     .collect()
+}
+
+fn google(token: &str, project: Option<&str>, model: Option<&str>) -> Option<Vec<Limit>> {
+    let headers = [format!("Authorization: Bearer {token}")];
+    let project = match project {
+        Some(project) => project.to_string(),
+        None => {
+            let body =
+                r#"{"metadata":{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}}"#;
+            let loaded = request(&format!("{CODE_ASSIST}:loadCodeAssist"), &headers, Some(body))?;
+            let project = &loaded["cloudaicompanionProject"];
+            project.as_str().or_else(|| project["id"].as_str())?.to_string()
+        }
+    };
+    let body = serde_json::json!({ "project": project }).to_string();
+    Some(gemini_limits(&request(&format!("{CODE_ASSIST}:retrieveUserQuota"), &headers, Some(&body))?, model))
+}
+
+fn gemini_limits(json: &Value, model: Option<&str>) -> Vec<Limit> {
+    let buckets: Vec<(&Value, f64)> = json["buckets"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|bucket| Some((bucket, bucket["remainingFraction"].as_f64()?)))
+        .collect();
+    let chosen = buckets
+        .iter()
+        .find(|(bucket, _)| model.is_some() && bucket["modelId"].as_str() == model)
+        .or_else(|| buckets.iter().min_by(|a, b| a.1.total_cmp(&b.1)));
+    chosen
+        .map(|(bucket, remaining)| Limit {
+            minutes: 1440,
+            percent: ((1.0 - remaining) * 100.0).round().clamp(0.0, 100.0) as u64,
+            resets: bucket["resetTime"].as_str().and_then(parse_time),
+            scope: "",
+        })
+        .into_iter()
+        .collect()
 }
 
 fn chatgpt_limits(json: &Value, now: SystemTime) -> Vec<Limit> {
@@ -289,6 +340,15 @@ mod tests {
             r#"{"plan_type":"plus","rate_limit":{"allowed":true,"primary_window":{"used_percent":41,"limit_window_seconds":18000,"reset_after_seconds":30,"reset_at":null},"secondary_window":{"used_percent":9,"limit_window_seconds":604800,"reset_at":1000000000}}}"#,
         )
         .unwrap();
+        let quota: Value = serde_json::from_str(
+            r#"{"buckets":[{"modelId":"gemini-2.5-pro","remainingFraction":0.75,"resetTime":"2001-09-09T01:46:40Z","tokenType":"REQUESTS"},{"modelId":"gemini-2.5-flash","remainingFraction":0.5},{"modelId":"other"}]}"#,
+        )
+        .unwrap();
+        let daily = |percent, resets| vec![Limit { minutes: 1440, percent, resets, scope: "" }];
+        assert_eq!(gemini_limits(&quota, Some("gemini-2.5-pro")), daily(25, at(1000000000)));
+        assert_eq!(gemini_limits(&quota, Some("unknown")), daily(50, None));
+        assert_eq!(gemini_limits(&quota, None)[0].label(), "1d");
+        assert_eq!(gemini_limits(&Value::Null, None), vec![]);
         let limits = chatgpt_limits(&chatgpt, at(100).unwrap());
         assert_eq!(
             limits,
