@@ -20,6 +20,7 @@ pub struct Limit {
 impl Limit {
     pub fn label(&self) -> String {
         let window = match self.minutes {
+            minutes if minutes >= 40320 => "1mo".to_string(),
             minutes if minutes >= 1440 && minutes.is_multiple_of(1440) => format!("{}d", minutes / 1440),
             minutes if minutes >= 60 && minutes.is_multiple_of(60) => format!("{}h", minutes / 60),
             minutes => format!("{minutes}m"),
@@ -94,20 +95,23 @@ fn gemini(config: &Path, model: Option<String>) -> Vec<Limit> {
 }
 
 fn pi(config: &Path, provider: Option<String>) -> Vec<Limit> {
-    let Some(provider) = provider.filter(|provider| provider == "anthropic" || provider == "openai-codex") else {
+    let known = ["anthropic", "openai-codex", "github-copilot"];
+    let Some(provider) = provider.filter(|provider| known.contains(&provider.as_str())) else {
         return Vec::new();
     };
     let path = config.join("auth.json");
     online(format!("pi {} {provider}", path.display()), move || {
         let json = read_json(&path)?;
         let credential = &json[&provider];
-        if credential["type"] != "oauth" || expired(&credential["expires"]) {
+        let copilot_sign_in = provider == "github-copilot";
+        if credential["type"] != "oauth" || (!copilot_sign_in && expired(&credential["expires"])) {
             return None;
         }
         let token = credential["access"].as_str()?;
         match provider.as_str() {
             "anthropic" => anthropic(token),
-            _ => chatgpt(token, chatgpt_account(token).as_deref()),
+            "openai-codex" => chatgpt(token, chatgpt_account(token).as_deref()),
+            _ => copilot(credential["refresh"].as_str()?, credential["enterpriseUrl"].as_str()),
         }
     })
 }
@@ -274,6 +278,23 @@ fn gemini_limits(json: &Value, model: Option<&str>) -> Vec<Limit> {
         .collect()
 }
 
+fn copilot(github_token: &str, enterprise: Option<&str>) -> Option<Vec<Limit>> {
+    let host = enterprise.filter(|host| !host.is_empty()).unwrap_or("github.com");
+    let host = host.trim_start_matches("https://").trim_end_matches('/');
+    let url = format!("https://api.{host}/copilot_internal/user");
+    Some(copilot_limits(&request(&url, &[format!("Authorization: token {github_token}")], None)?))
+}
+
+fn copilot_limits(json: &Value) -> Vec<Limit> {
+    let premium = &json["quota_snapshots"]["premium_interactions"];
+    let Some(remaining) = premium["percent_remaining"].as_f64().filter(|_| premium["unlimited"] != true) else {
+        return Vec::new();
+    };
+    let reset = json["quota_reset_date_utc"].as_str().or_else(|| json["quota_reset_date"].as_str());
+    let resets = reset.and_then(|date| parse_time(date).or_else(|| parse_time(&format!("{date}T00:00:00Z"))));
+    vec![Limit { minutes: 43200, percent: (100.0 - remaining).round().clamp(0.0, 100.0) as u64, resets, scope: "" }]
+}
+
 fn chatgpt_limits(json: &Value, now: SystemTime) -> Vec<Limit> {
     ["primary_window", "secondary_window"]
         .into_iter()
@@ -404,6 +425,18 @@ mod tests {
         assert_eq!(gemini_limits(&quota, Some("unknown")), daily(50, None));
         assert_eq!(gemini_limits(&quota, None)[0].label(), "1d");
         assert_eq!(gemini_limits(&Value::Null, None), vec![]);
+        let copilot: Value = serde_json::from_str(
+            r#"{"quota_reset_date":"2001-09-09","quota_snapshots":{"chat":{"unlimited":true},"premium_interactions":{"entitlement":300,"remaining":129,"percent_remaining":43.2,"unlimited":false}}}"#,
+        )
+        .unwrap();
+        let monthly = copilot_limits(&copilot);
+        assert_eq!(monthly, vec![Limit { minutes: 43200, percent: 57, resets: at(999993600), scope: "" }]);
+        assert_eq!(monthly[0].label(), "1mo");
+        let unlimited: Value = serde_json::from_str(
+            r#"{"quota_snapshots":{"premium_interactions":{"percent_remaining":100,"unlimited":true}}}"#,
+        )
+        .unwrap();
+        assert_eq!(copilot_limits(&unlimited), vec![]);
         let limits = chatgpt_limits(&chatgpt, at(100).unwrap());
         assert_eq!(
             limits,

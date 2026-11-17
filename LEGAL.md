@@ -90,7 +90,7 @@ Nucli collects no telemetry and talks to no server of its own or of anyone else.
 
 - Claude Code: the Keychain item Claude Code created (through the system's `security` tool on macOS), else `.credentials.json` in Claude Code's config folder, to Anthropic (`https://api.anthropic.com/api/oauth/usage`).
 - Codex, only while its session file has no limits yet: `auth.json` in Codex's config folder, to OpenAI (`https://chatgpt.com/backend-api/wham/usage`).
-- pi signed in with a Claude or ChatGPT plan, for the provider of its last reply: `auth.json` in pi's config folder, to Anthropic or OpenAI (the endpoints above).
+- pi signed in with a Claude or ChatGPT plan, for the provider of its last reply: `auth.json` in pi's config folder, to Anthropic or OpenAI (the endpoints above). Signed in with GitHub Copilot: the GitHub token in the same file, to GitHub (`https://api.github.com/copilot_internal/user`, or the GitHub Enterprise host pi signed in to).
 - opencode signed in with a Claude or ChatGPT plan (the Claude one when both): `auth.json` in opencode's data folder (`~/.local/share/opencode`), to Anthropic or OpenAI (the endpoints above).
 - Gemini CLI signed in with Google: `oauth_creds.json` in Gemini CLI's config folder, to Google (`https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist` for the account's Code Assist project id, then `:retrieveUserQuota`).
 
