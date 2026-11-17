@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -47,6 +47,7 @@ pub fn limits(agent: &str, config: &Path, parsed: &Parsed) -> Vec<Limit> {
         "codex" if parsed.limits.is_empty() => codex(config),
         "gemini" => gemini(config, parsed.model.clone()),
         "pi" => pi(config, parsed.provider.clone()),
+        "opencode" => opencode(),
         _ => parsed.limits.clone(),
     }
 }
@@ -108,6 +109,24 @@ fn pi(config: &Path, provider: Option<String>) -> Vec<Limit> {
             "anthropic" => anthropic(token),
             _ => chatgpt(token, chatgpt_account(token).as_deref()),
         }
+    })
+}
+
+fn opencode() -> Vec<Limit> {
+    let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from);
+    let path = data.unwrap_or_else(|| crate::paths::home().join(".local/share")).join("opencode").join("auth.json");
+    online(format!("opencode {}", path.display()), move || {
+        let json = read_json(&path)?;
+        let signed_in = |provider: &str| {
+            Some(&json[provider]).filter(|credential| credential["type"] == "oauth" && !expired(&credential["expires"]))
+        };
+        if let Some(credential) = signed_in("anthropic") {
+            return anthropic(credential["access"].as_str()?);
+        }
+        let credential = signed_in("openai")?;
+        let token = credential["access"].as_str()?;
+        let account = credential["accountId"].as_str().map(String::from).or_else(|| chatgpt_account(token));
+        chatgpt(token, account.as_deref())
     })
 }
 

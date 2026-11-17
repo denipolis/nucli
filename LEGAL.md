@@ -40,7 +40,7 @@ Direct dependencies, declared in the workspace's `Cargo.toml` files (`Cargo.toml
 | [libc](https://github.com/rust-lang/libc) | MIT OR Apache-2.0 | Linux and macOS only: saving terminal output when the app is asked to terminate. Nucli Uplink on iOS: socket addresses from Bonjour lookups |
 | [objc2](https://github.com/madsmtm/objc2), objc2-foundation, objc2-ui-kit, objc2-quartz-core, objc2-av-foundation, objc2-uniform-type-identifiers, objc2-user-notifications, [dispatch2](https://github.com/madsmtm/objc2) | Zlib OR Apache-2.0 OR MIT | Nucli Uplink on iOS only: the QR code scanner (camera preview and QR detection), the system file picker for uploads, running Bonjour lookups on the main queue, and local notifications |
 | [block2](https://github.com/madsmtm/objc2) | MIT | Nucli Uplink on iOS only: the completion handlers of local notifications |
-| [base64](https://github.com/marshallpierce/rust-base64) | MIT OR Apache-2.0 | Usage limits: reading the ChatGPT account id inside the OpenAI sign-in token pi saved |
+| [base64](https://github.com/marshallpierce/rust-base64) | MIT OR Apache-2.0 | Usage limits: reading the ChatGPT account id inside the OpenAI sign-in token pi or opencode saved |
 | [serde](https://github.com/serde-rs/serde), [serde_json](https://github.com/serde-rs/json) | MIT OR Apache-2.0 | Settings and state files |
 | [keyring](https://github.com/hwchen/keyring-rs) | MIT OR Apache-2.0 | Uplink: keeping this device's private key in the system's credential store (Keychain on macOS and iOS, Credential Manager on Windows, Secret Service on Linux) |
 | [snow](https://github.com/mcginty/snow) | Apache-2.0 OR MIT | Uplink: Noise protocol handshakes and encrypted transport between paired devices |
@@ -91,6 +91,7 @@ Nucli collects no telemetry and talks to no server of its own or of anyone else.
 - Claude Code: the Keychain item Claude Code created (through the system's `security` tool on macOS), else `.credentials.json` in Claude Code's config folder, to Anthropic (`https://api.anthropic.com/api/oauth/usage`).
 - Codex, only while its session file has no limits yet: `auth.json` in Codex's config folder, to OpenAI (`https://chatgpt.com/backend-api/wham/usage`).
 - pi signed in with a Claude or ChatGPT plan, for the provider of its last reply: `auth.json` in pi's config folder, to Anthropic or OpenAI (the endpoints above).
+- opencode signed in with a Claude or ChatGPT plan (the Claude one when both): `auth.json` in opencode's data folder (`~/.local/share/opencode`), to Anthropic or OpenAI (the endpoints above).
 - Gemini CLI signed in with Google: `oauth_creds.json` in Gemini CLI's config folder, to Google (`https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist` for the account's Code Assist project id, then `:retrieveUserQuota`).
 
 The token reaches `curl` through standard input, never as a command-line argument. Nucli never stores, refreshes or logs it and sends it nowhere else; a token whose saved expiry has passed is not used. Codex limits otherwise come from Codex's own session files, without network calls. Turning the chip off stops the requests. `docs/USAGE_LIMITS.md` lists what each agent uses.
