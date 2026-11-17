@@ -225,7 +225,7 @@ pub fn probe(request: &Request) -> AgentInfo {
     info.skills = skills(&parsed, &found);
     info.mcp = servers(&parsed, &found);
     if request.usage {
-        info.limits = if layout.agent == "claude" { crate::usage::claude(&config) } else { parsed.limits.clone() };
+        info.limits = crate::usage::limits(layout.agent, &config, &parsed);
     }
     info.transcript = transcript;
     info

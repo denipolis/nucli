@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
+
+use crate::transcript::Parsed;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Limit {
@@ -31,22 +33,30 @@ impl Limit {
 }
 
 const INTERVAL: Duration = Duration::from_secs(300);
-const CLAUDE_USAGE: &str = "https://api.anthropic.com/api/oauth/usage";
+const ANTHROPIC_USAGE: &str = "https://api.anthropic.com/api/oauth/usage";
+const CHATGPT_USAGE: &str = "https://chatgpt.com/backend-api/wham/usage";
 
-type Cache = HashMap<PathBuf, (Option<Instant>, Vec<Limit>)>;
+type Cache = HashMap<String, (Option<Instant>, Vec<Limit>)>;
 
-static CLAUDE: Mutex<Option<Cache>> = Mutex::new(None);
+static ONLINE: Mutex<Option<Cache>> = Mutex::new(None);
 
-pub fn claude(config: &Path) -> Vec<Limit> {
-    let mut guard = CLAUDE.lock().unwrap_or_else(PoisonError::into_inner);
-    let entry = guard.get_or_insert_with(HashMap::new).entry(config.to_path_buf()).or_default();
+pub fn limits(agent: &str, config: &Path, parsed: &Parsed) -> Vec<Limit> {
+    match agent {
+        "claude" => claude(config),
+        "codex" if parsed.limits.is_empty() => codex(config),
+        _ => parsed.limits.clone(),
+    }
+}
+
+fn online(key: String, fetch: impl FnOnce() -> Option<Vec<Limit>> + Send + 'static) -> Vec<Limit> {
+    let mut guard = ONLINE.lock().unwrap_or_else(PoisonError::into_inner);
+    let entry = guard.get_or_insert_with(HashMap::new).entry(key.clone()).or_default();
     if entry.0.is_none_or(|checked| checked.elapsed() >= INTERVAL) {
         entry.0 = Some(Instant::now());
-        let config = config.to_path_buf();
         std::thread::spawn(move || {
-            let Some(limits) = claude_token(&config).and_then(|token| fetch_claude(&token)) else { return };
-            let mut guard = CLAUDE.lock().unwrap_or_else(PoisonError::into_inner);
-            if let Some(entry) = guard.get_or_insert_with(HashMap::new).get_mut(&config) {
+            let Some(limits) = fetch() else { return };
+            let mut guard = ONLINE.lock().unwrap_or_else(PoisonError::into_inner);
+            if let Some(entry) = guard.get_or_insert_with(HashMap::new).get_mut(&key) {
                 entry.1 = limits;
             }
         });
@@ -54,12 +64,34 @@ pub fn claude(config: &Path) -> Vec<Limit> {
     entry.1.clone()
 }
 
+fn claude(config: &Path) -> Vec<Limit> {
+    let config = config.to_path_buf();
+    online(format!("claude {}", config.display()), move || anthropic(&claude_token(&config)?))
+}
+
+fn codex(config: &Path) -> Vec<Limit> {
+    let path = config.join("auth.json");
+    online(format!("codex {}", path.display()), move || {
+        let json = read_json(&path)?;
+        let tokens = &json["tokens"];
+        chatgpt(tokens["access_token"].as_str()?, tokens["account_id"].as_str())
+    })
+}
+
+fn read_json(path: &Path) -> Option<Value> {
+    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+}
+
+fn expired(milliseconds: &Value) -> bool {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+    milliseconds.as_u64().is_some_and(|expires| expires <= now)
+}
+
 fn claude_token(config: &Path) -> Option<String> {
     let text = keychain(config).or_else(|| std::fs::read_to_string(config.join(".credentials.json")).ok())?;
     let json: Value = serde_json::from_str(&text).ok()?;
     let oauth = &json["claudeAiOauth"];
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_millis() as u64;
-    if oauth["expiresAt"].as_u64().is_some_and(|expires| expires <= now) {
+    if expired(&oauth["expiresAt"]) {
         return None;
     }
     oauth["accessToken"].as_str().map(String::from)
@@ -92,28 +124,37 @@ fn keychain(_: &Path) -> Option<String> {
     None
 }
 
-fn fetch_claude(token: &str) -> Option<Vec<Limit>> {
+fn request(url: &str, headers: &[String], body: Option<&str>) -> Option<Value> {
     let mut command = Command::new("curl");
-    command
-        .args(["-sSf", "-m", "10", "-H", "@-", "-H", "anthropic-beta: oauth-2025-04-20", CLAUDE_USAGE])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+    command.args(["-sSf", "-m", "10", "-H", "@-"]);
+    if let Some(body) = body {
+        command.args(["-H", "Content-Type: application/json", "--data-binary", body]);
+    }
+    command.arg(url).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000);
     }
     let mut child = command.spawn().ok()?;
-    let written = child
-        .stdin
-        .take()
-        .is_some_and(|mut stdin| stdin.write_all(format!("Authorization: Bearer {token}\n").as_bytes()).is_ok());
+    let text: String = headers.iter().map(|header| format!("{header}\n")).collect();
+    let written = child.stdin.take().is_some_and(|mut stdin| stdin.write_all(text.as_bytes()).is_ok());
     let output = child.wait_with_output().ok()?;
     if !written || !output.status.success() {
         return None;
     }
-    Some(claude_limits(&serde_json::from_slice(&output.stdout).ok()?))
+    serde_json::from_slice(&output.stdout).ok()
+}
+
+fn anthropic(token: &str) -> Option<Vec<Limit>> {
+    let headers = [format!("Authorization: Bearer {token}"), "anthropic-beta: oauth-2025-04-20".to_string()];
+    Some(claude_limits(&request(ANTHROPIC_USAGE, &headers, None)?))
+}
+
+fn chatgpt(token: &str, account: Option<&str>) -> Option<Vec<Limit>> {
+    let mut headers = vec![format!("Authorization: Bearer {token}")];
+    headers.extend(account.map(|account| format!("ChatGPT-Account-Id: {account}")));
+    Some(chatgpt_limits(&request(CHATGPT_USAGE, &headers, None)?, SystemTime::now()))
 }
 
 fn claude_limits(json: &Value) -> Vec<Limit> {
@@ -136,7 +177,26 @@ fn claude_limits(json: &Value) -> Vec<Limit> {
     .collect()
 }
 
-pub fn codex(json: &Value, at: Option<SystemTime>) -> Vec<Limit> {
+fn chatgpt_limits(json: &Value, now: SystemTime) -> Vec<Limit> {
+    ["primary_window", "secondary_window"]
+        .into_iter()
+        .filter_map(|key| {
+            let window = &json["rate_limit"][key];
+            let resets = window["reset_at"]
+                .as_u64()
+                .map(|seconds| UNIX_EPOCH + Duration::from_secs(seconds))
+                .or_else(|| Some(now + Duration::from_secs(window["reset_after_seconds"].as_u64()?)));
+            Some(Limit {
+                minutes: window["limit_window_seconds"].as_u64()? / 60,
+                percent: window["used_percent"].as_f64()?.round() as u64,
+                resets,
+                scope: "",
+            })
+        })
+        .collect()
+}
+
+pub fn rollout(json: &Value, at: Option<SystemTime>) -> Vec<Limit> {
     ["primary", "secondary"]
         .into_iter()
         .filter_map(|key| {
@@ -214,15 +274,27 @@ mod tests {
         let labels: Vec<String> = limits.iter().map(Limit::label).collect();
         assert_eq!(labels, ["5h", "7d", "7d sonnet"]);
         assert_eq!((limits[0].current(), limits[1].current()), (0, 45));
-        let rollout: Value = serde_json::from_str(
+        let codex: Value = serde_json::from_str(
             r#"{"primary":{"used_percent":12.5,"window_minutes":300,"resets_in_seconds":60},"secondary":{"used_percent":3.0,"window_minutes":10080,"resets_at":1000000000}}"#,
         )
         .unwrap();
         assert_eq!(
-            codex(&rollout, at(100)),
+            rollout(&codex, at(100)),
             vec![
                 Limit { minutes: 300, percent: 13, resets: at(160), scope: "" },
                 Limit { minutes: 10080, percent: 3, resets: at(1000000000), scope: "" },
+            ]
+        );
+        let chatgpt: Value = serde_json::from_str(
+            r#"{"plan_type":"plus","rate_limit":{"allowed":true,"primary_window":{"used_percent":41,"limit_window_seconds":18000,"reset_after_seconds":30,"reset_at":null},"secondary_window":{"used_percent":9,"limit_window_seconds":604800,"reset_at":1000000000}}}"#,
+        )
+        .unwrap();
+        let limits = chatgpt_limits(&chatgpt, at(100).unwrap());
+        assert_eq!(
+            limits,
+            vec![
+                Limit { minutes: 300, percent: 41, resets: at(130), scope: "" },
+                Limit { minutes: 10080, percent: 9, resets: at(1000000000), scope: "" },
             ]
         );
     }

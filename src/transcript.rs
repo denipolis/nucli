@@ -327,7 +327,7 @@ fn codex(json: &Value, parsed: &mut Parsed) {
                 parsed.window = Some(window);
             }
             let at = json["timestamp"].as_str().and_then(crate::usage::parse_time);
-            let limits = crate::usage::codex(&payload["rate_limits"], at);
+            let limits = crate::usage::rollout(&payload["rate_limits"], at);
             if !limits.is_empty() {
                 parsed.limits = limits;
             }
