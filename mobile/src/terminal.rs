@@ -146,6 +146,9 @@ impl Home {
             .flex_col()
             .child(header)
             .child(div().flex_1().min_h_0().child(mirror))
+            .children(
+                remote.as_ref().filter(|_| online.is_some()).and_then(|remote| crate::chips::row(remote, time, theme)),
+            )
             .when(control && online.is_some(), |this| this.child(footer))
             .into_any_element()
     }

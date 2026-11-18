@@ -70,6 +70,7 @@ pub struct Remote {
     pub project: String,
     pub cwd: Option<String>,
     pub branch: Option<String>,
+    pub changes: Option<crate::git::DiffStat>,
     pub online: bool,
     pub control: bool,
 }
@@ -206,6 +207,7 @@ impl Session {
             self.running_agent.clone(),
             self.exit,
             self.remote.clone(),
+            self.agent_info.clone(),
         );
         self.name = Some(tab.title.clone()).filter(|title| !title.is_empty());
         self.color = tab.color;
@@ -214,9 +216,11 @@ impl Session {
         self.foreground = tab.program.clone();
         self.running_agent = tab.agent.clone();
         self.exit = (!tab.running).then_some(Some(u32::from(tab.failed)));
+        self.agent_info = tab.info.clone();
         if let Some(remote) = &mut self.remote {
             remote.cwd = tab.cwd.clone();
             remote.branch = tab.branch.clone();
+            remote.changes = tab.changes;
         }
         let after = (
             self.name.clone(),
@@ -227,6 +231,7 @@ impl Session {
             self.running_agent.clone(),
             self.exit,
             self.remote.clone(),
+            self.agent_info.clone(),
         );
         before != after
     }

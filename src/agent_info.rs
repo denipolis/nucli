@@ -11,22 +11,7 @@ use crate::history;
 use crate::paths;
 use crate::transcript::{self, Entry, Format, Parsed};
 
-#[derive(Clone, Debug, PartialEq, Default)]
-pub struct AgentInfo {
-    pub agent: String,
-    pub model: Option<String>,
-    pub tokens: Option<u64>,
-    pub window: Option<u64>,
-    pub skills: Vec<Entry>,
-    pub memory: Vec<Entry>,
-    pub mcp: Vec<Entry>,
-    pub started: Option<SystemTime>,
-    pub transcript: Option<PathBuf>,
-    pub conversation: Option<String>,
-    pub compactions: usize,
-    pub compacting: bool,
-    pub limits: Vec<crate::usage::Limit>,
-}
+pub use nucli_core::chips::AgentInfo;
 
 pub struct Request {
     pub agent: String,

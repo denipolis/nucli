@@ -9,29 +9,7 @@ use serde_json::Value;
 
 use crate::transcript::Parsed;
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Limit {
-    pub minutes: u64,
-    pub percent: u64,
-    pub resets: Option<SystemTime>,
-    pub scope: &'static str,
-}
-
-impl Limit {
-    pub fn label(&self) -> String {
-        let window = match self.minutes {
-            minutes if minutes >= 40320 => "1mo".to_string(),
-            minutes if minutes >= 1440 && minutes.is_multiple_of(1440) => format!("{}d", minutes / 1440),
-            minutes if minutes >= 60 && minutes.is_multiple_of(60) => format!("{}h", minutes / 60),
-            minutes => format!("{minutes}m"),
-        };
-        if self.scope.is_empty() { window } else { format!("{window} {}", self.scope) }
-    }
-
-    pub fn current(&self) -> u64 {
-        if self.resets.is_some_and(|resets| resets <= SystemTime::now()) { 0 } else { self.percent }
-    }
-}
+pub use nucli_core::chips::Limit;
 
 const INTERVAL: Duration = Duration::from_secs(300);
 const ANTHROPIC_USAGE: &str = "https://api.anthropic.com/api/oauth/usage";
@@ -240,7 +218,7 @@ fn claude_limits(json: &Value) -> Vec<Limit> {
             minutes,
             percent: window["utilization"].as_f64()?.round() as u64,
             resets: window["resets_at"].as_str().and_then(parse_time),
-            scope,
+            scope: scope.into(),
         })
     })
     .collect()
@@ -278,7 +256,7 @@ fn gemini_limits(json: &Value, model: Option<&str>) -> Vec<Limit> {
             minutes: 1440,
             percent: ((1.0 - remaining) * 100.0).round().clamp(0.0, 100.0) as u64,
             resets: bucket["resetTime"].as_str().and_then(parse_time),
-            scope: "",
+            scope: String::new(),
         })
         .into_iter()
         .collect()
@@ -298,7 +276,12 @@ fn copilot_limits(json: &Value) -> Vec<Limit> {
     };
     let reset = json["quota_reset_date_utc"].as_str().or_else(|| json["quota_reset_date"].as_str());
     let resets = reset.and_then(|date| parse_time(date).or_else(|| parse_time(&format!("{date}T00:00:00Z"))));
-    vec![Limit { minutes: 43200, percent: (100.0 - remaining).round().clamp(0.0, 100.0) as u64, resets, scope: "" }]
+    vec![Limit {
+        minutes: 43200,
+        percent: (100.0 - remaining).round().clamp(0.0, 100.0) as u64,
+        resets,
+        scope: String::new(),
+    }]
 }
 
 fn chatgpt_limits(json: &Value, now: SystemTime) -> Vec<Limit> {
@@ -314,7 +297,7 @@ fn chatgpt_limits(json: &Value, now: SystemTime) -> Vec<Limit> {
                 minutes: window["limit_window_seconds"].as_u64()? / 60,
                 percent: window["used_percent"].as_f64()?.round() as u64,
                 resets,
-                scope: "",
+                scope: String::new(),
             })
         })
         .collect()
@@ -333,7 +316,7 @@ pub fn rollout(json: &Value, at: Option<SystemTime>) -> Vec<Limit> {
                 minutes: window["window_minutes"].as_u64()?,
                 percent: window["used_percent"].as_f64()?.round() as u64,
                 resets,
-                scope: "",
+                scope: String::new(),
             })
         })
         .collect()
@@ -409,9 +392,9 @@ mod tests {
         assert_eq!(
             limits,
             vec![
-                Limit { minutes: 300, percent: 24, resets: at(1000000000), scope: "" },
-                Limit { minutes: 10080, percent: 45, resets: None, scope: "" },
-                Limit { minutes: 10080, percent: 7, resets: None, scope: "sonnet" },
+                Limit { minutes: 300, percent: 24, resets: at(1000000000), scope: String::new() },
+                Limit { minutes: 10080, percent: 45, resets: None, scope: String::new() },
+                Limit { minutes: 10080, percent: 7, resets: None, scope: "sonnet".into() },
             ]
         );
         let labels: Vec<String> = limits.iter().map(Limit::label).collect();
@@ -424,8 +407,8 @@ mod tests {
         assert_eq!(
             rollout(&codex, at(100)),
             vec![
-                Limit { minutes: 300, percent: 13, resets: at(160), scope: "" },
-                Limit { minutes: 10080, percent: 3, resets: at(1000000000), scope: "" },
+                Limit { minutes: 300, percent: 13, resets: at(160), scope: String::new() },
+                Limit { minutes: 10080, percent: 3, resets: at(1000000000), scope: String::new() },
             ]
         );
         let chatgpt: Value = serde_json::from_str(
@@ -436,7 +419,7 @@ mod tests {
             r#"{"buckets":[{"modelId":"gemini-2.5-pro","remainingFraction":0.75,"resetTime":"2001-09-09T01:46:40Z","tokenType":"REQUESTS"},{"modelId":"gemini-2.5-flash","remainingFraction":0.5},{"modelId":"other"}]}"#,
         )
         .unwrap();
-        let daily = |percent, resets| vec![Limit { minutes: 1440, percent, resets, scope: "" }];
+        let daily = |percent, resets| vec![Limit { minutes: 1440, percent, resets, scope: String::new() }];
         assert_eq!(gemini_limits(&quota, Some("gemini-2.5-pro")), daily(25, at(1000000000)));
         assert_eq!(gemini_limits(&quota, Some("unknown")), daily(50, None));
         assert_eq!(gemini_limits(&quota, None)[0].label(), "1d");
@@ -446,7 +429,7 @@ mod tests {
         )
         .unwrap();
         let monthly = copilot_limits(&copilot);
-        assert_eq!(monthly, vec![Limit { minutes: 43200, percent: 57, resets: at(999993600), scope: "" }]);
+        assert_eq!(monthly, vec![Limit { minutes: 43200, percent: 57, resets: at(999993600), scope: String::new() }]);
         assert_eq!(monthly[0].label(), "1mo");
         let unlimited: Value = serde_json::from_str(
             r#"{"quota_snapshots":{"premium_interactions":{"percent_remaining":100,"unlimited":true}}}"#,
@@ -457,8 +440,8 @@ mod tests {
         assert_eq!(
             limits,
             vec![
-                Limit { minutes: 300, percent: 41, resets: at(130), scope: "" },
-                Limit { minutes: 10080, percent: 9, resets: at(1000000000), scope: "" },
+                Limit { minutes: 300, percent: 41, resets: at(130), scope: String::new() },
+                Limit { minutes: 10080, percent: 9, resets: at(1000000000), scope: String::new() },
             ]
         );
     }

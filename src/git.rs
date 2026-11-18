@@ -26,12 +26,7 @@ pub struct Status {
     pub removed: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct DiffStat {
-    pub files: usize,
-    pub added: usize,
-    pub removed: usize,
-}
+pub use nucli_core::chips::DiffStat;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LineKind {

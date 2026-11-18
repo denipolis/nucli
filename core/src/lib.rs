@@ -1,3 +1,4 @@
+pub mod chips;
 pub mod fonts;
 pub mod icons;
 pub mod logo;

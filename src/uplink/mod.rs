@@ -1043,6 +1043,7 @@ impl Uplink {
                 project,
                 cwd: meta.cwd.clone(),
                 branch: meta.branch.clone(),
+                changes: meta.changes,
                 online: self.links.contains_key(&key),
                 control: catalog.control,
             };
@@ -1198,6 +1199,8 @@ fn catalog(device: &Device, cx: &App) -> Catalog {
                     branch: session.branch.clone(),
                     notice: session.notice.as_ref().map(|(text, _)| text.clone()),
                     muted: !store.notifies(id, cx),
+                    changes: store.diffstats.get(&project.path).copied().filter(|stat| stat.files > 0),
+                    info: session.agent_info.clone(),
                 });
             }
             if project_on || any {

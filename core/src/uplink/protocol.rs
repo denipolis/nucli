@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::chips::{AgentInfo, DiffStat};
 use crate::session::{Activity, Kind};
 use crate::terminal::Feed;
 use crate::theme::ItemColor;
@@ -32,6 +33,8 @@ pub struct RemoteTab {
     pub branch: Option<String>,
     pub notice: Option<String>,
     pub muted: bool,
+    pub changes: Option<DiffStat>,
+    pub info: Option<AgentInfo>,
 }
 
 impl RemoteTab {
@@ -67,6 +70,8 @@ impl Default for RemoteTab {
             branch: None,
             notice: None,
             muted: false,
+            changes: None,
+            info: None,
         }
     }
 }

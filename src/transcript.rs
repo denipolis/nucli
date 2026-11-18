@@ -14,14 +14,7 @@ pub enum Format {
     Gemini,
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
-pub struct Entry {
-    pub name: String,
-    pub path: Option<PathBuf>,
-    pub detail: String,
-    pub description: String,
-    pub used: bool,
-}
+pub use nucli_core::chips::Entry;
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Parsed {

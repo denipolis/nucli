@@ -1,5 +1,6 @@
 mod alerts;
 mod board;
+mod chips;
 mod computer;
 mod computers;
 mod device;

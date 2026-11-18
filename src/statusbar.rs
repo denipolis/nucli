@@ -3,23 +3,29 @@ use std::rc::Rc;
 use std::time::SystemTime;
 
 use gpui::{
-    AnyElement, App, AppContext, Context, Div, Entity, Hsla, InteractiveElement, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement, Pixels, Point, PromptLevel, Stateful, StatefulInteractiveElement, Styled, Window,
-    div, px,
+    AnyElement, App, AppContext, Context, Div, Entity, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
+    ParentElement, Pixels, Point, PromptLevel, Stateful, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
 use crate::agent_info::AgentInfo;
 use crate::editor::Editor;
-use crate::icons;
+use crate::icons::{self, CLOCK, INSTRUCTIONS, LIMITS, MCP, MODEL, SKILLS};
 use crate::menu;
 use crate::palette::{Item, Palette};
 use crate::paths;
 use crate::session::Session;
 use crate::settings::{self, SettingsError, StatusChips};
+use crate::sidebar::DragPreview;
 use crate::theme::Theme;
 use crate::transcript::Entry;
 use crate::ui;
 use crate::window::WorkspaceView;
+use nucli_core::chips::{duration, level, running, tokens};
+
+type Chips = Vec<(Chip, AnyElement)>;
+
+#[derive(Clone, Copy)]
+struct DraggedChip(Chip);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Chip {
@@ -80,6 +86,30 @@ impl Chip {
             Chip::FileChanges => "file_changes",
             Chip::Commit => "commit",
         }
+    }
+
+    fn from_id(id: &str) -> Option<Chip> {
+        Chip::ALL.into_iter().find(|chip| chip.id() == id)
+    }
+
+    pub fn ordered(cx: &App) -> Vec<Chip> {
+        let mut chips = Vec::new();
+        for chip in settings::get(cx).chip_order.iter().filter_map(|id| Chip::from_id(id)).chain(Chip::ALL) {
+            if !chips.contains(&chip) {
+                chips.push(chip);
+            }
+        }
+        chips
+    }
+
+    fn move_to(self, target: Chip, cx: &mut App) {
+        let mut order = Chip::ordered(cx);
+        let Some(index) = order.iter().position(|chip| *chip == target).filter(|_| self != target) else {
+            return;
+        };
+        order.retain(|chip| *chip != self);
+        order.insert(index, self);
+        settings::update(cx, |settings| settings.chip_order = order.iter().map(|chip| chip.id().to_string()).collect());
     }
 
     pub fn title(self) -> &'static str {
@@ -176,13 +206,6 @@ fn ask_usage(window: &mut Window, cx: &mut App) {
     .detach();
 }
 
-const SKILLS: &str = "\u{eb6d}";
-const INSTRUCTIONS: &str = "\u{eb1d}";
-const MODEL: &str = "\u{f061a}";
-const MCP: &str = "\u{f06a5}";
-const CLOCK: &str = "\u{f0954}";
-const LIMITS: &str = "\u{f051f}";
-
 const USAGE_NOTICE: &str = "Some agents report their usage limits only through their API. For those, Nucli reads your usage with your own sign-in token for that agent. The token is never stored or sent anywhere else.";
 const USAGE_DETAILS: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/blob/main/docs/USAGE_LIMITS.md");
 
@@ -205,13 +228,25 @@ fn chip(id: &'static str, glyph: &'static str, theme: &Theme) -> Stateful<Div> {
 }
 
 fn clickable(element: Stateful<Div>, kind: Chip, theme: &Theme, cx: &Context<WorkspaceView>) -> Stateful<Div> {
-    element.hover(|style| style.bg(theme.hover)).on_mouse_down(
-        MouseButton::Right,
-        cx.listener(move |view, event: &MouseDownEvent, _, cx| {
-            cx.stop_propagation();
-            view.open_menu(event.position, chip_menu(Some(kind), cx), cx);
-        }),
-    )
+    let accent = theme.accent;
+    element
+        .hover(|style| style.bg(theme.hover))
+        .on_mouse_down(
+            MouseButton::Right,
+            cx.listener(move |view, event: &MouseDownEvent, _, cx| {
+                cx.stop_propagation();
+                view.open_menu(event.position, chip_menu(Some(kind), cx), cx);
+            }),
+        )
+        .on_drag(DraggedChip(kind), |drag: &DraggedChip, _, _, cx| cx.new(|_| DragPreview(drag.0.title().into())))
+        .drag_over::<DraggedChip>(move |style, _, _, _| style.border_color(accent))
+        .on_drop(move |drag: &DraggedChip, _, cx| drag.0.move_to(kind, cx))
+}
+
+fn arrange(mut chips: Chips, cx: &App) -> Vec<AnyElement> {
+    let order = Chip::ordered(cx);
+    chips.sort_by_key(|(chip, _)| order.iter().position(|other| other == chip));
+    chips.into_iter().map(|(_, element)| element).collect()
 }
 
 pub fn chip_menu(chip: Option<Chip>, cx: &App) -> Vec<menu::Item> {
@@ -258,40 +293,64 @@ fn row(theme: &Theme, cx: &Context<WorkspaceView>) -> Div {
         )
 }
 
-fn file_chips(editor: &Entity<Editor>, theme: &Theme, cx: &Context<WorkspaceView>) -> Vec<AnyElement> {
+fn file_chips(editor: &Entity<Editor>, theme: &Theme, cx: &Context<WorkspaceView>) -> Chips {
     let file = crate::file_view::file_status(editor, cx);
-    let mut chips = Vec::new();
+    let mut chips = Chips::new();
     if let Some(position) = file.position.filter(|_| Chip::Position.shown(cx)) {
-        chips.push(
+        chips.push((
+            Chip::Position,
             clickable(frame("status-position", theme), Chip::Position, theme, cx).child(position).into_any_element(),
-        );
+        ));
     }
     if let Some(language) = file.language.filter(|_| Chip::Language.shown(cx)) {
         let (glyph, color) = icons::file(&file.icon_file);
-        chips.push(
+        chips.push((
+            Chip::Language,
             clickable(frame("status-language", theme), Chip::Language, theme, cx)
                 .child(div().flex_none().text_color(color.color(theme.dark)).child(glyph))
                 .child(language)
                 .on_click(|_, window, cx| window.dispatch_action(Box::new(crate::commands::SelectLanguage), cx))
                 .into_any_element(),
-        );
+        ));
     }
     if file.added + file.removed > 0 && Chip::FileChanges.shown(cx) {
-        chips.push(
+        chips.push((
+            Chip::FileChanges,
             clickable(frame("status-file-changes", theme), Chip::FileChanges, theme, cx)
                 .child(div().text_color(theme.green).child(format!("+{}", file.added)))
                 .child(div().text_color(theme.red).child(format!("-{}", file.removed)))
                 .into_any_element(),
-        );
+        ));
     }
     if let Some(commit) = file.commit.filter(|_| Chip::Commit.shown(cx)) {
-        chips.push(
+        chips.push((
+            Chip::Commit,
             clickable(chip("status-commit", icons::COMMIT, theme), Chip::Commit, theme, cx)
                 .child(commit[..commit.len().min(7)].to_string())
                 .into_any_element(),
-        );
+        ));
     }
     chips
+}
+
+fn changes_chip(
+    stat: Option<crate::git::DiffStat>,
+    theme: &Theme,
+    cx: &Context<WorkspaceView>,
+) -> Option<Stateful<Div>> {
+    let stat = stat.filter(|stat| stat.files > 0 && Chip::Changes.shown(cx))?;
+    Some(
+        clickable(chip("status-changes", "±", theme), Chip::Changes, theme, cx)
+            .child(stat.files.to_string())
+            .child(div().text_color(theme.green).child(format!("+{}", stat.added)))
+            .child(div().text_color(theme.red).child(format!("-{}", stat.removed))),
+    )
+}
+
+fn program_chip(session: &Session, theme: &Theme, cx: &Context<WorkspaceView>) -> Option<(Chip, AnyElement)> {
+    let name = session.program().map(str::to_string).filter(|_| Chip::Program.shown(cx))?;
+    let element = clickable(chip("status-program", icons::PLAY, theme), Chip::Program, theme, cx).child(name);
+    Some((Chip::Program, element.into_any_element()))
 }
 
 fn session_chips(
@@ -299,16 +358,17 @@ fn session_chips(
     session: &Entity<Session>,
     theme: &Theme,
     cx: &mut Context<WorkspaceView>,
-) -> Vec<AnyElement> {
+) -> Chips {
     let session = session.read(cx);
     if let Some(remote) = session.remote.clone() {
         return mirror_chips(session, remote, theme, cx);
     }
     let folder = session.working_dir().to_path_buf();
     let (reveal, copy) = (folder.clone(), folder.clone());
-    let mut chips = Vec::new();
+    let mut chips = Chips::new();
     if Chip::Folder.shown(cx) {
-        chips.push(
+        chips.push((
+            Chip::Folder,
             clickable(chip("status-folder", icons::FOLDER, theme), Chip::Folder, theme, cx)
                 .flex_shrink(1.)
                 .min_w_0()
@@ -322,46 +382,34 @@ fn session_chips(
                     view.open_menu(event.position(), items, cx);
                 }))
                 .into_any_element(),
-        );
+        ));
     }
     if let Some(branch) = session.branch.clone().filter(|_| Chip::Branch.shown(cx)) {
-        chips.push(
+        chips.push((
+            Chip::Branch,
             clickable(chip("status-branch", icons::BRANCH, theme), Chip::Branch, theme, cx)
                 .child(branch)
                 .on_click(cx.listener(|view, _, window, cx| crate::palettes::branches(view, window, cx)))
                 .into_any_element(),
-        );
+        ));
     }
     let project = view.state(cx).and_then(|state| state.project_of(&session.id)).map(|project| project.path.clone());
     let stat = project.as_ref().and_then(|path| view.store(cx).diffstats.get(path)).copied();
-    if let Some(stat) = stat.filter(|stat| stat.files > 0 && Chip::Changes.shown(cx)) {
-        chips.push(
-            clickable(chip("status-changes", "±", theme), Chip::Changes, theme, cx)
-                .child(stat.files.to_string())
-                .child(div().text_color(theme.green).child(format!("+{}", stat.added)))
-                .child(div().text_color(theme.red).child(format!("-{}", stat.removed)))
-                .on_click(|_, window, cx| window.dispatch_action(Box::new(crate::commands::ShowChanges), cx))
-                .into_any_element(),
-        );
+    if let Some(element) = changes_chip(stat, theme, cx) {
+        let element =
+            element.on_click(|_, window, cx| window.dispatch_action(Box::new(crate::commands::ShowChanges), cx));
+        chips.push((Chip::Changes, element.into_any_element()));
     }
-    if let Some(name) = session.program().map(str::to_string).filter(|_| Chip::Program.shown(cx)) {
-        chips.push(
-            clickable(chip("status-program", icons::PLAY, theme), Chip::Program, theme, cx)
-                .child(name)
-                .into_any_element(),
-        );
-    }
-    if let Some(chip) = watched_chip(session, theme, cx) {
-        chips.push(chip);
-    }
+    chips.extend(program_chip(session, theme, cx));
+    chips.extend(watched_chip(session, theme, cx));
     if let Some(info) = session.agent_info.clone() {
         let root = project.unwrap_or_else(|| folder.clone());
-        chips.extend(agent_chips(Rc::new(info), root, theme, cx));
+        chips.extend(agent_chips(Rc::new(info), Some(root), theme, cx));
     }
     chips
 }
 
-fn watched_chip(session: &Session, theme: &Theme, cx: &Context<WorkspaceView>) -> Option<AnyElement> {
+fn watched_chip(session: &Session, theme: &Theme, cx: &Context<WorkspaceView>) -> Option<(Chip, AnyElement)> {
     let uplink = crate::uplink::uplink(cx)?;
     let uplink = uplink.read(cx);
     let watchers = uplink.watchers_of(&session.id);
@@ -372,25 +420,23 @@ fn watched_chip(session: &Session, theme: &Theme, cx: &Context<WorkspaceView>) -
         watchers.iter().map(|key| (*key, uplink.device_name(key))).collect();
     let label = names.iter().map(|(_, name)| name.as_str()).collect::<Vec<_>>().join(", ");
     let id = session.id.clone();
-    Some(
-        clickable(chip("status-uplink", icons::EYE, theme), Chip::Uplink, theme, cx)
-            .child(div().text_color(theme.accent).child(label))
-            .on_click(cx.listener(move |view, event: &gpui::ClickEvent, _, cx| {
-                let tab = id.clone();
-                let mut items = vec![menu::action("Stop Sharing This Tab", move |_, _, cx| {
-                    crate::actions::set_tab_shared(&tab, false, cx)
-                })];
-                for (key, name) in names.clone() {
-                    items.push(menu::action(format!("Disconnect {name}"), move |_, _, cx| {
-                        if let Some(uplink) = crate::uplink::uplink(cx) {
-                            uplink.update(cx, |uplink, cx| uplink.disconnect(&key, cx));
-                        }
-                    }));
-                }
-                view.open_menu(event.position(), items, cx);
-            }))
-            .into_any_element(),
-    )
+    let element = clickable(chip("status-uplink", icons::EYE, theme), Chip::Uplink, theme, cx)
+        .child(div().text_color(theme.accent).child(label))
+        .on_click(cx.listener(move |view, event: &gpui::ClickEvent, _, cx| {
+            let tab = id.clone();
+            let mut items = vec![menu::action("Stop Sharing This Tab", move |_, _, cx| {
+                crate::actions::set_tab_shared(&tab, false, cx)
+            })];
+            for (key, name) in names.clone() {
+                items.push(menu::action(format!("Disconnect {name}"), move |_, _, cx| {
+                    if let Some(uplink) = crate::uplink::uplink(cx) {
+                        uplink.update(cx, |uplink, cx| uplink.disconnect(&key, cx));
+                    }
+                }));
+            }
+            view.open_menu(event.position(), items, cx);
+        }));
+    Some((Chip::Uplink, element.into_any_element()))
 }
 
 fn mirror_chips(
@@ -398,12 +444,13 @@ fn mirror_chips(
     remote: crate::session::Remote,
     theme: &Theme,
     cx: &Context<WorkspaceView>,
-) -> Vec<AnyElement> {
-    let mut chips = Vec::new();
+) -> Chips {
+    let mut chips = Chips::new();
     if Chip::Uplink.shown(cx) {
         let (id, key) = (session.id.clone(), remote.key);
         let online = remote.online;
-        chips.push(
+        chips.push((
+            Chip::Uplink,
             clickable(chip("status-uplink", icons::UPLINK, theme), Chip::Uplink, theme, cx)
                 .child(div().text_color(if online { theme.accent } else { theme.faint }).child(remote.device.clone()))
                 .when(!online, |this| this.child(div().text_color(theme.red).child("offline")))
@@ -429,11 +476,12 @@ fn mirror_chips(
                     view.open_menu(event.position(), items, cx);
                 }))
                 .into_any_element(),
-        );
+        ));
     }
     if let Some(folder) = remote.cwd.clone().filter(|_| Chip::Folder.shown(cx)) {
         let copy = folder.clone();
-        chips.push(
+        chips.push((
+            Chip::Folder,
             clickable(chip("status-folder", icons::FOLDER, theme), Chip::Folder, theme, cx)
                 .flex_shrink(1.)
                 .min_w_0()
@@ -442,89 +490,59 @@ fn mirror_chips(
                     view.open_menu(event.position(), vec![menu::copy("Copy Path", copy.clone())], cx);
                 }))
                 .into_any_element(),
-        );
+        ));
     }
     if let Some(branch) = remote.branch.clone().filter(|_| Chip::Branch.shown(cx)) {
-        chips.push(
+        chips.push((
+            Chip::Branch,
             clickable(chip("status-branch", icons::BRANCH, theme), Chip::Branch, theme, cx)
                 .child(branch)
                 .into_any_element(),
-        );
+        ));
     }
-    if let Some(name) = session.program().map(str::to_string).filter(|_| Chip::Program.shown(cx)) {
-        chips.push(
-            clickable(chip("status-program", icons::PLAY, theme), Chip::Program, theme, cx)
-                .child(name)
-                .into_any_element(),
-        );
+    if let Some(element) = changes_chip(remote.changes, theme, cx) {
+        chips.push((Chip::Changes, element.into_any_element()));
+    }
+    chips.extend(program_chip(session, theme, cx));
+    if let Some(info) = session.agent_info.clone() {
+        chips.extend(agent_chips(Rc::new(info), None, theme, cx));
     }
     chips
 }
 
-pub fn tokens(count: u64) -> String {
-    match count {
-        0..1000 => count.to_string(),
-        1000..1000000 => format!("{}k", (count + 500) / 1000),
-        _ => {
-            let tenths = (count + 50000) / 100000;
-            if tenths.is_multiple_of(10) {
-                format!("{}M", tenths / 10)
-            } else {
-                format!("{}.{}M", tenths / 10, tenths % 10)
-            }
-        }
-    }
-}
-
-pub fn duration(seconds: u64) -> String {
-    let (minutes, hours, days) = (seconds / 60, seconds / 3600, seconds / 86400);
-    match seconds {
-        0..60 => format!("{seconds}s"),
-        60..3600 => format!("{minutes}m"),
-        3600..86400 => format!("{hours}h {:02}m", minutes % 60),
-        _ => format!("{days}d {}h", hours % 24),
-    }
-}
-
-fn level(percent: u64, theme: &Theme) -> Hsla {
-    match percent {
-        0..50 => theme.green,
-        50..80 => theme.orange,
-        _ => theme.red,
-    }
-}
-
-fn agent_chips(info: Rc<AgentInfo>, root: PathBuf, theme: &Theme, cx: &Context<WorkspaceView>) -> Vec<AnyElement> {
-    let mut chips = Vec::new();
+fn agent_chips(info: Rc<AgentInfo>, root: Option<PathBuf>, theme: &Theme, cx: &Context<WorkspaceView>) -> Chips {
+    let mut chips = Chips::new();
     let used = |entries: &[Entry]| entries.iter().filter(|entry| entry.used).count();
     let count = |element: Stateful<Div>, total: usize, label: &str, used: usize| {
         element
             .child(format!("{total} {label}"))
             .when(used > 0, |element| element.child(div().text_color(theme.accent).child(format!("{used} used"))))
     };
-    let list = |chip: Chip, entries: Vec<Entry>, root: PathBuf| {
+    let list = |chip: Chip, entries: Vec<Entry>, root: Option<PathBuf>| {
         move |view: &mut WorkspaceView,
               event: &gpui::ClickEvent,
               window: &mut Window,
               cx: &mut Context<WorkspaceView>| {
-            entries_palette(view, chip, &entries, &root, event.position(), window, cx)
+            entries_palette(view, chip, &entries, root.as_deref(), event.position(), window, cx)
         }
     };
     if !info.skills.is_empty() && Chip::Skills.shown(cx) {
         let element = clickable(chip("status-skills", SKILLS, theme), Chip::Skills, theme, cx);
-        chips.push(
+        chips.push((
+            Chip::Skills,
             count(element, info.skills.len(), "skills", used(&info.skills))
                 .on_click(cx.listener(list(Chip::Skills, info.skills.clone(), root.clone())))
                 .into_any_element(),
-        );
+        ));
     }
     if !info.memory.is_empty() && Chip::Instructions.shown(cx) {
         let element = clickable(chip("status-instructions", INSTRUCTIONS, theme), Chip::Instructions, theme, cx);
-        chips.push(
+        chips.push((
+            Chip::Instructions,
             count(element, info.memory.len(), "md", 0)
                 .on_click(cx.listener(list(Chip::Instructions, info.memory.clone(), root.clone())))
                 .into_any_element(),
-        );
+        ));
     }
     let menu_for = |info: Rc<AgentInfo>| {
         move |view: &mut WorkspaceView, event: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<WorkspaceView>| {
@@ -532,12 +550,13 @@ fn agent_chips(info: Rc<AgentInfo>, root: PathBuf, theme: &Theme, cx: &Context<W
         }
     };
     if let Some(model) = info.model.clone().filter(|_| Chip::Model.shown(cx)) {
-        chips.push(
+        chips.push((
+            Chip::Model,
             clickable(chip("status-model", MODEL, theme), Chip::Model, theme, cx)
                 .child(model)
                 .on_click(cx.listener(menu_for(info.clone())))
                 .into_any_element(),
-        );
+        ));
     }
     if (info.tokens.is_some() || info.compacting) && Chip::Context.shown(cx) {
         let mut element = clickable(chip("status-context", icons::GAUGE, theme), Chip::Context, theme, cx);
@@ -558,7 +577,7 @@ fn agent_chips(info: Rc<AgentInfo>, root: PathBuf, theme: &Theme, cx: &Context<W
         if info.compactions > 0 {
             element = element.child(div().text_color(theme.muted).child(format!("compacted {}x", info.compactions)));
         }
-        chips.push(element.on_click(cx.listener(menu_for(info.clone()))).into_any_element());
+        chips.push((Chip::Context, element.on_click(cx.listener(menu_for(info.clone()))).into_any_element()));
     }
     if !info.limits.is_empty() && Chip::Usage.shown(cx) {
         let mut element = clickable(chip("status-usage", LIMITS, theme), Chip::Usage, theme, cx);
@@ -568,24 +587,25 @@ fn agent_chips(info: Rc<AgentInfo>, root: PathBuf, theme: &Theme, cx: &Context<W
                 .child(div().text_color(theme.muted).child(limit.label()))
                 .child(div().text_color(level(percent, theme)).child(format!("{percent}%")));
         }
-        chips.push(element.on_click(cx.listener(menu_for(info.clone()))).into_any_element());
+        chips.push((Chip::Usage, element.on_click(cx.listener(menu_for(info.clone()))).into_any_element()));
     }
     if !info.mcp.is_empty() && Chip::Mcp.shown(cx) {
         let element = clickable(chip("status-mcp", MCP, theme), Chip::Mcp, theme, cx);
-        chips.push(
+        chips.push((
+            Chip::Mcp,
             count(element, info.mcp.len(), "mcp", used(&info.mcp))
                 .on_click(cx.listener(list(Chip::Mcp, info.mcp.clone(), root.clone())))
                 .into_any_element(),
-        );
+        ));
     }
     if let Some(started) = info.started.filter(|_| Chip::Session.shown(cx)) {
-        let seconds = SystemTime::now().duration_since(started).unwrap_or_default().as_secs();
-        chips.push(
+        chips.push((
+            Chip::Session,
             clickable(chip("status-session", CLOCK, theme), Chip::Session, theme, cx)
-                .child(duration(seconds))
+                .child(running(started))
                 .on_click(cx.listener(menu_for(info.clone())))
                 .into_any_element(),
-        );
+        ));
     }
     chips
 }
@@ -620,8 +640,7 @@ fn agent_menu(info: &AgentInfo) -> Vec<menu::Item> {
         items.push(menu::Item::Header(text.into()));
     }
     if let Some(started) = info.started {
-        let seconds = SystemTime::now().duration_since(started).unwrap_or_default().as_secs();
-        items.push(menu::Item::Header(format!("running for {}", duration(seconds)).into()));
+        items.push(menu::Item::Header(format!("running for {}", running(started)).into()));
     }
     if let Some(path) = info.transcript.clone() {
         let (open, reveal) = (path.clone(), path.clone());
@@ -636,10 +655,11 @@ fn agent_menu(info: &AgentInfo) -> Vec<menu::Item> {
     items
 }
 
-fn shown_path(path: &Path, root: &Path) -> String {
-    match path.strip_prefix(root) {
-        Ok(relative) if !relative.as_os_str().is_empty() => relative.to_string_lossy().into_owned(),
-        _ => paths::display(path),
+fn shown_path(path: &Path, root: Option<&Path>) -> String {
+    match root.and_then(|root| path.strip_prefix(root).ok()) {
+        Some(relative) if !relative.as_os_str().is_empty() => relative.to_string_lossy().into_owned(),
+        Some(_) => paths::display(path),
+        None => path.to_string_lossy().into_owned(),
     }
 }
 
@@ -647,7 +667,7 @@ fn entries_palette(
     view: &mut WorkspaceView,
     chip: Chip,
     entries: &[Entry],
-    root: &Path,
+    root: Option<&Path>,
     position: Point<Pixels>,
     window: &mut Window,
     cx: &mut Context<WorkspaceView>,
@@ -661,7 +681,7 @@ fn entries_palette(
     let items = entries
         .iter()
         .map(|entry| {
-            let open = entry.path.clone();
+            let open = entry.path.clone().filter(|_| root.is_some());
             let title = match (&entry.path, chip) {
                 (Some(path), Chip::Instructions) => shown_path(path, root),
                 _ => entry.name.clone(),
@@ -672,8 +692,9 @@ fn entries_palette(
                 (_, Some(path)) => shown_path(path, root),
                 _ => String::new(),
             };
+            let target = open.clone();
             let mut item = Item::new(title, move |view, window, cx| {
-                if let Some(path) = &open {
+                if let Some(path) = &target {
                     view.open_path(path, None, window, cx);
                 }
             })
@@ -682,7 +703,7 @@ fn entries_palette(
             .glyph(glyph, entry.used.then_some(theme.accent))
             .section(if entry.used { sections.0 } else { sections.1 });
             item.path = chip == Chip::Instructions;
-            if let Some(path) = entry.path.clone() {
+            if let Some(path) = open.clone() {
                 item.alternate = Some(Rc::new(move |_, _, cx| cx.open_with_system(&path)));
             }
             item
@@ -699,13 +720,13 @@ fn session_theme(session: &Entity<Session>, cx: &App) -> std::rc::Rc<Theme> {
 
 pub fn session_row(view: &WorkspaceView, session: &Entity<Session>, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = session_theme(session, cx);
-    let chips = session_chips(view, session, &theme, cx);
+    let chips = arrange(session_chips(view, session, &theme, cx), cx);
     row(&theme, cx).children(chips).into_any_element()
 }
 
 pub fn file_row(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> Option<AnyElement> {
     let theme = ui::theme(cx);
-    let chips = file_chips(editor, &theme, cx);
+    let chips = arrange(file_chips(editor, &theme, cx), cx);
     (!chips.is_empty()).then(|| row(&theme, cx).children(chips).into_any_element())
 }
 
@@ -719,13 +740,14 @@ pub fn render(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Option<A
     let file_shown = focused && view.file_shown(cx);
     let session = if focused && !file_shown { view.selected_session(cx) } else { None };
     let theme = session.as_ref().map(|session| session_theme(session, cx)).unwrap_or_else(|| ui::theme(cx));
-    let mut chips = match (&session, file_shown) {
+    let chips = match (&session, file_shown) {
         (Some(session), _) => session_chips(view, session, &theme, cx),
         (None, true) => {
             crate::file_view::active_editor(view, cx).map(|editor| file_chips(&editor, &theme, cx)).unwrap_or_default()
         }
         _ => Vec::new(),
     };
+    let mut chips = arrange(chips, cx);
     if let Some(error) = error {
         chips.push(div().min_w_0().truncate().text_color(theme.red).child(error).into_any_element());
     }
@@ -739,20 +761,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn formats_numbers() {
-        assert_eq!(tokens(999), "999");
-        assert_eq!(tokens(84400), "84k");
-        assert_eq!(tokens(200000), "200k");
-        assert_eq!(tokens(1000000), "1M");
-        assert_eq!(tokens(1048576), "1M");
-        assert_eq!(tokens(1500000), "1.5M");
-        assert_eq!(duration(42), "42s");
-        assert_eq!(duration(600), "10m");
-        assert_eq!(duration(3900), "1h 05m");
-        assert_eq!(duration(90000), "1d 1h");
+    fn chip_ids_are_unique() {
         let ids: Vec<_> = Chip::ALL.iter().map(|chip| chip.id()).collect();
         let mut unique = ids.clone();
+        unique.sort();
         unique.dedup();
-        assert_eq!(ids, unique);
+        assert_eq!(ids.len(), unique.len());
+        assert!(ids.iter().all(|id| Chip::from_id(id).is_some()));
     }
 }
