@@ -1,14 +1,15 @@
 # Architecture
 
-A Cargo workspace on GPUI: the desktop app at the root (`src/`), `core/` (`nucli-core`), the code shared with the mobile app, and `mobile/` (`nucli-uplink`), the iOS remote control (see Mobile). GPUI is used through `gpui-pre` and `gpui-pre-platform` (published snapshots of Zed's GPUI crates) pinned to one exact version, since any snapshot may change GPUI's API. One window per open workspace. `docs/SPEC.md` describes the behavior; this file describes the code and its gotchas.
+A Cargo workspace on GPUI: the desktop app at the root (`src/`), `core/` (`nucli-core`), the code shared with the mobile app, `grammars/` (`nucli-grammars`), the tree-sitter grammars, and `mobile/` (`nucli-uplink`), the iOS remote control (see Mobile). GPUI is used through `gpui-pre` and `gpui-pre-platform` (published snapshots of Zed's GPUI crates) pinned to one exact version, since any snapshot may change GPUI's API. One window per open workspace. `docs/SPEC.md` describes the behavior; this file describes the code and its gotchas.
 
 ## Files
 
-Paths are under `src/` unless they start with `core/`.
+Paths are under `src/` unless they start with `core/` or `grammars/`.
 
 | File | Role |
 |---|---|
-| `main.rs` | Startup: fonts, settings, keymap, then onboarding or `launch`: store, windows, config file polling, folders from the command line and the OS. |
+| `lib.rs` | Startup (`run`): fonts, settings, keymap, then onboarding or `launch`: store, windows, config file polling, folders from the command line and the OS. |
+| `main.rs` | Calls `run`. With the `split` feature on Windows it loads `nucli.dll` next to the executable and calls its `nucli_main` instead (see Windows package). |
 | `onboarding.rs` | Setup window shown when `settings.json` is missing: welcome animation, steps, backup and Nucli 1 import. While `onboarding::Active` is set, `settings::update` changes the global without writing the file. |
 | `store.rs` | `Store` (one global entity): workspaces, projects, tab ids, sessions, last choices, conversations, diff stats. Opening, closing, selecting, restoring tabs and writing `state.json`. |
 | `persist.rs` | Serialized shapes of `state.json`, restored terminal output files. |
@@ -40,7 +41,8 @@ Paths are under `src/` unless they start with `core/`.
 | `find.rs` | Find and replace: query building, matching across rows or plain lines, replacement templates, case preservation. |
 | `search.rs` | Search in files: include and exclude globs, the parallel scan of the project's files with a result cap and cancellation, previews, and replacing chosen matches in a file on disk. |
 | `search_view.rs` | Search view: fields, toggles, results list, opening a match, replace and dismiss. A search runs on the background executor; a newer search bumps a generation counter that the scan threads poll, so a stale one stops early and its results are dropped. A replace reads the file again and only rewrites matches that are still at the same positions. |
-| `highlight.rs` | Tree-sitter grammars and capture to token mapping. |
+| `highlight.rs` | Highlight queries and capture to token mapping. |
+| `grammars/src/lib.rs` | The grammar crates (re-exported for their queries) and `language`: the grammar linked in with its feature, else on Windows the one in `grammars/<feature>.dll` next to the executable. Every build exports `nucli_grammar(name, length)`, which the DLLs answer with their linked grammar. |
 | `navigate/mod.rs` | Code navigation without language servers: symbols of a file, resolving the name, import, path or URL at an offset to locations, ranking project-wide candidates. |
 | `navigate/queries.rs` | Definition queries per language (`@name` and `@definition.<kind>` captures): written here for TypeScript, JavaScript, Rust, Python, Go and Shell, the grammars' tags queries for the others. |
 | `navigate/imports.rs` | Import bindings of a file (binding, imported name, module, re-export) for TypeScript, JavaScript, Python, Rust, Go and Java. |
@@ -194,6 +196,16 @@ A mirror draws at the remote terminal's size, scaled down when it is wider than 
 `scripts/mobile.sh` gives the app the desktop's icon: `actool` compiles `assets/icon/AppIcon.icon` into the bundle's `Assets.car` and icon files, and its partial `Info.plist` (`CFBundleIcons`) is merged into the bundle's. `scripts/mobile.sh device` builds a release for `aarch64-apple-ios` and signs it like Xcode would: it takes the first unexpired provisioning profile in Xcode's profile folders whose application identifier ends in `BUNDLE_ID`, writes `BUNDLE_ID` into the bundle's `Info.plist`, embeds the profile as `embedded.mobileprovision` and signs with the profile's entitlements and the `Apple Development` certificate (`IDENTITY` picks another). A bundle ID belongs to one Apple team, so every user needs their own, and a profile for it comes from running any Xcode app with that bundle ID on the phone once (see `mobile/README.md`).
 
 `NUCLI_PAIR=<pairing link>` pairs at startup. Pass it to a simulator as `SIMCTL_CHILD_NUCLI_PAIR`, and `NUCLI_CONTROL` as `SIMCTL_CHILD_NUCLI_CONTROL`; simulator apps read host paths. Capture with `xcrun simctl io <udid> screenshot`, and read the app's stderr with `xcrun simctl launch --console-pty <udid> uk.polishch.nucli.uplink`. Always name the simulator by its id: `booted` picks any booted one, including simulators the user has open for other work. Without `xcode-select` pointing at Xcode, set `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (the script does). `xcrun simctl openurl` asks "Open in …?" first, and the simulator cannot be tapped from a script, so test links with `pairlink` instead. The simulator has no camera. For several computers, run one isolated desktop instance per computer, each with its own `HOME`, `NUCLI_CONTROL`, `uplink.name` and `uplink.port` (47101, 47102, …); the simulator finds them all through Bonjour on the loopback interface. A fake agent that desktop shows as Claude must be a binary named `claude` that writes `~/.claude/sessions/<pid>.json`; a shell script runs as `sh` and gets no status.
+
+## Windows package
+
+`scripts/package.sh` splits the Windows build into DLLs, so the executable is only a loader:
+
+- `nucli.exe`: `main.rs` built with `--features split`. It does not link the app.
+- `nucli.dll`: the app library built as a `cdylib` with `--no-default-features`, so no grammar is linked in. It exports `nucli_main`.
+- `grammars/<feature>.dll`: `nucli-grammars` built as a `cdylib` once per feature of its `all` list, each with only that grammar.
+
+Every other build, `cargo run` and tests on Windows included, links all grammars through the default `grammars` feature. A `cdylib` carries its own copy of the Rust standard library and its dependencies, and Rust has no stable ABI between separately built libraries, so the app cannot be cut finer than these pieces.
 
 ## Gotchas
 

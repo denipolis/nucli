@@ -5,7 +5,7 @@ TARGET="${1:-$(rustc -vV | sed -n 's/host: //p')}"
 PYTHON="$(command -v python3 || command -v python)"
 BUILD="${CARGO_TARGET_DIR:-target}/$TARGET/release"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
-cargo build --locked --release --target "$TARGET"
+[[ "$TARGET" == *windows* ]] || cargo build --locked --release --target "$TARGET"
 rm -rf dist
 mkdir -p dist/stage
 "$PYTHON" scripts/notices.py "$TARGET" > dist/stage/THIRD_PARTY_NOTICES.txt
@@ -66,7 +66,15 @@ PLIST
     rm -rf dist/dmg
     ;;
   *windows*)
+    cargo rustc --locked --release --target "$TARGET" --lib --crate-type cdylib --no-default-features
+    cp "$BUILD/nucli.dll" dist/stage/
+    cargo build --locked --release --target "$TARGET" --bin nucli --features split
     cp "$BUILD/nucli.exe" dist/stage/
+    mkdir dist/stage/grammars
+    for grammar in $(sed -n 's/^all = \[\(.*\)\]/\1/p' grammars/Cargo.toml | tr -d '",'); do
+      cargo rustc --locked --release --target "$TARGET" -p nucli-grammars --lib --crate-type cdylib --features "$grammar"
+      cp "$BUILD/nucli_grammars.dll" "dist/stage/grammars/$grammar.dll"
+    done
     (cd dist/stage && 7z a "../Nucli-$TARGET.zip" . >/dev/null)
     ;;
   *)

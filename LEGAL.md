@@ -25,7 +25,7 @@ Direct dependencies, declared in the workspace's `Cargo.toml` files (`Cargo.toml
 | [trash](https://github.com/Byron/trash-rs) | MIT | Moving discarded new files to the system trash |
 | [notify-rust](https://github.com/hoodie/notify-rust) | MIT OR Apache-2.0 | Desktop notifications on Linux and Windows |
 | [sysinfo](https://github.com/GuillaumeGomez/sysinfo) | MIT | Foreground process name and folder of each tab |
-| [tree-sitter](https://github.com/tree-sitter/tree-sitter), tree-sitter-highlight | MIT | Syntax highlighting in the file view |
+| [tree-sitter](https://github.com/tree-sitter/tree-sitter), tree-sitter-highlight, tree-sitter-language | MIT | Syntax highlighting in the file view |
 | tree-sitter grammars: bash, c, c-sharp, cmake, containerfile, cpp, css, dart, diff, go, html, java, javascript, json, kotlin-sg, lua, make, md, nix, php, powershell, prisma, proto, python, ruby, rust, sequel, solidity, svelte-ng, swift, toml-ng, typescript, xml, yaml, zig | MIT | Language grammars and their highlight queries. The kotlin-sg highlight query is based on nvim-treesitter's (Apache-2.0) |
 | tree-sitter grammars: elixir, ini | Apache-2.0 | Language grammars and their highlight queries |
 | tree-sitter grammar: astro-next | MIT OR Apache-2.0 | Astro grammar and its highlight query |
@@ -37,7 +37,7 @@ Direct dependencies, declared in the workspace's `Cargo.toml` files (`Cargo.toml
 | [objc](https://github.com/SSheldon/rust-objc) | MIT | macOS only: the Dock badge, dragging files out of the window |
 | [plist](https://github.com/ebarnard/rust-plist) | MIT | macOS only: reading Nucli 1 preferences when onboarding offers to import them |
 | [sha2](https://github.com/RustCrypto/hashes) | MIT OR Apache-2.0 | macOS only: the name of the Keychain item Claude Code keeps its sign-in in for a custom config folder (usage limits chip) |
-| [windows](https://github.com/microsoft/windows-rs) | MIT OR Apache-2.0 | Windows only: dragging files out of the window to other apps (shell drag and drop) |
+| [windows](https://github.com/microsoft/windows-rs) | MIT OR Apache-2.0 | Windows only: dragging files out of the window to other apps (shell drag and drop), loading the app and grammar DLLs |
 | [x11rb](https://github.com/psychon/x11rb) | MIT OR Apache-2.0 | Linux only: dragging files out of the window to other apps on X11 (XDND) |
 | [libc](https://github.com/rust-lang/libc) | MIT OR Apache-2.0 | Linux and macOS only: saving terminal output when the app is asked to terminate. Nucli Uplink on iOS: socket addresses from Bonjour lookups |
 | [objc2](https://github.com/madsmtm/objc2), objc2-foundation, objc2-ui-kit, objc2-quartz-core, objc2-av-foundation, objc2-uniform-type-identifiers, objc2-user-notifications, [dispatch2](https://github.com/madsmtm/objc2) | Zlib OR Apache-2.0 OR MIT | Nucli Uplink on iOS only: the QR code scanner (camera preview and QR detection), the system file picker for uploads, running Bonjour lookups on the main queue, and local notifications |

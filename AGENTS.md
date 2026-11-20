@@ -28,11 +28,11 @@ The full behavior is specified in `docs/SPEC.md`. Keep it in sync with the code.
 
 ## Tech
 
-- Rust (edition 2024) and GPUI. Cargo workspace: the desktop app at the root, `core/` (`nucli-core`), the code shared with the mobile app, and `mobile/` (`nucli-uplink`), the remote control app for iOS. Build: `cargo build`; run: `cargo run`; test: `cargo test --workspace`. A debug build is the development variant: it is called "Nucli Dev" and uses its own config, data and cache folders, so it is safe to run next to an installed Nucli.
+- Rust (edition 2024) and GPUI. Cargo workspace: the desktop app at the root, `core/` (`nucli-core`), the code shared with the mobile app, `grammars/` (`nucli-grammars`), the tree-sitter grammars, and `mobile/` (`nucli-uplink`), the remote control app for iOS. Build: `cargo build`; run: `cargo run`; test: `cargo test --workspace`. A debug build is the development variant: it is called "Nucli Dev" and uses its own config, data and cache folders, so it is safe to run next to an installed Nucli.
 - Terminal: `alacritty_terminal` for emulation, `portable-pty` for the pseudo terminal.
 - Git: shell out to `git`. File watching: `notify`. Syntax highlighting: tree-sitter.
 - Persistence: JSON files in the platform's config and data folders (see `docs/SPEC.md`).
-- Packaging: `scripts/package.sh [target]` builds the release archive for a platform into `dist/` (`.dmg`, `.tar.gz`, `.zip`). `scripts/icon.py` regenerates the app icons except `Assets.car`, which Xcode's `actool` compiles from `assets/icon/AppIcon.icon`. CI builds macOS, Linux and Windows (`.github/workflows/build.yml`).
+- Packaging: `scripts/package.sh [target]` builds the release archive for a platform into `dist/` (`.dmg`, `.tar.gz`, `.zip`). On Windows it ships `nucli.exe` as a small loader with the app in `nucli.dll` and each grammar in `grammars/<name>.dll` (`docs/ARCHITECTURE.md`, Windows package). `scripts/icon.py` regenerates the app icons except `Assets.car`, which Xcode's `actool` compiles from `assets/icon/AppIcon.icon`. CI builds macOS, Linux and Windows (`.github/workflows/build.yml`).
 - Mobile: `scripts/mobile.sh [simulator|device]` builds `Nucli Uplink.app` with the icon compiled from `assets/icon/AppIcon.icon`. For the simulator (default), `SIMULATOR=<udid>` installs and launches it there. For a device it signs with the Xcode provisioning profile of `BUNDLE_ID`, and `DEVICE=<id>` installs it; the steps for users are in `mobile/README.md`. On a desktop target `cargo run -p nucli-uplink` opens the same app in a phone-sized window.
 - Architecture and file map: `docs/ARCHITECTURE.md`.
 

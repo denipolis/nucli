@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
+use nucli_grammars::*;
 use tree_sitter::Query;
 
 const TYPESCRIPT: &str = r#"

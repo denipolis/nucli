@@ -1,0 +1,312 @@
+mod actions;
+mod agent_info;
+mod agents;
+mod changes;
+mod claude;
+mod commands;
+mod commits;
+#[cfg(debug_assertions)]
+mod devtools;
+mod docks;
+mod docks_view;
+mod drag_out;
+mod editor;
+mod file_ops;
+mod file_view;
+mod files;
+mod find;
+mod font_picker;
+mod fuzzy;
+mod git;
+mod highlight;
+mod history;
+mod hold;
+#[cfg(target_os = "macos")]
+mod import;
+mod menu;
+mod navigate;
+mod notify;
+mod onboarding;
+mod overview;
+mod palette;
+mod palettes;
+mod panel;
+mod paths;
+mod persist;
+mod process;
+mod prompt;
+mod resize;
+mod search;
+mod search_view;
+mod session;
+mod settings;
+mod settings_view;
+mod sidebar;
+mod splits;
+mod splits_view;
+mod status;
+mod statusbar;
+mod store;
+mod switcher;
+mod terminal;
+mod text_input;
+mod theme;
+mod titlebar;
+mod transcript;
+mod ui;
+mod uplink;
+mod usage;
+mod watcher;
+mod window;
+
+use nucli_core::icons;
+
+use gpui::{App, Application};
+
+use crate::commands::Quit;
+use crate::settings::Settings;
+
+fn start_application() -> Application {
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let started = std::panic::catch_unwind(gpui_platform::application);
+    std::panic::set_hook(hook);
+    started.unwrap_or_else(|panic| {
+        let reason = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap_or("unknown error");
+        let reason = reason.rsplit("value: ").next().unwrap_or(reason);
+        let text = format!("Nucli could not start. Check your graphics drivers.\n\n{reason}");
+        eprintln!("{text}");
+        notify::alert(&text);
+        std::process::exit(1);
+    })
+}
+
+fn load_fonts(cx: &mut App) {
+    if let Err(error) = cx.text_system().add_fonts(nucli_core::fonts::bundled()) {
+        eprintln!("fonts: {error}");
+    }
+}
+
+fn first_launch(cx: &mut App) -> (Settings, bool) {
+    match Settings::read() {
+        Ok(Some(settings)) => (settings, false),
+        Ok(None) => (Settings::default(), true),
+        Err(error) => {
+            cx.set_global(settings::SettingsError(Some(error)));
+            (Settings::default(), false)
+        }
+    }
+}
+
+fn watch_config(cx: &mut App) {
+    cx.spawn(async move |cx| {
+        let modified = |path: std::path::PathBuf| std::fs::metadata(path).and_then(|meta| meta.modified()).ok();
+        let mut settings_time = modified(paths::settings_file());
+        let mut keys_time = modified(paths::keybindings_file());
+        let stamp = || {
+            let entries = std::fs::read_dir(paths::themes_dir()).ok()?;
+            let mut files: Vec<_> = entries
+                .flatten()
+                .filter_map(|entry| Some((entry.file_name(), entry.metadata().ok()?.modified().ok()?)))
+                .collect();
+            files.sort();
+            Some(files)
+        };
+        let mut themes_stamp = stamp();
+        loop {
+            cx.background_executor().timer(std::time::Duration::from_millis(700)).await;
+            let settings_now = modified(paths::settings_file());
+            let keys_now = modified(paths::keybindings_file());
+            if settings_now != settings_time {
+                settings_time = settings_now;
+                cx.update(settings::reload);
+            }
+            let themes_now = stamp();
+            if themes_now != themes_stamp {
+                themes_stamp = themes_now;
+                cx.update(theme::reload);
+            }
+            if keys_now != keys_time {
+                keys_time = keys_now;
+                cx.update(apply_keys);
+            }
+        }
+    })
+    .detach();
+}
+
+#[cfg(unix)]
+fn quit_on_terminate(cx: &mut App) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static TERMINATING: AtomicBool = AtomicBool::new(false);
+    extern "C" fn terminating(_: libc::c_int) {
+        TERMINATING.store(true, Ordering::Relaxed);
+    }
+    unsafe {
+        libc::signal(libc::SIGTERM, terminating as *const () as libc::sighandler_t);
+    }
+    cx.spawn(async move |cx| {
+        loop {
+            cx.background_executor().timer(std::time::Duration::from_millis(200)).await;
+            if TERMINATING.load(Ordering::Relaxed) {
+                cx.update(|cx| cx.quit());
+                break;
+            }
+        }
+    })
+    .detach();
+}
+
+#[cfg(not(unix))]
+fn quit_on_terminate(_: &mut App) {}
+
+fn apply_keys(cx: &mut App) {
+    let mut bindings = text_input::bindings();
+    bindings.extend(editor::bindings());
+    commands::apply(cx, bindings);
+}
+
+fn folder_from_url(url: &str) -> Option<std::path::PathBuf> {
+    let path = url.strip_prefix("file://")?;
+    let mut decoded = Vec::with_capacity(path.len());
+    let bytes = path.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        let escape = (bytes[index] == b'%')
+            .then(|| bytes.get(index + 1..index + 3))
+            .flatten()
+            .and_then(|hex| u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok());
+        match escape {
+            Some(byte) => {
+                decoded.push(byte);
+                index += 3;
+            }
+            None => {
+                decoded.push(bytes[index]);
+                index += 1;
+            }
+        }
+    }
+    Some(std::path::PathBuf::from(String::from_utf8_lossy(&decoded).into_owned()))
+}
+
+fn open_folders(folders: Vec<std::path::PathBuf>, cx: &mut App) {
+    if !cx.has_global::<store::StoreHandle>() {
+        return;
+    }
+    let store = store::store(cx);
+    let target = store
+        .read(cx)
+        .last_workspace
+        .clone()
+        .filter(|id| store.read(cx).windows.contains_key(id))
+        .or_else(|| store.read(cx).windows.keys().next().cloned());
+    let Some(handle) = target.and_then(|id| window::open(&id, cx)) else { return };
+    let _ = handle.update(cx, |view, window, cx| {
+        window.activate_window();
+        for folder in folders.into_iter().filter(|folder| folder.is_dir()) {
+            actions::open_folder(view, folder, window, cx);
+        }
+    });
+}
+
+pub fn launch(cx: &mut App) {
+    let store = store::init(cx);
+    store.update(cx, |store, cx| {
+        store.start_polling(cx);
+        store.start_watching(cx);
+    });
+    uplink::init(cx);
+    cx.on_app_quit(|cx| {
+        let state = store::store(cx).read(cx).snapshot(true, cx);
+        state.write();
+        let sessions: Vec<_> = store::store(cx).read(cx).sessions.values().cloned().collect();
+        for session in sessions {
+            session.update(cx, |session, _| session.kill());
+        }
+        async {}
+    })
+    .detach();
+    let mut open: Vec<String> = store
+        .read(cx)
+        .workspaces
+        .iter()
+        .filter(|workspace| !workspace.closed)
+        .map(|workspace| workspace.id.clone())
+        .collect();
+    if open.is_empty() {
+        let last = store.read(cx).last_workspace.clone();
+        let fallback = store.read(cx).workspaces.first().map(|workspace| workspace.id.clone());
+        open.extend(last.or(fallback));
+    }
+    let last = store.read(cx).last_workspace.clone();
+    open.sort_by_key(|id| Some(id) == last.as_ref());
+    for id in open {
+        window::open(&id, cx);
+    }
+    watch_config(cx);
+    let arguments: Vec<std::path::PathBuf> = std::env::args_os()
+        .skip(1)
+        .map(std::path::PathBuf::from)
+        .filter_map(|path| std::fs::canonicalize(path).ok())
+        .collect();
+    if !arguments.is_empty() {
+        open_folders(arguments, cx);
+    }
+}
+
+#[cfg(windows)]
+#[unsafe(no_mangle)]
+pub extern "C" fn nucli_main() {
+    run();
+}
+
+pub fn run() {
+    let application = start_application();
+    let (opened, mut opened_events) = futures::channel::mpsc::unbounded::<Vec<std::path::PathBuf>>();
+    application.on_open_urls(move |urls| {
+        let _ = opened.unbounded_send(urls.iter().filter_map(|url| folder_from_url(url)).collect());
+    });
+    application.run(|cx: &mut App| {
+        load_fonts(cx);
+        let (settings, onboarding) = first_launch(cx);
+        cx.set_global(settings);
+        theme::reload(cx);
+        ui::init(cx);
+        cx.set_prompt_builder(prompt::build);
+        apply_keys(cx);
+        if cfg!(target_os = "macos") {
+            cx.set_menus(commands::menus());
+        }
+        cx.on_action(|_: &Quit, cx| cx.defer(actions::request_quit));
+        quit_on_terminate(cx);
+        cx.spawn(async move |cx| {
+            use futures::StreamExt;
+            while let Some(folders) = opened_events.next().await {
+                cx.update(|cx| open_folders(folders, cx));
+            }
+        })
+        .detach();
+        #[cfg(debug_assertions)]
+        devtools::start(cx);
+        if onboarding {
+            onboarding::open(cx);
+        } else {
+            launch(cx);
+        }
+        cx.activate(true);
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn decodes_folder_urls() {
+        assert_eq!(super::folder_from_url("file:///a%20b/c").unwrap(), std::path::PathBuf::from("/a b/c"));
+        assert!(super::folder_from_url("https://x").is_none());
+    }
+}

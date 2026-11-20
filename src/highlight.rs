@@ -2,6 +2,7 @@ use std::ops::Range;
 use std::path::Path;
 use std::sync::OnceLock;
 
+use nucli_grammars::*;
 use tree_sitter::Language;
 use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
 
@@ -262,48 +263,7 @@ fn config(name: &str) -> Option<&'static HighlightConfiguration> {
 }
 
 pub fn grammar(name: &str) -> Option<Language> {
-    Some(match name {
-        "Rust" => tree_sitter_rust::LANGUAGE.into(),
-        "JavaScript" => tree_sitter_javascript::LANGUAGE.into(),
-        "TypeScript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-        "TSX" => tree_sitter_typescript::LANGUAGE_TSX.into(),
-        "Python" => tree_sitter_python::LANGUAGE.into(),
-        "Go" => tree_sitter_go::LANGUAGE.into(),
-        "JSON" => tree_sitter_json::LANGUAGE.into(),
-        "TOML" => tree_sitter_toml_ng::LANGUAGE.into(),
-        "YAML" => tree_sitter_yaml::LANGUAGE.into(),
-        "Shell" => tree_sitter_bash::LANGUAGE.into(),
-        "C" => tree_sitter_c::LANGUAGE.into(),
-        "C++" => tree_sitter_cpp::LANGUAGE.into(),
-        "CSS" => tree_sitter_css::LANGUAGE.into(),
-        "HTML" => tree_sitter_html::LANGUAGE.into(),
-        "Markdown" => tree_sitter_md::LANGUAGE.into(),
-        "Java" => tree_sitter_java::LANGUAGE.into(),
-        "Ruby" => tree_sitter_ruby::LANGUAGE.into(),
-        "Swift" => tree_sitter_swift::LANGUAGE.into(),
-        "Lua" => tree_sitter_lua::LANGUAGE.into(),
-        "Makefile" => tree_sitter_make::LANGUAGE.into(),
-        "Astro" => tree_sitter_astro_next::LANGUAGE.into(),
-        "C#" => tree_sitter_c_sharp::LANGUAGE.into(),
-        "CMake" => tree_sitter_cmake::LANGUAGE.into(),
-        "Dart" => tree_sitter_dart::LANGUAGE.into(),
-        "Diff" => tree_sitter_diff::LANGUAGE.into(),
-        "Dockerfile" => tree_sitter_containerfile::LANGUAGE.into(),
-        "Elixir" => tree_sitter_elixir::LANGUAGE.into(),
-        "INI" => tree_sitter_ini::LANGUAGE.into(),
-        "Kotlin" => tree_sitter_kotlin_sg::LANGUAGE.into(),
-        "Nix" => tree_sitter_nix::LANGUAGE.into(),
-        "PHP" => tree_sitter_php::LANGUAGE_PHP.into(),
-        "PowerShell" => tree_sitter_powershell::LANGUAGE.into(),
-        "Prisma" => tree_sitter_prisma::LANGUAGE.into(),
-        "Protocol Buffers" => tree_sitter_proto::LANGUAGE.into(),
-        "Solidity" => tree_sitter_solidity::LANGUAGE.into(),
-        "SQL" => tree_sitter_sequel::LANGUAGE.into(),
-        "Svelte" => tree_sitter_svelte_ng::LANGUAGE.into(),
-        "XML" => tree_sitter_xml::LANGUAGE_XML.into(),
-        "Zig" => tree_sitter_zig::LANGUAGE.into(),
-        _ => return None,
-    })
+    nucli_grammars::language(name).map(Language::new)
 }
 
 fn build(name: &str) -> Option<HighlightConfiguration> {
