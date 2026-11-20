@@ -670,8 +670,7 @@ impl Editor {
             None
         };
         if forward {
-            for index in from.row..self.rows.len().min(from.row + 5000) {
-                let row = &self.rows[index];
+            for (index, row) in self.rows.iter().enumerate().skip(from.row).take(5000) {
                 if row.kind == LineKind::Removed {
                     continue;
                 }
