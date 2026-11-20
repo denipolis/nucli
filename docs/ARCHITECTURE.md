@@ -13,7 +13,7 @@ Paths are under `src/` unless they start with `core/`.
 | `store.rs` | `Store` (one global entity): workspaces, projects, tab ids, sessions, last choices, conversations, diff stats. Opening, closing, selecting, restoring tabs and writing `state.json`. |
 | `persist.rs` | Serialized shapes of `state.json`, restored terminal output files. |
 | `status.rs` | One second poll: foreground process, Claude Code status, subagents, branch. Attention, notifications, spinner tick, diff stat refresh, notification clicks. |
-| `watcher.rs` | One `notify` watcher per open project. Events bump `Store.revisions`, which panels observe. |
+| `watcher.rs` | One `notify` watcher per open project. Events bump `Store.revisions`, which panels observe; events inside `.git` (index, HEAD, refs, also of linked worktrees) also bump `Store.git_revisions`, which open editors observe to reload their diff. |
 | `session.rs` | `Session` entity, one per tab: its `Terminal`, title, color, status, command line and environment. |
 | `terminal/mod.rs` | `Terminal`: pty, `alacritty_terminal` grid, reader, parser and waiter threads, prompt anchoring, OSC notification scanning. |
 | `terminal/view.rs` | Grid element, mouse, selection, links, IME and focus reporting. `impl Render for Session`. |

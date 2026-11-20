@@ -311,6 +311,7 @@ pub struct Editor {
     marked: Option<String>,
     pending_line: Option<(usize, Range<usize>)>,
     first_load: bool,
+    git_revision: u64,
     pub added: usize,
     pub removed: usize,
     pub language: Option<&'static str>,
@@ -354,11 +355,24 @@ impl Editor {
             marked: None,
             pending_line: None,
             first_load: true,
+            git_revision: 0,
             added: 0,
             removed: 0,
             language,
         };
         editor.reload(cx);
+        let store = crate::store::store(cx);
+        editor.git_revision = store.read(cx).git_revision(&editor.project);
+        cx.observe(&store, |editor, store, cx| {
+            let revision = store.read(cx).git_revision(&editor.project);
+            if revision != editor.git_revision {
+                editor.git_revision = revision;
+                if editor.commit.is_none() {
+                    editor.reload(cx);
+                }
+            }
+        })
+        .detach();
         cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(Duration::from_millis(1000)).await;

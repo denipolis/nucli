@@ -15,7 +15,11 @@ fn relevant(path: &Path) -> bool {
         return false;
     }
     match text.split_once("/.git/") {
-        Some((_, rest)) => rest == "index" || rest == "HEAD" || rest.starts_with("refs/") || rest == "packed-refs",
+        Some((_, rest)) => {
+            let rest =
+                rest.strip_prefix("worktrees/").and_then(|rest| rest.split_once('/')).map_or(rest, |(_, rest)| rest);
+            rest == "index" || rest == "HEAD" || rest.starts_with("refs/") || rest == "packed-refs"
+        }
         None => {
             !text.contains("/node_modules/") && !text.contains("/target/debug/") && !text.contains("/target/release/")
         }
@@ -43,13 +47,18 @@ fn outside_git_dir(project: &Path) -> Option<PathBuf> {
     }
 }
 
-fn watch(project: &Path, sender: UnboundedSender<PathBuf>) -> Option<RecommendedWatcher> {
+fn in_git_dir(path: &Path) -> bool {
+    path.components().any(|part| part.as_os_str() == ".git")
+}
+
+fn watch(project: &Path, sender: UnboundedSender<(PathBuf, bool)>) -> Option<RecommendedWatcher> {
     let root = project.to_path_buf();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         if let Ok(event) = event
             && event.paths.iter().any(|path| relevant(path))
         {
-            let _ = sender.unbounded_send(root.clone());
+            let git = event.paths.iter().any(|path| relevant(path) && in_git_dir(path));
+            let _ = sender.unbounded_send((root.clone(), git));
         }
     })
     .ok()?;
@@ -63,12 +72,12 @@ fn watch(project: &Path, sender: UnboundedSender<PathBuf>) -> Option<Recommended
 #[derive(Default)]
 pub struct Watchers {
     active: HashMap<PathBuf, RecommendedWatcher>,
-    sender: Option<UnboundedSender<PathBuf>>,
+    sender: Option<UnboundedSender<(PathBuf, bool)>>,
 }
 
 impl Store {
     pub fn start_watching(&mut self, cx: &mut Context<Self>) {
-        let (sender, mut receiver) = unbounded::<PathBuf>();
+        let (sender, mut receiver) = unbounded::<(PathBuf, bool)>();
         self.watchers.sender = Some(sender);
         cx.spawn(async move |this, cx| {
             while let Some(first) = receiver.next().await {
@@ -78,9 +87,13 @@ impl Store {
                     changed.insert(path);
                 }
                 let result = this.update(cx, |store, cx| {
-                    for path in &changed {
+                    for (path, git) in &changed {
                         *store.revisions.entry(path.clone()).or_insert(0) += 1;
+                        if *git {
+                            *store.git_revisions.entry(path.clone()).or_insert(0) += 1;
+                        }
                     }
+                    let changed: HashSet<PathBuf> = changed.into_iter().map(|(path, _)| path).collect();
                     store.refresh_diffstats(changed.into_iter().collect(), cx);
                     cx.notify();
                 });
@@ -113,6 +126,10 @@ impl Store {
     pub fn revision(&self, path: &Path) -> u64 {
         self.revisions.get(path).copied().unwrap_or(0)
     }
+
+    pub fn git_revision(&self, path: &Path) -> u64 {
+        self.git_revisions.get(path).copied().unwrap_or(0)
+    }
 }
 
 #[cfg(test)]
@@ -127,5 +144,9 @@ mod tests {
         assert!(!relevant(Path::new("/p/.git/objects/ab/cd")));
         assert!(!relevant(Path::new("/p/.git/index.lock")));
         assert!(!relevant(Path::new("/p/node_modules/x/y.js")));
+        assert!(relevant(Path::new("/p/.git/worktrees/wt/HEAD")));
+        assert!(!relevant(Path::new("/p/.git/worktrees/wt/logs/HEAD")));
+        assert!(in_git_dir(Path::new("/p/.git/refs/heads/main")));
+        assert!(!in_git_dir(Path::new("/p/src/git.rs")));
     }
 }
