@@ -49,7 +49,7 @@ On Linux and Windows every default uses the same key as on macOS with the modifi
 | Save file | `save` | `cmd-s` | `ctrl-s` |
 | Next / previous change | `next_change` / `previous_change` | `f7` / `shift-f7` | `f7` / `shift-f7` |
 | Go to definition (also `cmd`-click, `cmd-alt`-click opens it to the right) | `go_to_definition` | `f12` | `f12` |
-| Find references (Search for the name) | `find_references` | `shift-f12` | `shift-f12` |
+| Find references (a list of the name's matches in the project) | `find_references` | `shift-f12` | `shift-f12` |
 | Go to symbol in file | `go_to_symbol` | `cmd-shift-o` | `ctrl-alt-shift-o` |
 | Go to line (`line` or `line:column`) | `go_to_line` | `ctrl-g` | `ctrl-g` |
 | Browse the folder of the shown file (the breadcrumbs' list) | `browse_folder` | `cmd-shift-.` | `ctrl-alt-shift-.` |

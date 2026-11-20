@@ -812,18 +812,6 @@ pub fn open(view: &mut WorkspaceView, replace: bool, window: &mut Window, cx: &m
     entity.update(cx, |panel, cx| panel.focus(seed, replace, window, cx));
 }
 
-pub fn references(view: &mut WorkspaceView, word: String, window: &mut Window, cx: &mut Context<WorkspaceView>) {
-    store::store(cx).update(cx, |store, cx| {
-        let saved = &mut store.ui.search;
-        (saved.find.case, saved.find.word, saved.find.regex, saved.replace) = (true, true, false, false);
-        store.changed(cx);
-    });
-    crate::docks_view::show(View::Search, cx);
-    let Some(path) = view.current_project_path(cx).filter(|path| !path.as_os_str().is_empty()) else { return };
-    let entity = entity(view, &path, window, cx);
-    entity.update(cx, |panel, cx| panel.focus(Some(word), false, window, cx));
-}
-
 pub fn step(view: &mut WorkspaceView, delta: i32, cx: &mut Context<WorkspaceView>) {
     if let Some(entity) = view.panel.search.clone() {
         entity.update(cx, |panel, cx| panel.step(delta, cx));

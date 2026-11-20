@@ -93,7 +93,7 @@ pub fn editor_for(
         }
         EditorEvent::References(word) => {
             let word = word.clone();
-            with_window(view, cx, move |view, window, cx| crate::search_view::references(view, word, window, cx));
+            with_window(view, cx, move |view, window, cx| references(view, word, None, window, cx));
         }
     })
     .detach();
@@ -199,38 +199,107 @@ fn navigate(
 ) {
     match outcome {
         Outcome::Url(url) => cx.open_url(&url),
-        Outcome::Definition(name) => crate::search_view::references(view, name, window, cx),
+        Outcome::Definition(name) => references(view, name, position, window, cx),
         Outcome::Locations(found) if found.len() == 1 => jump(view, &found[0], side, window, cx),
         Outcome::Locations(found) if !found.is_empty() => {
-            let project = view.current_project_path(cx).unwrap_or_default();
-            let theme = ui::theme(cx);
             let title = format!("{} definitions of {}", found.len(), found[0].name);
-            let items: Vec<palette::Item> = found
-                .into_iter()
-                .map(|location| {
-                    let name =
-                        location.path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-                    let (glyph, color) = icons::file(&name);
-                    let label = format!("{}:{}", relative_spec(&project, &location.path), location.line + 1);
-                    let detail = location.container.clone().unwrap_or_default();
-                    let preview = location.preview.clone();
-                    palette::Item::new(label, move |view, window, cx| jump(view, &location, side, window, cx))
-                        .glyph(glyph, Some(color.color(theme.dark)))
-                        .subtitle(preview)
-                        .detail(detail)
-                })
-                .collect();
-            let palette = cx.new(|cx| {
-                let palette = Palette::new("definition", &title, items, 0, cx);
-                match position {
-                    Some(position) => palette.anchored_below(position),
-                    None => palette,
-                }
-            });
-            view.show_palette(palette, window, cx);
+            show_locations(view, found, "definition", &title, side, position, window, cx);
         }
         _ => {}
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn show_locations(
+    view: &mut WorkspaceView,
+    found: Vec<navigate::Location>,
+    badge: &str,
+    title: &str,
+    side: bool,
+    position: Option<gpui::Point<gpui::Pixels>>,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    let project = view.current_project_path(cx).unwrap_or_default();
+    let theme = ui::theme(cx);
+    let items: Vec<palette::Item> = found
+        .into_iter()
+        .map(|location| {
+            let name = location.path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            let (glyph, color) = icons::file(&name);
+            let label = format!("{}:{}", relative_spec(&project, &location.path), location.line + 1);
+            let detail = location.container.clone().unwrap_or_default();
+            let preview = location.preview.clone();
+            palette::Item::new(label, move |view, window, cx| jump(view, &location, side, window, cx))
+                .glyph(glyph, Some(color.color(theme.dark)))
+                .subtitle(preview)
+                .detail(detail)
+        })
+        .collect();
+    let palette = cx.new(|cx| {
+        let palette = Palette::new(badge, title, items, 0, cx);
+        match position {
+            Some(position) => palette.anchored_below(position),
+            None => palette,
+        }
+    });
+    view.show_palette(palette, window, cx);
+}
+
+fn references(
+    view: &mut WorkspaceView,
+    word: String,
+    position: Option<gpui::Point<gpui::Pixels>>,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    let Some(project) = view.current_project_path(cx).filter(|path| !path.as_os_str().is_empty()) else { return };
+    let request = crate::search::Request {
+        text: word.clone(),
+        options: crate::find::Options { case: true, word: true, regex: false, preserve: false },
+        include: String::new(),
+        exclude: String::new(),
+        template: None,
+    };
+    let progress = store::begin_progress("finding references", cx);
+    cx.spawn_in(window, async move |this, cx| {
+        let root = project.clone();
+        let outcome =
+            cx.background_executor().spawn(async move { crate::search::search(&root, &request, &|| false) }).await;
+        let _ = this.update_in(cx, |view, window, cx| {
+            store::finish_progress(progress, cx);
+            let Ok(outcome) = outcome else { return };
+            let found: Vec<navigate::Location> = outcome
+                .files
+                .into_iter()
+                .flat_map(|file| {
+                    let (path, word) = (project.join(&file.path), word.clone());
+                    file.found.into_iter().map(move |found| {
+                        let end = if found.hit.end.row == found.hit.start.row {
+                            found.hit.end.col
+                        } else {
+                            found.hit.start.col
+                        };
+                        navigate::Location {
+                            path: path.clone(),
+                            line: found.hit.start.row,
+                            cols: found.hit.start.col..end,
+                            name: word.clone(),
+                            kind: "reference",
+                            container: None,
+                            preview: found.preview.trim().to_string(),
+                        }
+                    })
+                })
+                .collect();
+            if found.is_empty() {
+                return;
+            }
+            let title = format!("{} references to {word}", found.len());
+            show_locations(view, found, "references", &title, false, position, window, cx);
+        });
+    })
+    .detach();
 }
 
 pub fn dir_picker(
