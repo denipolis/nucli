@@ -51,6 +51,7 @@ On Linux and Windows every default uses the same key as on macOS with the modifi
 | Go to definition (also `cmd`-click, `cmd-alt`-click opens it to the right) | `go_to_definition` | `f12` | `f12` |
 | Find references (Search for the name) | `find_references` | `shift-f12` | `shift-f12` |
 | Go to symbol in file | `go_to_symbol` | `cmd-shift-o` | `ctrl-alt-shift-o` |
+| Go to line (`line` or `line:column`) | `go_to_line` | `ctrl-g` | `ctrl-g` |
 | Go back / forward (also the mouse's back and forward buttons) | `go_back` / `go_forward` | `ctrl--` / `ctrl-shift--` | `alt-left` / `alt-right` |
 | Hide the file view | `hide_file_view` | `escape` | `escape` |
 | Settings page | `open_settings` | `cmd-,` | `ctrl-,` |

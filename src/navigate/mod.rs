@@ -47,6 +47,7 @@ pub struct Request<'a> {
     pub language: Option<&'a str>,
     pub text: &'a str,
     pub offset: usize,
+    pub cancelled: &'a (dyn Fn() -> bool + Sync),
 }
 
 const MAX_FILE: u64 = 1500000;
@@ -335,6 +336,7 @@ impl Parsed {
 struct Resolver<'a> {
     project: &'a Path,
     files: &'a dyn Fn() -> std::sync::Arc<Vec<String>>,
+    cancelled: &'a (dyn Fn() -> bool + Sync),
 }
 
 impl Resolver<'_> {
@@ -494,6 +496,7 @@ impl Resolver<'_> {
             .collect();
         let threads = std::thread::available_parallelism().map_or(4, |count| count.get()).min(8);
         let chunk = candidates.len().div_ceil(threads).max(1);
+        let cancelled = self.cancelled;
         let found: Vec<(Location, usize)> = std::thread::scope(|scope| {
             let workers: Vec<_> = candidates
                 .chunks(chunk)
@@ -501,6 +504,9 @@ impl Resolver<'_> {
                     scope.spawn(move || {
                         let mut found = Vec::new();
                         for path in paths {
+                            if cancelled() {
+                                break;
+                            }
                             if std::fs::metadata(path).map_or(true, |meta| meta.len() > MAX_FILE) {
                                 continue;
                             }
@@ -665,7 +671,7 @@ fn python_module(node: Node, text: &str) -> Option<String> {
 }
 
 pub fn resolve(request: &Request, files: &dyn Fn() -> std::sync::Arc<Vec<String>>) -> Outcome {
-    let Request { project, file, language, text, offset } = *request;
+    let Request { project, file, language, text, offset, cancelled } = *request;
     let offset = offset.min(text.len());
     let line_start = text[..offset].rfind('\n').map_or(0, |index| index + 1);
     let line_end = text[offset..].find('\n').map_or(text.len(), |index| offset + index);
@@ -678,7 +684,7 @@ pub fn resolve(request: &Request, files: &dyn Fn() -> std::sync::Arc<Vec<String>
         let range = path_at(line, col)?;
         modules::path(project, file, &line[range]).map(|found| Outcome::Locations(vec![file_start(&found)]))
     };
-    let resolver = Resolver { project, files };
+    let resolver = Resolver { project, files, cancelled };
     let parsed = language.and_then(|language| Some((language, parse(language, text)?)));
     let Some((language, tree)) = parsed else {
         return path_outcome().unwrap_or(Outcome::Nothing(word));

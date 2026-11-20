@@ -328,6 +328,26 @@ pub fn symbol_picker(
     view.show_palette(palette, window, cx);
 }
 
+pub fn go_to_line(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    let Some(editor) = active_editor(view, cx) else { return };
+    let last = editor.read(cx).rows.iter().filter_map(|row| row.new).max().unwrap_or(1);
+    let title = format!("line 1-{last}, :column");
+    crate::actions::prompt(view, &title, "", window, cx, move |text, view, window, cx| {
+        let mut parts = text.trim_start_matches(':').split([':', ',']).map(|part| part.trim().parse::<usize>());
+        let Some(Ok(line)) = parts.next() else { return };
+        let column = parts.next().and_then(Result::ok).unwrap_or(1).saturating_sub(1);
+        push_spot(view, cx);
+        editor.update(cx, |editor, cx| {
+            let line = line.clamp(1, last);
+            editor.goto(line, 0..0);
+            editor.move_column(column);
+            cx.notify();
+        });
+        let focus = editor.read(cx).focus.clone();
+        window.focus(&focus, cx);
+    });
+}
+
 pub fn set_active_language(view: &WorkspaceView, language: Option<&'static str>, cx: &mut Context<WorkspaceView>) {
     let Some(editor) = active_editor(view, cx) else { return };
     editor.update(cx, |editor, cx| editor.set_language(language, cx));
@@ -1062,7 +1082,17 @@ fn path_bar(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> impl In
         .py(px(2.0))
         .border_b_1()
         .border_color(theme.border)
-        .child(div().flex().flex_1().min_w_0().overflow_hidden().items_center().gap(px(6.0)).children(crumbs))
+        .child(
+            div()
+                .id("crumbs")
+                .flex()
+                .flex_1()
+                .min_w_0()
+                .overflow_x_scroll()
+                .items_center()
+                .gap(px(6.0))
+                .children(crumbs),
+        )
         .when(changes > 0, |this| {
             this.child(
                 button("change-previous", icons::ARROW_UP)

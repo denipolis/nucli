@@ -1366,6 +1366,11 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|view, _: &crate::commands::GoToSymbol, window, cx| {
             crate::file_view::symbol_picker(view, None, None, window, cx)
         }))
+        .on_action(
+            cx.listener(|view, _: &crate::commands::GoToLine, window, cx| {
+                crate::file_view::go_to_line(view, window, cx)
+            }),
+        )
         .on_action(cx.listener(|view, _: &Close, window, cx| close(view, window, cx)))
         .on_action(cx.listener(|view, _: &CloseProject, window, cx| {
             if let Some(path) = view.current_project_path(cx) {

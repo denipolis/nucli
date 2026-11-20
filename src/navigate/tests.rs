@@ -26,7 +26,7 @@ fn at(root: &Path, file: &str, marker: &str, nth: usize) -> Outcome {
     let text = std::fs::read_to_string(&full).unwrap();
     let offset = text.match_indices(marker).nth(nth).unwrap().0 + 1;
     let language = crate::highlight::language_name(&full);
-    let request = Request { project: root, file: &full, language, text: &text, offset };
+    let request = Request { project: root, file: &full, language, text: &text, offset, cancelled: &|| false };
     resolve(&request, &|| files(root))
 }
 

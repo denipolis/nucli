@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant, SystemTime};
 
 use gpui::prelude::FluentBuilder;
@@ -287,6 +288,12 @@ pub enum EditorEvent {
     References(String),
 }
 
+struct Brackets {
+    cursor: Pos,
+    edits: u64,
+    pair: Option<(Pos, Pos)>,
+}
+
 struct Link {
     row: usize,
     cols: Range<usize>,
@@ -376,10 +383,13 @@ pub struct Editor {
     git_revision: u64,
     link: Option<Link>,
     link_generation: u64,
+    link_counter: std::sync::Arc<std::sync::atomic::AtomicU64>,
     hovered: Option<(usize, Point<Pixels>)>,
     notice: Option<(Pos, String)>,
     notice_generation: u64,
     pub outline: Vec<OutlineItem>,
+    edits: u64,
+    brackets: Option<Brackets>,
     pub added: usize,
     pub removed: usize,
     pub language: Option<&'static str>,
@@ -426,10 +436,13 @@ impl Editor {
             git_revision: 0,
             link: None,
             link_generation: 0,
+            link_counter: Default::default(),
             hovered: None,
             notice: None,
             notice_generation: 0,
             outline: Vec::new(),
+            edits: 0,
+            brackets: None,
             added: 0,
             removed: 0,
             language,
@@ -527,12 +540,21 @@ impl Editor {
         Some((text, offset?))
     }
 
-    fn resolve_at(&self, pos: Pos, cx: &mut Context<Self>) -> Option<gpui::Task<Outcome>> {
+    fn resolve_at(&self, pos: Pos, hover: Option<u64>, cx: &mut Context<Self>) -> Option<gpui::Task<Outcome>> {
         let (text, offset) = self.text_and_offset(pos)?;
         let (project, full) = (self.project.clone(), self.full.clone());
         let language = self.current_language().filter(|language| *language != highlight::PLAIN_TEXT);
+        let counter = self.link_counter.clone();
         Some(cx.background_executor().spawn(async move {
-            let request = navigate::Request { project: &project, file: &full, language, text: &text, offset };
+            let cancelled = move || hover.is_some_and(|generation| counter.load(Ordering::Relaxed) != generation);
+            let request = navigate::Request {
+                project: &project,
+                file: &full,
+                language,
+                text: &text,
+                offset,
+                cancelled: &cancelled,
+            };
             navigate::resolve(&request, &|| {
                 if project.is_dir() { navigate::project_files(&project) } else { Default::default() }
             })
@@ -565,9 +587,106 @@ impl Editor {
         }
     }
 
+    fn token_at(&self, pos: Pos) -> Option<Token> {
+        let tokens = self.tokens.get(pos.row)?;
+        tokens.iter().find(|(range, _)| range.contains(&pos.col)).map(|(_, token)| *token)
+    }
+
+    fn occurrence(&self) -> Option<(String, bool)> {
+        if let Some((start, end)) = self.selection() {
+            let text = &self.rows[start.row].text;
+            let selected = text.get(start.col..end.col).filter(|_| start.row == end.row)?;
+            if selected.trim().is_empty() || selected.len() > 200 {
+                return None;
+            }
+            let word = selected.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$');
+            return Some((selected.to_string(), word));
+        }
+        let row = self.rows.get(self.cursor.row)?;
+        let range = navigate::word_at(&row.text, self.cursor.col)?;
+        let token = self.token_at(Pos { row: self.cursor.row, col: range.start });
+        if matches!(token, Some(Token::Keyword | Token::String | Token::Comment | Token::Number)) {
+            return None;
+        }
+        Some((row.text[range].to_string(), true))
+    }
+
+    fn bracket_pair(&mut self) -> Option<(Pos, Pos)> {
+        if let Some(cached) =
+            self.brackets.as_ref().filter(|cached| cached.cursor == self.cursor && cached.edits == self.edits)
+        {
+            return cached.pair;
+        }
+        let pair = self.find_bracket_pair();
+        self.brackets = Some(Brackets { cursor: self.cursor, edits: self.edits, pair });
+        pair
+    }
+
+    fn find_bracket_pair(&self) -> Option<(Pos, Pos)> {
+        let row = self.rows.get(self.cursor.row).filter(|row| row.kind != LineKind::Removed)?;
+        let before = row.text[..self.cursor.col.min(row.text.len())].char_indices().next_back().map(|(index, _)| index);
+        let candidates = [Some(self.cursor.col), before];
+        for col in candidates.into_iter().flatten() {
+            let Some(character) = row.text.get(col..).and_then(|rest| rest.chars().next()) else { continue };
+            let Some((open, close, forward)) = bracket(character) else { continue };
+            let at = Pos { row: self.cursor.row, col };
+            if matches!(self.token_at(at), Some(Token::String | Token::Comment)) {
+                continue;
+            }
+            if let Some(other) = self.scan_bracket(at, open, close, forward) {
+                return Some((at, other));
+            }
+        }
+        None
+    }
+
+    fn scan_bracket(&self, from: Pos, open: char, close: char, forward: bool) -> Option<Pos> {
+        let mut depth = 0usize;
+        let rows: Box<dyn Iterator<Item = usize>> = if forward {
+            Box::new(from.row..self.rows.len().min(from.row + 5000))
+        } else {
+            Box::new((from.row.saturating_sub(5000)..=from.row).rev())
+        };
+        for index in rows {
+            let row = &self.rows[index];
+            if row.kind == LineKind::Removed {
+                continue;
+            }
+            let chars: Vec<(usize, char)> = row.text.char_indices().collect();
+            let ordered: Box<dyn Iterator<Item = &(usize, char)>> =
+                if forward { Box::new(chars.iter()) } else { Box::new(chars.iter().rev()) };
+            for &(col, character) in ordered {
+                if index == from.row && (if forward { col <= from.col } else { col >= from.col }) {
+                    continue;
+                }
+                if character != open && character != close {
+                    continue;
+                }
+                if matches!(self.token_at(Pos { row: index, col }), Some(Token::String | Token::Comment)) {
+                    continue;
+                }
+                let deeper = if forward { character == open } else { character == close };
+                if deeper {
+                    depth += 1;
+                } else if depth == 0 {
+                    return Some(Pos { row: index, col });
+                } else {
+                    depth -= 1;
+                }
+            }
+        }
+        None
+    }
+
+    fn bump_link(&mut self) -> u64 {
+        self.link_generation += 1;
+        self.link_counter.store(self.link_generation, Ordering::Relaxed);
+        self.link_generation
+    }
+
     fn clear_link(&mut self, cx: &mut Context<Self>) {
         if self.link.take().is_some() {
-            self.link_generation += 1;
+            self.bump_link();
             cx.notify();
         }
     }
@@ -581,20 +700,14 @@ impl Editor {
         if self.link.as_ref().is_some_and(|link| link.row == row && link.cols == cols) {
             return;
         }
-        self.link_generation += 1;
-        let generation = self.link_generation;
+        let generation = self.bump_link();
         self.link = Some(Link { row, cols, outcome: None });
         cx.notify();
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_millis(60)).await;
-            let Ok(Some(task)) =
-                this.update(
-                    cx,
-                    |editor, cx| {
-                        if editor.link_generation == generation { editor.resolve_at(pos, cx) } else { None }
-                    },
-                )
-            else {
+            let Ok(Some(task)) = this.update(cx, |editor, cx| {
+                if editor.link_generation == generation { editor.resolve_at(pos, Some(generation), cx) } else { None }
+            }) else {
                 return;
             };
             let outcome = task.await;
@@ -620,7 +733,7 @@ impl Editor {
             self.finish_navigation(pos, outcome, side, position, cx);
             return;
         }
-        let Some(task) = self.resolve_at(pos, cx) else { return };
+        let Some(task) = self.resolve_at(pos, None, cx) else { return };
         let progress = crate::store::begin_progress("finding definition", cx);
         cx.spawn(async move |this, cx| {
             let outcome = task.await;
@@ -702,6 +815,12 @@ impl Editor {
         self.scroll.scroll_to_item(row, ScrollStrategy::Center);
     }
 
+    pub fn move_column(&mut self, column: usize) {
+        let Some(text) = self.rows.get(self.cursor.row).map(|row| row.text.as_str()) else { return };
+        self.cursor.col = text.char_indices().nth(column).map_or(text.len(), |(index, _)| index);
+        self.anchor = None;
+    }
+
     pub fn select_at(&mut self, at: Pos, length: usize) {
         let row = at.row.min(self.rows.len().saturating_sub(1));
         self.anchor = Some(Pos { row, col: self.clamp_col(row, at.col) });
@@ -774,6 +893,7 @@ impl Editor {
         self.tokens = tokens;
         self.outline = outline;
         self.link = None;
+        self.edits += 1;
         self.original = loaded.text;
         self.trailing_newline = loaded.trailing_newline;
         self.modified = loaded.modified;
@@ -875,6 +995,7 @@ impl Editor {
     }
 
     fn after_edit(&mut self, cx: &mut Context<Self>) {
+        self.edits += 1;
         self.dirty = file_text(&self.rows, self.trailing_newline) != self.original;
         self.tokens.resize(self.rows.len(), Vec::new());
         self.scroll.scroll_to_item(self.cursor.row, ScrollStrategy::Top);
@@ -1140,6 +1261,8 @@ impl Render for Editor {
         let selection = self.selection();
         let cursor = self.cursor;
         let widest = widest_row(&self.rows);
+        let occurrence = self.occurrence();
+        let pair = if focused { self.bracket_pair() } else { None };
         let columns = if two_columns { 2.0 } else { 1.0 };
         let gutter = cell.width * (columns * (digits as f32 + 1.0) + 3.0);
         if self.cursor != self.revealed {
@@ -1197,6 +1320,27 @@ impl Render for Editor {
                                 })
                             })
                             .unwrap_or_default();
+                        let marks: Vec<(f32, f32)> = occurrence
+                            .as_ref()
+                            .filter(|_| row.kind != LineKind::Removed)
+                            .map(|(wanted, word)| {
+                                occurrences(&row.text, wanted, *word)
+                                    .into_iter()
+                                    .map(|range| {
+                                        (text_width(&row.text[..range.start]), text_width(&row.text[..range.end]))
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let braces: Vec<(f32, f32)> = pair
+                            .into_iter()
+                            .flat_map(|(first, second)| [first, second])
+                            .filter(|pos| pos.row == index)
+                            .map(|pos| {
+                                let width = row.text[pos.col..].chars().next().map_or(1.0, char_width);
+                                (text_width(&row.text[..pos.col]), width)
+                            })
+                            .collect();
                         let caret = (index == cursor.row && focused)
                             .then(|| text_width(&row.text[..cursor.col.min(row.text.len())]));
                         let text = SharedString::from(row.text.clone());
@@ -1223,6 +1367,25 @@ impl Render for Editor {
                                     window.focus(&editor.focus, cx);
                                     editor.notice = None;
                                     let pos = editor.pos_at(index, event.position.x, window, cx);
+                                    let offset = editor.scroll.0.borrow().base_handle.offset();
+                                    if event.position.x < editor.code_origin.x - offset.x {
+                                        let line_end = Pos { row: index, col: editor.rows[index].text.len() };
+                                        let next = if index + 1 < editor.rows.len() {
+                                            Pos { row: index + 1, col: 0 }
+                                        } else {
+                                            line_end
+                                        };
+                                        if !event.modifiers.shift || editor.anchor.is_none() {
+                                            editor.anchor = Some(Pos { row: index, col: 0 });
+                                        }
+                                        editor.cursor = if editor.anchor.is_some_and(|anchor| anchor.row > index) {
+                                            Pos { row: index, col: 0 }
+                                        } else {
+                                            next
+                                        };
+                                        cx.notify();
+                                        return;
+                                    }
                                     if link_modifier(&event.modifiers) && event.click_count == 1 {
                                         editor.cursor = pos;
                                         editor.anchor = None;
@@ -1303,6 +1466,25 @@ impl Render for Editor {
                                                 .bg(theme.selection),
                                         )
                                     })
+                                    .children(marks.into_iter().map(|(from, to)| {
+                                        div()
+                                            .absolute()
+                                            .top_0()
+                                            .bottom_0()
+                                            .left(cell.width * from)
+                                            .w(cell.width * (to - from))
+                                            .bg(theme.selection.opacity(0.55))
+                                    }))
+                                    .children(braces.into_iter().map(|(from, width)| {
+                                        div()
+                                            .absolute()
+                                            .top_0()
+                                            .bottom_0()
+                                            .left(cell.width * from)
+                                            .w(cell.width * width)
+                                            .border_1()
+                                            .border_color(theme.faint)
+                                    }))
                                     .children(hits.into_iter().map(|(from, to, current)| {
                                         div()
                                             .absolute()
@@ -1558,6 +1740,7 @@ impl Render for Editor {
             .children(self.scrollbar(Axis::Horizontal, &theme, cx))
             .children(self.find_bar(cx))
             .children(self.notice_box(gutter, cell, &theme))
+            .children(self.link_box(gutter, cell, &theme))
             .child(
                 canvas(|_, _, _| {}, {
                     let focus = self.focus.clone();
@@ -1570,6 +1753,30 @@ impl Render for Editor {
                 .size_0(),
             )
     }
+}
+
+fn bracket(character: char) -> Option<(char, char, bool)> {
+    match character {
+        '(' => Some(('(', ')', true)),
+        '[' => Some(('[', ']', true)),
+        '{' => Some(('{', '}', true)),
+        ')' => Some(('(', ')', false)),
+        ']' => Some(('[', ']', false)),
+        '}' => Some(('{', '}', false)),
+        _ => None,
+    }
+}
+
+fn occurrences(text: &str, wanted: &str, word: bool) -> Vec<Range<usize>> {
+    let boundary = |c: Option<char>| !c.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$');
+    text.match_indices(wanted)
+        .filter(|(index, _)| {
+            !word
+                || (boundary(text[..*index].chars().next_back())
+                    && boundary(text[index + wanted.len()..].chars().next()))
+        })
+        .map(|(index, _)| index..index + wanted.len())
+        .collect()
 }
 
 fn underline(runs: Vec<TextRun>, range: Range<usize>, color: Hsla) -> Vec<TextRun> {
@@ -1596,24 +1803,52 @@ fn underline(runs: Vec<TextRun>, range: Range<usize>, color: Hsla) -> Vec<TextRu
 }
 
 impl Editor {
+    fn link_box(&self, gutter: Pixels, cell: gpui::Size<Pixels>, theme: &Theme) -> Option<impl IntoElement + use<>> {
+        let link = self.link.as_ref().filter(|link| link.ready())?;
+        let (title, preview) = match link.outcome.as_ref()? {
+            Outcome::Url(url) => (format!("open {url}"), String::new()),
+            Outcome::Definition(name) => (format!("find references to {name}"), String::new()),
+            Outcome::Locations(found) => {
+                let first = found.first()?;
+                let path = first.path.strip_prefix(&self.project).unwrap_or(&first.path).to_string_lossy();
+                let more = if found.len() > 1 { format!("  +{} more", found.len() - 1) } else { String::new() };
+                let place = if first.kind == "file" { path.to_string() } else { format!("{path}:{}", first.line + 1) };
+                (format!("{place}{more}"), first.preview.clone())
+            }
+            Outcome::Nothing(_) => return None,
+        };
+        Some(
+            self.floating(Pos { row: link.row, col: link.cols.start }, gutter, cell, theme).child(
+                div()
+                    .flex()
+                    .gap(cell.width * 2.0)
+                    .child(div().text_color(theme.muted).child(title))
+                    .when(!preview.is_empty(), |this| this.child(div().text_color(theme.text).child(preview))),
+            ),
+        )
+    }
+
+    fn floating(&self, pos: Pos, gutter: Pixels, cell: gpui::Size<Pixels>, theme: &Theme) -> gpui::Div {
+        let text = self.rows.get(pos.row).map_or("", |row| row.text.as_str());
+        let offset = self.scroll.0.borrow().base_handle.offset();
+        let x = gutter + cell.width * text_width(&text[..pos.col.min(text.len())]) + offset.x;
+        let y = cell.height * (pos.row as f32 + 1.0) + offset.y;
+        div()
+            .absolute()
+            .top(y)
+            .left(x.max(gutter))
+            .max_w(px(900.0))
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .px(cell.width)
+            .bg(theme.elevated)
+            .border_1()
+            .border_color(theme.border)
+    }
+
     fn notice_box(&self, gutter: Pixels, cell: gpui::Size<Pixels>, theme: &Theme) -> Option<impl IntoElement + use<>> {
         let (pos, message) = self.notice.clone()?;
-        let row = self.rows.get(pos.row)?;
-        let offset = self.scroll.0.borrow().base_handle.offset();
-        let x = gutter + cell.width * text_width(&row.text[..pos.col.min(row.text.len())]) + offset.x;
-        let y = cell.height * (pos.row as f32 + 1.0) + offset.y;
-        Some(
-            div()
-                .absolute()
-                .top(y)
-                .left(x.max(gutter))
-                .px(cell.width)
-                .bg(theme.elevated)
-                .border_1()
-                .border_color(theme.accent)
-                .text_color(theme.text)
-                .child(message),
-        )
+        Some(self.floating(pos, gutter, cell, theme).border_color(theme.accent).text_color(theme.text).child(message))
     }
 
     fn reveal_column(&mut self, gutter: Pixels, cell: Pixels) {

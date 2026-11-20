@@ -299,7 +299,10 @@ fn file_chips(editor: &Entity<Editor>, theme: &Theme, cx: &Context<WorkspaceView
     if let Some(position) = file.position.filter(|_| Chip::Position.shown(cx)) {
         chips.push((
             Chip::Position,
-            clickable(frame("status-position", theme), Chip::Position, theme, cx).child(position).into_any_element(),
+            clickable(frame("status-position", theme), Chip::Position, theme, cx)
+                .child(position)
+                .on_click(|_, window, cx| window.dispatch_action(Box::new(crate::commands::GoToLine), cx))
+                .into_any_element(),
         ));
     }
     if let Some(language) = file.language.filter(|_| Chip::Language.shown(cx)) {
