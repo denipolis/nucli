@@ -79,6 +79,14 @@ fn uplink(line: &str, cx: &mut App) {
 
 fn run(line: &str, cx: &mut App) {
     let (command, rest) = line.split_once(' ').unwrap_or((line, ""));
+    if command == "file" {
+        let handle = crate::store::store(cx).read(cx).windows.values().next().copied();
+        if let Some(handle) = handle {
+            let path = std::path::PathBuf::from(rest.trim());
+            let _ = handle.update(cx, |view, window, cx| view.open_path(&path, None, window, cx));
+        }
+        return;
+    }
     if command == "open" {
         let handle = crate::store::store(cx).read(cx).windows.values().next().copied();
         if let Some(handle) = handle {
@@ -238,7 +246,11 @@ fn send_event(line: &str) {
             }
             return;
         }
-        let [x, y] = rest else { return };
+        let (x, y, flags) = match rest {
+            [x, y] => (x, y, "0"),
+            [x, y, flags] => (x, y, *flags),
+            _ => return,
+        };
         let (Ok(x), Ok(y)) = (x.parse::<f64>(), y.parse::<f64>()) else { return };
         let frame: CGRect = msg_send![content, frame];
         let code: usize = match *kind {
@@ -252,7 +264,7 @@ fn send_event(line: &str) {
         let event: *mut Object = msg_send![class!(NSEvent),
             mouseEventWithType: code
             location: CGPoint::new(x, frame.size.height - y)
-            modifierFlags: 0usize
+            modifierFlags: flags.parse::<usize>().unwrap_or(0)
             timestamp: time
             windowNumber: number
             context: null
