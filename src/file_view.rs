@@ -237,7 +237,7 @@ pub fn dir_picker(
     view: &mut WorkspaceView,
     dir: PathBuf,
     selected: Option<PathBuf>,
-    position: gpui::Point<gpui::Pixels>,
+    position: Option<gpui::Point<gpui::Pixels>>,
     window: &mut Window,
     cx: &mut Context<WorkspaceView>,
 ) {
@@ -286,7 +286,13 @@ pub fn dir_picker(
     } else {
         format!("filter {}", crate::paths::display(&dir))
     };
-    let palette = cx.new(|cx| Palette::new(&title, &placeholder, items, initial, cx).anchored_below(position));
+    let palette = cx.new(|cx| {
+        let palette = Palette::new(&title, &placeholder, items, initial, cx);
+        match position {
+            Some(position) => palette.anchored_below(position),
+            None => palette,
+        }
+    });
     view.show_palette(palette, window, cx);
 }
 
@@ -1026,7 +1032,7 @@ fn crumbs(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> Vec<AnyEl
         elements.push(
             crumb(SharedString::from(format!("crumb-{index}")), glyph, label, cx)
                 .on_click(cx.listener(move |view, event: &gpui::ClickEvent, window, cx| {
-                    dir_picker(view, dir.clone(), Some(selected.clone()), below(event), window, cx)
+                    dir_picker(view, dir.clone(), Some(selected.clone()), Some(below(event)), window, cx)
                 }))
                 .into_any_element(),
         );
@@ -1039,7 +1045,7 @@ fn crumbs(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> Vec<AnyEl
         crumb("crumb-file".into(), with_icons.then_some((glyph, color.color(theme.dark))), name, cx)
             .text_color(theme.text)
             .on_click(cx.listener(move |view, event: &gpui::ClickEvent, window, cx| {
-                dir_picker(view, parent.clone(), Some(selected.clone()), below(event), window, cx)
+                dir_picker(view, parent.clone(), Some(selected.clone()), Some(below(event)), window, cx)
             }))
             .into_any_element(),
     );

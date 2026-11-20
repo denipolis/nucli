@@ -1366,6 +1366,14 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|view, _: &crate::commands::GoToSymbol, window, cx| {
             crate::file_view::symbol_picker(view, None, None, window, cx)
         }))
+        .on_action(cx.listener(|view, _: &crate::commands::BrowseFolder, window, cx| {
+            let Some(full) = crate::file_view::active_editor(view, cx).map(|editor| editor.read(cx).full.clone())
+            else {
+                return;
+            };
+            let parent = full.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
+            crate::file_view::dir_picker(view, parent, Some(full), None, window, cx)
+        }))
         .on_action(
             cx.listener(|view, _: &crate::commands::GoToLine, window, cx| {
                 crate::file_view::go_to_line(view, window, cx)
