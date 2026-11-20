@@ -177,6 +177,20 @@ fn infers_receiver_types() {
 }
 
 #[test]
+fn package_dependencies() {
+    let dir = mock(&[
+        ("package.json", "{\n  \"dependencies\": { \"left-pad\": \"^1.3.0\", \"@scope/kit\": \"2.0.0\" }\n}\n"),
+        ("node_modules/left-pad/package.json", "{}"),
+        ("node_modules/@scope/kit/package.json", "{}"),
+    ]);
+    let root = dir.0.as_path();
+    let left = targets(root, at(root, "package.json", "\"left-pad", 0));
+    assert_eq!(left, vec!["node_modules/left-pad/package.json:1:package.json"]);
+    let kit = targets(root, at(root, "package.json", "\"@scope", 0));
+    assert_eq!(kit, vec!["node_modules/@scope/kit/package.json:1:package.json"]);
+}
+
+#[test]
 fn outlines_nest() {
     let text = "class A {\n  run() {}\n}\nfunction b() { const x = 1; }\n";
     let found: Vec<(String, &str, usize)> =

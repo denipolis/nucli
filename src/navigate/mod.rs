@@ -747,6 +747,14 @@ fn string_target(
             }
         }
         "Go" if ancestor(string, &["import_spec"], 1).is_some() => modules::go(project, file, spec),
+        "JSON" if file.file_name().is_some_and(|name| name == "package.json") => file
+            .ancestors()
+            .skip(1)
+            .take(8)
+            .map(|dir| dir.join("node_modules").join(spec).join("package.json"))
+            .find(|manifest| manifest.is_file())
+            .into_iter()
+            .collect(),
         "C" if ancestor(string, &["preproc_include"], 1).is_some() => {
             modules::include(project, file, spec, || (resolver.files)().to_vec()).into_iter().collect()
         }
