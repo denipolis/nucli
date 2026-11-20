@@ -1000,6 +1000,10 @@ impl Editor {
 
     fn after_edit(&mut self, cx: &mut Context<Self>) {
         self.edits += 1;
+        self.notice = None;
+        if self.link.take().is_some() {
+            self.bump_link();
+        }
         self.dirty = file_text(&self.rows, self.trailing_newline) != self.original;
         self.tokens.resize(self.rows.len(), Vec::new());
         self.scroll.scroll_to_item(self.cursor.row, ScrollStrategy::Top);
@@ -1835,7 +1839,7 @@ impl Editor {
     fn floating(&self, pos: Pos, gutter: Pixels, cell: gpui::Size<Pixels>, theme: &Theme) -> gpui::Div {
         let text = self.rows.get(pos.row).map_or("", |row| row.text.as_str());
         let offset = self.scroll.0.borrow().base_handle.offset();
-        let x = gutter + cell.width * text_width(&text[..pos.col.min(text.len())]) + offset.x;
+        let x = gutter + cell.width * text_width(&text[..self.clamp_col(pos.row, pos.col)]) + offset.x;
         let y = cell.height * (pos.row as f32 + 1.0) + offset.y;
         div()
             .absolute()
