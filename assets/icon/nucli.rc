@@ -1,1 +1,4 @@
 1 ICON "nucli.ico"
+#ifdef SPLIT
+1 24 "nucli.manifest"
+#endif

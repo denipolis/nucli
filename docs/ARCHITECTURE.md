@@ -201,7 +201,7 @@ A mirror draws at the remote terminal's size, scaled down when it is wider than 
 
 `scripts/package.sh` splits the Windows build into DLLs, so the executable is only a loader:
 
-- `nucli.exe`: `main.rs` built with `--features split`. It does not link the app.
+- `nucli.exe`: `main.rs` built with `--features split`. It does not link the app. Windows reads the application manifest (per-monitor DPI, Common Controls 6, Windows 10) only from the executable, so `build.rs` embeds `assets/icon/nucli.manifest` into it with the `split` feature; other builds get GPUI's manifest, since a second one would collide with it.
 - `nucli.dll`: the app library built as a `cdylib` with `--no-default-features`, so no grammar is linked in. It exports `nucli_main`.
 - `grammars/<feature>.dll`: `nucli-grammars` built as a `cdylib` once per feature of its `all` list, each with only that grammar.
 
