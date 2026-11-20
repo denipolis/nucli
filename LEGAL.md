@@ -26,7 +26,9 @@ Direct dependencies, declared in the workspace's `Cargo.toml` files (`Cargo.toml
 | [notify-rust](https://github.com/hoodie/notify-rust) | MIT OR Apache-2.0 | Desktop notifications on Linux and Windows |
 | [sysinfo](https://github.com/GuillaumeGomez/sysinfo) | MIT | Foreground process name and folder of each tab |
 | [tree-sitter](https://github.com/tree-sitter/tree-sitter), tree-sitter-highlight | MIT | Syntax highlighting in the file view |
-| tree-sitter grammars: bash, c, cpp, css, go, html, java, javascript, json, lua, make, md, python, ruby, rust, swift, toml-ng, typescript, yaml | MIT | Language grammars and their highlight queries |
+| tree-sitter grammars: bash, c, c-sharp, cmake, containerfile, cpp, css, dart, diff, go, html, java, javascript, json, kotlin-sg, lua, make, md, nix, php, powershell, prisma, proto, python, ruby, rust, sequel, solidity, svelte-ng, swift, toml-ng, typescript, xml, yaml, zig | MIT | Language grammars and their highlight queries. The kotlin-sg highlight query is based on nvim-treesitter's (Apache-2.0) |
+| tree-sitter grammars: elixir, ini | Apache-2.0 | Language grammars and their highlight queries |
+| tree-sitter grammar: astro-next | MIT OR Apache-2.0 | Astro grammar and its highlight query |
 | [fancy-regex](https://github.com/fancy-regex/fancy-regex) | MIT | Regular expressions with backreferences and lookaround for find and replace in the file view |
 | [image](https://github.com/image-rs/image) | MIT OR Apache-2.0 | Pixel size of images in the file view, PNG writing in the development build |
 | [core-graphics](https://github.com/servo/core-foundation-rs) | MIT OR Apache-2.0 | macOS only: window capture in the development build's control file |

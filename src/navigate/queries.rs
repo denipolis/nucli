@@ -131,6 +131,12 @@ fn source(language: &str) -> Option<String> {
         "Ruby" => tree_sitter_ruby::TAGS_QUERY.into(),
         "Lua" => tree_sitter_lua::TAGS_QUERY.into(),
         "Swift" => tree_sitter_swift::TAGS_QUERY.into(),
+        "C#" => tree_sitter_c_sharp::TAGS_QUERY.into(),
+        "PHP" => tree_sitter_php::TAGS_QUERY.into(),
+        "Dart" => tree_sitter_dart::TAGS_QUERY.into(),
+        "Elixir" => tree_sitter_elixir::TAGS_QUERY.into(),
+        "Protocol Buffers" => tree_sitter_proto::TAGS_QUERY.into(),
+        "Solidity" => tree_sitter_solidity::TAGS_QUERY.into(),
         _ => return None,
     })
 }
@@ -164,6 +170,12 @@ mod tests {
             "Ruby",
             "Lua",
             "Swift",
+            "C#",
+            "PHP",
+            "Dart",
+            "Elixir",
+            "Protocol Buffers",
+            "Solidity",
         ] {
             let grammar = crate::highlight::grammar(language).unwrap();
             if let Err(error) = Query::new(&grammar, &source(language).unwrap()) {

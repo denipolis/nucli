@@ -79,29 +79,65 @@ const MARKDOWN_INJECTIONS: &str = r#"
   (#set! injection.include-children))
 "#;
 
+const PHP_INJECTIONS: &str = r#"
+((text) @injection.content
+  (#set! injection.language "html")
+  (#set! injection.combined))
+"#;
+
+const SVELTE_INJECTIONS: &str = r#"
+((script_element (raw_text) @injection.content)
+  (#set! injection.language "typescript"))
+
+((style_element (raw_text) @injection.content)
+  (#set! injection.language "css"))
+
+((svelte_raw_text) @injection.content
+  (#set! injection.language "typescript"))
+"#;
+
 pub const PLAIN_TEXT: &str = "Plain Text";
 
-pub const LANGUAGES: [(&str, &str); 20] = [
+pub const LANGUAGES: [(&str, &str); 39] = [
+    ("Astro", "a.astro"),
     ("C", "a.c"),
+    ("C#", "a.cs"),
     ("C++", "a.cpp"),
+    ("CMake", "CMakeLists.txt"),
     ("CSS", "a.css"),
+    ("Dart", "a.dart"),
+    ("Diff", "a.diff"),
+    ("Dockerfile", "Dockerfile"),
+    ("Elixir", "a.ex"),
     ("Go", "a.go"),
     ("HTML", "a.html"),
+    ("INI", "a.ini"),
     ("Java", "a.java"),
     ("JavaScript", "a.js"),
     ("JSON", "a.json"),
+    ("Kotlin", "a.kt"),
     ("Lua", "a.lua"),
     ("Makefile", "Makefile"),
     ("Markdown", "a.md"),
+    ("Nix", "a.nix"),
+    ("PHP", "a.php"),
+    ("PowerShell", "a.ps1"),
+    ("Prisma", "a.prisma"),
+    ("Protocol Buffers", "a.proto"),
     ("Python", "a.py"),
     ("Ruby", "a.rb"),
     ("Rust", "a.rs"),
     ("Shell", "a.sh"),
+    ("Solidity", "a.sol"),
+    ("SQL", "a.sql"),
+    ("Svelte", "a.svelte"),
     ("Swift", "a.swift"),
     ("TOML", "a.toml"),
     ("TSX", "a.tsx"),
     ("TypeScript", "a.ts"),
+    ("XML", "a.xml"),
     ("YAML", "a.yml"),
+    ("Zig", "a.zig"),
 ];
 
 pub fn known_language(name: &str) -> Option<&'static str> {
@@ -117,7 +153,9 @@ pub fn sample_file(name: &str) -> Option<&'static str> {
 
 pub fn language_name(path: &Path) -> Option<&'static str> {
     let name = path.file_name()?.to_str()?.to_lowercase();
-    language(&name).or_else(|| language(&path.extension()?.to_str()?.to_lowercase()))
+    language(&name)
+        .or_else(|| name.starts_with(".env.").then_some("Shell"))
+        .or_else(|| language(&path.extension()?.to_str()?.to_lowercase()))
 }
 
 pub fn highlight(name: &str, text: &str) -> Option<Vec<(Range<usize>, Token)>> {
@@ -161,7 +199,7 @@ fn language(key: &str) -> Option<&'static str> {
         "toml" | "cargo.lock" => "TOML",
         "yml" | "yaml" => "YAML",
         "sh" | "bash" | "zsh" | "shell" | ".bashrc" | ".bash_profile" | ".zshrc" | ".zprofile" | ".zshenv"
-        | ".profile" => "Shell",
+        | ".profile" | ".env" => "Shell",
         "c" | "h" => "C",
         "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" | "c++" => "C++",
         "css" => "CSS",
@@ -178,13 +216,13 @@ fn language(key: &str) -> Option<&'static str> {
         "fs" | "fsx" => "F#",
         "php" => "PHP",
         "sql" => "SQL",
-        "xml" | "plist" | "xib" | "storyboard" => "XML",
-        "svg" => "SVG",
+        "xml" | "plist" | "xib" | "storyboard" | "svg" => "XML",
         "scss" => "SCSS",
         "sass" => "Sass",
         "less" => "Less",
         "vue" => "Vue",
         "svelte" => "Svelte",
+        "astro" => "Astro",
         "scala" => "Scala",
         "dart" => "Dart",
         "ex" | "exs" => "Elixir",
@@ -192,7 +230,7 @@ fn language(key: &str) -> Option<&'static str> {
         "hs" => "Haskell",
         "ml" | "mli" => "OCaml",
         "clj" | "cljs" | "edn" => "Clojure",
-        "zig" => "Zig",
+        "zig" | "zon" => "Zig",
         "nim" => "Nim",
         "nix" => "Nix",
         "r" => "R",
@@ -204,10 +242,12 @@ fn language(key: &str) -> Option<&'static str> {
         "fish" => "Fish",
         "graphql" | "gql" => "GraphQL",
         "proto" => "Protocol Buffers",
+        "prisma" => "Prisma",
+        "sol" => "Solidity",
         "tf" | "tfvars" => "Terraform",
         "gradle" | "groovy" => "Groovy",
         "cmake" | "cmakelists.txt" => "CMake",
-        "ini" | "cfg" => "INI",
+        "ini" | "cfg" | "conf" | ".editorconfig" | ".gitconfig" => "INI",
         "csv" => "CSV",
         "diff" | "patch" => "Diff",
         _ => return None,
@@ -243,6 +283,25 @@ pub fn grammar(name: &str) -> Option<Language> {
         "Swift" => tree_sitter_swift::LANGUAGE.into(),
         "Lua" => tree_sitter_lua::LANGUAGE.into(),
         "Makefile" => tree_sitter_make::LANGUAGE.into(),
+        "Astro" => tree_sitter_astro_next::LANGUAGE.into(),
+        "C#" => tree_sitter_c_sharp::LANGUAGE.into(),
+        "CMake" => tree_sitter_cmake::LANGUAGE.into(),
+        "Dart" => tree_sitter_dart::LANGUAGE.into(),
+        "Diff" => tree_sitter_diff::LANGUAGE.into(),
+        "Dockerfile" => tree_sitter_containerfile::LANGUAGE.into(),
+        "Elixir" => tree_sitter_elixir::LANGUAGE.into(),
+        "INI" => tree_sitter_ini::LANGUAGE.into(),
+        "Kotlin" => tree_sitter_kotlin_sg::LANGUAGE.into(),
+        "Nix" => tree_sitter_nix::LANGUAGE.into(),
+        "PHP" => tree_sitter_php::LANGUAGE_PHP.into(),
+        "PowerShell" => tree_sitter_powershell::LANGUAGE.into(),
+        "Prisma" => tree_sitter_prisma::LANGUAGE.into(),
+        "Protocol Buffers" => tree_sitter_proto::LANGUAGE.into(),
+        "Solidity" => tree_sitter_solidity::LANGUAGE.into(),
+        "SQL" => tree_sitter_sequel::LANGUAGE.into(),
+        "Svelte" => tree_sitter_svelte_ng::LANGUAGE.into(),
+        "XML" => tree_sitter_xml::LANGUAGE_XML.into(),
+        "Zig" => tree_sitter_zig::LANGUAGE.into(),
         _ => return None,
     })
 }
@@ -297,8 +356,48 @@ fn build(name: &str) -> Option<HighlightConfiguration> {
             tree_sitter_lua::LOCALS_QUERY.into(),
         ),
         "Makefile" => (tree_sitter_make::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "Astro" => {
+            (tree_sitter_astro_next::HIGHLIGHTS_QUERY.into(), tree_sitter_astro_next::INJECTIONS_QUERY, String::new())
+        }
+        "C#" => (tree_sitter_c_sharp::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "CMake" => (
+            tree_sitter_cmake::HIGHLIGHTS_QUERY
+                .replace("#lua-match?", "#match?")
+                .replace("%u@][%u%d_", "A-Z@][A-Z0-9_"),
+            "",
+            String::new(),
+        ),
+        "Dart" => (tree_sitter_dart::HIGHLIGHTS_QUERY.into(), "", tree_sitter_dart::LOCALS_QUERY.into()),
+        "Diff" => (tree_sitter_diff::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "Dockerfile" => (
+            tree_sitter_containerfile::HIGHLIGHTS_QUERY.into(),
+            tree_sitter_containerfile::INJECTIONS_QUERY,
+            String::new(),
+        ),
+        "Elixir" => (tree_sitter_elixir::HIGHLIGHTS_QUERY.into(), tree_sitter_elixir::INJECTIONS_QUERY, String::new()),
+        "INI" => (tree_sitter_ini::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "Kotlin" => (tree_sitter_kotlin_sg::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "Nix" => (tree_sitter_nix::HIGHLIGHTS_QUERY.into(), tree_sitter_nix::INJECTIONS_QUERY, String::new()),
+        "PHP" => (tree_sitter_php::HIGHLIGHTS_QUERY.into(), PHP_INJECTIONS, String::new()),
+        "PowerShell" => (tree_sitter_powershell::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "Prisma" => (tree_sitter_prisma::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "Protocol Buffers" => (tree_sitter_proto::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "Solidity" => (
+            tree_sitter_solidity::HIGHLIGHT_QUERY.replace("@type .))", "@type))"),
+            "",
+            tree_sitter_solidity::LOCALS_QUERY.into(),
+        ),
+        "SQL" => (tree_sitter_sequel::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "Svelte" => (
+            format!("{}\n{}", tree_sitter_html::HIGHLIGHTS_QUERY, tree_sitter_svelte_ng::HIGHLIGHTS_QUERY),
+            SVELTE_INJECTIONS,
+            String::new(),
+        ),
+        "XML" => (tree_sitter_xml::XML_HIGHLIGHT_QUERY.into(), "", String::new()),
+        "Zig" => (tree_sitter_zig::HIGHLIGHTS_QUERY.replace("#lua-match?", "#match?"), "", String::new()),
         _ => return None,
     };
+    let highlights = highlights.replace(" @spell", "").replace(" @nospell", "");
     let mut config = HighlightConfiguration::new(grammar(name)?, name, &highlights, injections, &locals).ok()?;
     config.configure(&CAPTURES.map(|(capture, _)| capture));
     Some(config)
@@ -326,9 +425,11 @@ mod tests {
         assert_eq!(language_name(Path::new("Gemfile")), Some("Ruby"));
         assert_eq!(language_name(Path::new("Dockerfile")), Some("Dockerfile"));
         assert_eq!(language_name(Path::new("build.gradle.kts")), Some("Kotlin"));
+        assert_eq!(language_name(Path::new(".env.local")), Some("Shell"));
+        assert_eq!(language_name(Path::new("icon.svg")), Some("XML"));
         assert_eq!(language_name(Path::new("LICENSE")), None);
         assert_eq!(language_name(Path::new("archive.xyz")), None);
-        assert!(highlight("Dockerfile", "FROM alpine").is_none());
+        assert!(highlight("Scala", "object A").is_none());
     }
 
     #[test]
@@ -353,6 +454,18 @@ mod tests {
         assert!(found.contains(&("main".into(), Token::Function)));
         assert!(found.contains(&("Println".into(), Token::Function)));
         assert!(found.contains(&("1.5".into(), Token::Number)));
+        let found = tokens("Program.cs", "class A { string F() { return \"s\"; } }");
+        assert!(found.contains(&("class".into(), Token::Keyword)));
+        assert!(found.contains(&("F".into(), Token::Function)));
+        assert!(found.contains(&("\"s\"".into(), Token::String)));
+        let found = tokens("query.sql", "-- c\nSELECT 'a' FROM t;");
+        assert!(found.contains(&("-- c".into(), Token::Comment)));
+        assert!(found.contains(&("SELECT".into(), Token::Keyword)));
+        assert!(found.contains(&("'a'".into(), Token::String)));
+        let found = tokens("main.zig", "// c\nconst MAX = 2;\nconst x = 1;");
+        assert!(found.contains(&("// c".into(), Token::Comment)));
+        assert!(found.contains(&("MAX".into(), Token::Constant)));
+        assert!(!found.iter().any(|(text, _)| text == "x"));
     }
 
     #[test]
@@ -364,6 +477,13 @@ mod tests {
         assert!(found.contains(&("Title".into(), Token::Keyword)));
         assert!(found.contains(&("fn".into(), Token::Keyword)));
         assert!(found.contains(&("let".into(), Token::Keyword)));
+        let found =
+            tokens("App.svelte", "<script lang=\"ts\">let x: number = 1;</script>\n<style>p { color: red; }</style>");
+        assert!(found.contains(&("number".into(), Token::Type)));
+        assert!(found.contains(&("color".into(), Token::Property)));
+        let found = tokens("index.php", "<p><?php echo \"s\"; ?></p>");
+        assert!(found.contains(&("p".into(), Token::Tag)));
+        assert!(found.contains(&("echo".into(), Token::Keyword)));
     }
 
     #[test]
