@@ -13,7 +13,7 @@ fn files(root: &Path) -> Arc<Vec<String>> {
             if path.is_dir() {
                 stack.push(path);
             } else {
-                found.push(path.strip_prefix(root).unwrap().to_string_lossy().into_owned());
+                found.push(path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"));
             }
         }
     }
@@ -35,7 +35,7 @@ fn targets(root: &Path, outcome: Outcome) -> Vec<String> {
         Outcome::Locations(found) => found
             .into_iter()
             .map(|location| {
-                let path = location.path.strip_prefix(root).unwrap().to_string_lossy().into_owned();
+                let path = location.path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/");
                 format!("{path}:{}:{}", location.line + 1, location.name)
             })
             .collect(),
