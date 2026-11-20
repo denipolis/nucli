@@ -847,7 +847,11 @@ fn identifier_target(
             return if found.is_empty() { files.iter().map(|module| file_start(module)).collect() } else { found };
         }
         let own = matches!(base.as_str(), "this" | "self" | "Self" | "cls" | "super");
-        let container = if own { enclosing_type(symbols, offset) } else { Some(base.clone()) };
+        let container = if own {
+            enclosing_type(symbols, offset)
+        } else {
+            inferred_type(symbols, text, &base, offset).or_else(|| Some(base.clone()))
+        };
         let members: Vec<&Symbol> = symbols.iter().filter(|symbol| target(symbol, name)).collect();
         let exact: Vec<Location> = members
             .iter()
@@ -908,6 +912,36 @@ fn identifier_target(
         }
     }
     resolver.project_wide(file, language, name, false, None)
+}
+
+fn type_name(text: &str) -> Option<String> {
+    let text = text.trim_start().trim_start_matches(['&', '*', '(']);
+    let text = ["mut ", "dyn ", "impl ", "readonly ", "const "]
+        .iter()
+        .fold(text, |text, prefix| text.strip_prefix(prefix).unwrap_or(text))
+        .trim_start();
+    let path: String = text.chars().take_while(|c| c.is_alphanumeric() || matches!(c, '_' | ':' | '.')).collect();
+    path.rsplit([':', '.']).find(|part| part.starts_with(|c: char| c.is_uppercase())).map(String::from)
+}
+
+fn inferred_type(symbols: &[Symbol], text: &str, base: &str, offset: usize) -> Option<String> {
+    let declaration = symbols
+        .iter()
+        .filter(|symbol| {
+            symbol.name == base
+                && symbol.name_range.start < offset
+                && matches!(symbol.kind, "variable" | "parameter" | "constant" | "field")
+                && symbol.scope.as_ref().is_none_or(|scope| scope.contains(&offset))
+        })
+        .max_by_key(|symbol| symbol.name_range.start)?;
+    let after = &text[declaration.name_range.end..declaration.range.end.max(declaration.name_range.end)];
+    let after = after.trim_start().trim_start_matches('?').trim_start_matches('!');
+    if let Some(annotation) = after.strip_prefix(':').filter(|rest| !rest.starts_with(':')) {
+        return type_name(annotation.split('=').next().unwrap_or(annotation));
+    }
+    let value = after.strip_prefix('=').or_else(|| after.split_once(" = ").map(|(_, value)| value))?.trim_start();
+    let value = value.strip_prefix("await ").unwrap_or(value);
+    type_name(value.strip_prefix("new ").unwrap_or(value))
 }
 
 fn enclosing_type(symbols: &[Symbol], offset: usize) -> Option<String> {

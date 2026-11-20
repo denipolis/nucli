@@ -135,7 +135,7 @@ Highlighting parses the new side and the old side of the diff separately and map
 
 Tabs for a commit's version of a file are stored as `path@@hash`.
 
-Code navigation is syntactic: it parses with tree-sitter and follows imports by the conventions of each language, so it needs no language server and works offline, but it cannot know types. `obj.method` with an unknown `obj` falls back to every member of that name in the project, ranked (a matching container, the same folder, not tests), and the list asks when several stay. Resolving runs on the background executor against the editor's current text, unsaved edits included; `⌘`-hover resolves the hovered word after 60 ms and the click reuses that result. The project's file list is cached for 10 seconds. Locations are 0-based text lines of the new side, which `Editor::goto_text_line` maps to rows, since removed rows have no line.
+Code navigation is syntactic: it parses with tree-sitter and follows imports by the conventions of each language, so it needs no language server and works offline, but it does not check types. `obj.method` takes the type of `obj` from its declaration when it names one (an annotation, `new Type(…)`, `Type::new(…)`, `Type(…)`), then looks for members of that name in the project, ranked (that type as the container, the same folder, not tests); the list asks when several stay. Resolving runs on the background executor against the editor's current text, unsaved edits included; `⌘`-hover resolves the hovered word after 60 ms and the click reuses that result. The project's file list is cached for 10 seconds. Locations are 0-based text lines of the new side, which `Editor::goto_text_line` maps to rows, since removed rows have no line.
 
 ## Agents
 

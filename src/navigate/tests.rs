@@ -155,6 +155,28 @@ fn python_and_go_navigation() {
 }
 
 #[test]
+fn infers_receiver_types() {
+    let dir = mock(&[
+        (
+            "a.ts",
+            "class Button { render() {} }\nclass Panel { render() {} }\n\
+             function f(p: Panel) {\n  const b = new Button();\n  b.render();\n  p.render();\n}\n",
+        ),
+        ("Cargo.toml", "[package]\nname = \"x\"\n"),
+        (
+            "src/main.rs",
+            "struct Store;\nstruct View;\nimpl Store { fn open(&self) {} }\nimpl View { fn open(&self) {} }\n\
+             fn main() {\n    let s = Store::default();\n    s.open();\n}\nfn g(v: &View) { v.open(); }\n",
+        ),
+    ]);
+    let root = dir.0.as_path();
+    assert_eq!(targets(root, at(root, "a.ts", ".render();\n  p", 0)), vec!["a.ts:1:render"]);
+    assert_eq!(targets(root, at(root, "a.ts", ".render();\n}", 0)), vec!["a.ts:2:render"]);
+    assert_eq!(targets(root, at(root, "src/main.rs", ".open();\n}", 0)), vec!["src/main.rs:3:open"]);
+    assert_eq!(targets(root, at(root, "src/main.rs", ".open(); }", 0)), vec!["src/main.rs:4:open"]);
+}
+
+#[test]
 fn outlines_nest() {
     let text = "class A {\n  run() {}\n}\nfunction b() { const x = 1; }\n";
     let found: Vec<(String, &str, usize)> =
