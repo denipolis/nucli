@@ -2,7 +2,9 @@ mod imports;
 mod modules;
 mod queries;
 
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::io::BufRead;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -135,9 +137,13 @@ fn location_in(path: &Path, text: &str, range: Range<usize>, name: &str, kind: &
 
 fn file_start(path: &Path) -> Location {
     let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-    let preview = std::fs::read_to_string(path)
+    let preview = std::fs::File::open(path)
         .ok()
-        .and_then(|text| text.lines().next().map(|line| line.trim().chars().take(160).collect()))
+        .and_then(|file| {
+            let mut line = String::new();
+            std::io::BufReader::new(std::io::Read::take(file, 4096)).read_line(&mut line).ok()?;
+            Some(line.trim().chars().take(160).collect())
+        })
         .unwrap_or_default();
     Location { path: path.to_path_buf(), line: 0, cols: 0..0, name, kind: "file", container: None, preview }
 }
@@ -337,6 +343,7 @@ struct Resolver<'a> {
     project: &'a Path,
     files: &'a dyn Fn() -> std::sync::Arc<Vec<String>>,
     cancelled: &'a (dyn Fn() -> bool + Sync),
+    visited: RefCell<HashSet<(PathBuf, String)>>,
 }
 
 impl Resolver<'_> {
@@ -372,7 +379,11 @@ impl Resolver<'_> {
             return self.rust_target(from, &segments, depth).unwrap_or_default();
         }
         if import.source.is_empty() {
-            return self.exported(from, &import.binding, None, depth + 1);
+            let name = match &import.imported {
+                Imported::Name(name) => name,
+                _ => &import.binding,
+            };
+            return self.exported(from, name, None, depth + 1);
         }
         let files = self.module_files(language, from, &import.source);
         let mut found = Vec::new();
@@ -401,7 +412,7 @@ impl Resolver<'_> {
     }
 
     fn exported(&self, file: &Path, name: &str, container: Option<&str>, depth: usize) -> Vec<Location> {
-        if depth > MAX_DEPTH {
+        if depth > MAX_DEPTH || !self.visited.borrow_mut().insert((file.to_path_buf(), name.to_string())) {
             return Vec::new();
         }
         let Some(parsed) = Parsed::read(file) else { return Vec::new() };
@@ -448,7 +459,8 @@ impl Resolver<'_> {
         let root = parsed.tree.root_node();
         let mut cursor = root.walk();
         for node in root.named_children(&mut cursor) {
-            if node.kind() != "export_statement" || !parsed.text[node.byte_range()].contains("default") {
+            let mut walker = node.walk();
+            if node.kind() != "export_statement" || !node.children(&mut walker).any(|child| child.kind() == "default") {
                 continue;
             }
             if let Some(declaration) = node.child_by_field_name("declaration")
@@ -467,6 +479,13 @@ impl Resolver<'_> {
             }
             return vec![location_in(file, &parsed.text, node.byte_range(), "default", "export")];
         }
+        let imports = imports::imports(parsed.language, root, &parsed.text);
+        if let Some(import) = imports.iter().find(|import| import.binding == "default") {
+            let found = self.import_target(parsed.language, file, import, depth + 1);
+            if !found.is_empty() {
+                return found;
+            }
+        }
         vec![file_start(file)]
     }
 
@@ -484,6 +503,10 @@ impl Resolver<'_> {
         member: bool,
         qualifier: Option<&str>,
     ) -> Vec<Location> {
+        rank(current, self.candidates(current, language, name), member, qualifier)
+    }
+
+    fn candidates(&self, current: &Path, language: &str, name: &str) -> Vec<(Location, usize)> {
         let files = (self.files)();
         let wanted = family(language).to_string();
         let candidates: Vec<PathBuf> = files
@@ -497,14 +520,16 @@ impl Resolver<'_> {
         let threads = std::thread::available_parallelism().map_or(4, |count| count.get()).min(8);
         let chunk = candidates.len().div_ceil(threads).max(1);
         let cancelled = self.cancelled;
-        let found: Vec<(Location, usize)> = std::thread::scope(|scope| {
+        let total = std::sync::atomic::AtomicUsize::new(0);
+        let total = &total;
+        std::thread::scope(|scope| {
             let workers: Vec<_> = candidates
                 .chunks(chunk)
                 .map(|paths| {
                     scope.spawn(move || {
                         let mut found = Vec::new();
                         for path in paths {
-                            if cancelled() {
+                            if cancelled() || total.load(std::sync::atomic::Ordering::Relaxed) > 400 {
                                 break;
                             }
                             if std::fs::metadata(path).map_or(true, |meta| meta.len() > MAX_FILE) {
@@ -523,6 +548,7 @@ impl Resolver<'_> {
                                         location_in(path, &text, symbol.name_range.clone(), name, symbol.kind);
                                     location.container = symbol.container;
                                     found.push((location, depth));
+                                    total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                 }
                             }
                             if found.len() > 400 {
@@ -534,8 +560,7 @@ impl Resolver<'_> {
                 })
                 .collect();
             workers.into_iter().flat_map(|worker| worker.join().unwrap_or_default()).collect()
-        });
-        rank(current, found, member, qualifier)
+        })
     }
 }
 
@@ -552,6 +577,32 @@ fn contains_word(text: &str, word: &str) -> bool {
     })
 }
 
+fn incidental(path: &Path) -> bool {
+    const FOLDERS: [&str; 15] = [
+        "test",
+        "tests",
+        "__tests__",
+        "testdata",
+        "spec",
+        "specs",
+        "mock",
+        "mocks",
+        "__mocks__",
+        "fixture",
+        "fixtures",
+        "example",
+        "examples",
+        "vendor",
+        "node_modules",
+    ];
+    let folder = path.parent().is_some_and(|parent| {
+        parent.components().any(|part| FOLDERS.contains(&part.as_os_str().to_string_lossy().to_lowercase().as_str()))
+    });
+    let name = path.file_name().map(|name| name.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let marked = [".test.", ".spec.", "_test.", "_spec.", ".d.ts"].iter().any(|mark| name.contains(mark));
+    folder || marked || name.starts_with("test_")
+}
+
 fn rank(current: &Path, found: Vec<(Location, usize)>, member: bool, qualifier: Option<&str>) -> Vec<Location> {
     let dir = current.parent().unwrap_or(current);
     let mut scored: Vec<(i32, Location)> = found
@@ -566,11 +617,7 @@ fn rank(current: &Path, found: Vec<(Location, usize)>, member: bool, qualifier: 
             }
             let shared = location.path.components().zip(dir.components()).take_while(|(a, b)| a == b).count();
             score += shared as i32;
-            let text = location.path.to_string_lossy().to_lowercase();
-            if ["test", "spec", "mock", "fixture", "example", "/vendor/", ".d.ts"]
-                .iter()
-                .any(|word| text.contains(word))
-            {
+            if incidental(&location.path) {
                 score -= 30;
             }
             match (member, depth) {
@@ -684,7 +731,7 @@ pub fn resolve(request: &Request, files: &dyn Fn() -> std::sync::Arc<Vec<String>
         let range = path_at(line, col)?;
         modules::path(project, file, &line[range]).map(|found| Outcome::Locations(vec![file_start(&found)]))
     };
-    let resolver = Resolver { project, files, cancelled };
+    let resolver = Resolver { project, files, cancelled, visited: RefCell::default() };
     let parsed = language.and_then(|language| Some((language, parse(language, text)?)));
     let Some((language, tree)) = parsed else {
         return path_outcome().unwrap_or(Outcome::Nothing(word));
@@ -869,13 +916,15 @@ fn identifier_target(
         if !exact.is_empty() {
             return exact;
         }
-        if own || !members.is_empty() {
+        if own {
             let nested: Vec<Location> = members.iter().filter(|symbol| symbol.depth > 0).map(|s| here(s)).collect();
             if !nested.is_empty() {
                 return nested;
             }
         }
-        return resolver.project_wide(file, language, name, true, container.as_deref());
+        let mut found: Vec<(Location, usize)> = members.iter().map(|symbol| (here(symbol), symbol.depth)).collect();
+        found.extend(resolver.candidates(file, language, name));
+        return rank(file, found, true, container.as_deref());
     }
     let mut locals: Vec<&Symbol> = symbols
         .iter()

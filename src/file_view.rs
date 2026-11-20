@@ -303,8 +303,24 @@ fn references(
 }
 
 pub fn dir_picker(
+    dir: PathBuf,
+    selected: Option<PathBuf>,
+    position: Option<gpui::Point<gpui::Pixels>>,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    let listing = dir.clone();
+    cx.spawn_in(window, async move |this, cx| {
+        let entries = cx.background_executor().spawn(async move { crate::files::read_dir(&listing, "") }).await;
+        let _ = this.update_in(cx, |view, window, cx| show_dir(view, dir, entries, selected, position, window, cx));
+    })
+    .detach();
+}
+
+fn show_dir(
     view: &mut WorkspaceView,
     dir: PathBuf,
+    entries: Vec<crate::files::Entry>,
     selected: Option<PathBuf>,
     position: Option<gpui::Point<gpui::Pixels>>,
     window: &mut Window,
@@ -317,23 +333,23 @@ pub fn dir_picker(
     if let Some(parent) = dir.parent().filter(|_| !inside || dir != project) {
         let (parent, child) = (parent.to_path_buf(), dir.clone());
         items.push(
-            palette::Item::new("..", move |view, window, cx| {
-                dir_picker(view, parent.clone(), Some(child.clone()), position, window, cx)
+            palette::Item::new("..", move |_, window, cx| {
+                dir_picker(parent.clone(), Some(child.clone()), position, window, cx)
             })
             .glyph(icons::FOLDER_OPEN, Some(theme.muted))
             .detail("parent folder"),
         );
     }
     let mut initial = items.len();
-    for entry in crate::files::read_dir(&dir, "") {
+    for entry in entries {
         let path = dir.join(&entry.name);
         if selected.as_ref().is_some_and(|selected| selected.starts_with(&path)) {
             initial = items.len();
         }
         let item = if entry.is_dir {
             let target = path.clone();
-            palette::Item::new(format!("{}/", entry.name), move |view, window, cx| {
-                dir_picker(view, target.clone(), None, position, window, cx)
+            palette::Item::new(format!("{}/", entry.name), move |_, window, cx| {
+                dir_picker(target.clone(), None, position, window, cx)
             })
             .glyph(icons::FOLDER, Some(theme.muted))
         } else {
@@ -1100,8 +1116,8 @@ fn crumbs(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> Vec<AnyEl
         let selected = full.clone();
         elements.push(
             crumb(SharedString::from(format!("crumb-{index}")), glyph, label, cx)
-                .on_click(cx.listener(move |view, event: &gpui::ClickEvent, window, cx| {
-                    dir_picker(view, dir.clone(), Some(selected.clone()), Some(below(event)), window, cx)
+                .on_click(cx.listener(move |_, event: &gpui::ClickEvent, window, cx| {
+                    dir_picker(dir.clone(), Some(selected.clone()), Some(below(event)), window, cx)
                 }))
                 .into_any_element(),
         );
@@ -1113,8 +1129,8 @@ fn crumbs(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> Vec<AnyEl
     elements.push(
         crumb("crumb-file".into(), with_icons.then_some((glyph, color.color(theme.dark))), name, cx)
             .text_color(theme.text)
-            .on_click(cx.listener(move |view, event: &gpui::ClickEvent, window, cx| {
-                dir_picker(view, parent.clone(), Some(selected.clone()), Some(below(event)), window, cx)
+            .on_click(cx.listener(move |_, event: &gpui::ClickEvent, window, cx| {
+                dir_picker(parent.clone(), Some(selected.clone()), Some(below(event)), window, cx)
             }))
             .into_any_element(),
     );

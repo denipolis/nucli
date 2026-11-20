@@ -288,6 +288,12 @@ pub enum EditorEvent {
     References(String),
 }
 
+struct TextCache {
+    edits: u64,
+    text: std::sync::Arc<String>,
+    starts: Vec<Option<usize>>,
+}
+
 struct Brackets {
     cursor: Pos,
     edits: u64,
@@ -390,6 +396,7 @@ pub struct Editor {
     pub outline: Vec<OutlineItem>,
     edits: u64,
     brackets: Option<Brackets>,
+    text_cache: Option<TextCache>,
     pub added: usize,
     pub removed: usize,
     pub language: Option<&'static str>,
@@ -443,6 +450,7 @@ impl Editor {
             outline: Vec::new(),
             edits: 0,
             brackets: None,
+            text_cache: None,
             added: 0,
             removed: 0,
             language,
@@ -521,26 +529,28 @@ impl Editor {
         self.outline.iter().filter(|item| item.start <= row && row <= item.end).collect()
     }
 
-    fn text_and_offset(&self, pos: Pos) -> Option<(String, usize)> {
-        if self.rows.get(pos.row)?.kind == LineKind::Removed {
-            return None;
-        }
-        let mut text = String::new();
-        let mut offset = None;
-        for (index, row) in self.rows.iter().enumerate() {
-            if row.kind == LineKind::Removed {
-                continue;
+    fn text_and_offset(&mut self, pos: Pos) -> Option<(std::sync::Arc<String>, usize)> {
+        if self.text_cache.as_ref().is_none_or(|cache| cache.edits != self.edits) {
+            let mut text = String::new();
+            let mut starts = Vec::with_capacity(self.rows.len());
+            for row in &self.rows {
+                if row.kind == LineKind::Removed {
+                    starts.push(None);
+                    continue;
+                }
+                starts.push(Some(text.len()));
+                text.push_str(&row.text);
+                text.push('\n');
             }
-            if index == pos.row {
-                offset = Some(text.len() + pos.col.min(row.text.len()));
-            }
-            text.push_str(&row.text);
-            text.push('\n');
+            self.text_cache = Some(TextCache { edits: self.edits, text: std::sync::Arc::new(text), starts });
         }
-        Some((text, offset?))
+        let cache = self.text_cache.as_ref()?;
+        let start = (*cache.starts.get(pos.row)?)?;
+        let length = self.rows.get(pos.row)?.text.len();
+        Some((cache.text.clone(), start + pos.col.min(length)))
     }
 
-    fn resolve_at(&self, pos: Pos, hover: Option<u64>, cx: &mut Context<Self>) -> Option<gpui::Task<Outcome>> {
+    fn resolve_at(&mut self, pos: Pos, hover: Option<u64>, cx: &mut Context<Self>) -> Option<gpui::Task<Outcome>> {
         let (text, offset) = self.text_and_offset(pos)?;
         let (project, full) = (self.project.clone(), self.full.clone());
         let language = self.current_language().filter(|language| *language != highlight::PLAIN_TEXT);
@@ -642,36 +652,47 @@ impl Editor {
 
     fn scan_bracket(&self, from: Pos, open: char, close: char, forward: bool) -> Option<Pos> {
         let mut depth = 0usize;
-        let rows: Box<dyn Iterator<Item = usize>> = if forward {
-            Box::new(from.row..self.rows.len().min(from.row + 5000))
-        } else {
-            Box::new((from.row.saturating_sub(5000)..=from.row).rev())
-        };
-        for index in rows {
-            let row = &self.rows[index];
-            if row.kind == LineKind::Removed {
-                continue;
+        let mut visit = |index: usize, col: usize, character: char| -> Option<Pos> {
+            if character != open && character != close {
+                return None;
             }
-            let chars: Vec<(usize, char)> = row.text.char_indices().collect();
-            let ordered: Box<dyn Iterator<Item = &(usize, char)>> =
-                if forward { Box::new(chars.iter()) } else { Box::new(chars.iter().rev()) };
-            for &(col, character) in ordered {
-                if index == from.row && (if forward { col <= from.col } else { col >= from.col }) {
+            if matches!(self.token_at(Pos { row: index, col }), Some(Token::String | Token::Comment)) {
+                return None;
+            }
+            if (character == open) == forward {
+                depth += 1;
+                return None;
+            }
+            if depth == 0 {
+                return Some(Pos { row: index, col });
+            }
+            depth -= 1;
+            None
+        };
+        if forward {
+            for index in from.row..self.rows.len().min(from.row + 5000) {
+                let row = &self.rows[index];
+                if row.kind == LineKind::Removed {
                     continue;
                 }
-                if character != open && character != close {
+                let skip = if index == from.row { from.col + 1 } else { 0 };
+                for (col, character) in row.text.char_indices().filter(|(col, _)| *col >= skip) {
+                    if let Some(found) = visit(index, col, character) {
+                        return Some(found);
+                    }
+                }
+            }
+        } else {
+            for index in (from.row.saturating_sub(5000)..=from.row).rev() {
+                let row = &self.rows[index];
+                if row.kind == LineKind::Removed {
                     continue;
                 }
-                if matches!(self.token_at(Pos { row: index, col }), Some(Token::String | Token::Comment)) {
-                    continue;
-                }
-                let deeper = if forward { character == open } else { character == close };
-                if deeper {
-                    depth += 1;
-                } else if depth == 0 {
-                    return Some(Pos { row: index, col });
-                } else {
-                    depth -= 1;
+                let end = if index == from.row { from.col } else { row.text.len() };
+                for (col, character) in row.text[..end].char_indices().rev() {
+                    if let Some(found) = visit(index, col, character) {
+                        return Some(found);
+                    }
                 }
             }
         }
@@ -901,6 +922,13 @@ impl Editor {
         self.original = loaded.text;
         self.trailing_newline = loaded.trailing_newline;
         self.modified = loaded.modified;
+        let last = self.rows.len().saturating_sub(1);
+        self.cursor.row = self.cursor.row.min(last);
+        self.cursor.col = self.clamp_col(self.cursor.row, self.cursor.col);
+        self.anchor = self
+            .anchor
+            .filter(|anchor| anchor.row < self.rows.len())
+            .map(|anchor| Pos { row: anchor.row, col: self.clamp_col(anchor.row, anchor.col) });
         self.added = self.rows.iter().filter(|row| row.kind == LineKind::Added).count();
         self.removed = self.rows.iter().filter(|row| row.kind == LineKind::Removed).count();
         if let Some((target, cols)) = self.pending_line.take() {

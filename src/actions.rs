@@ -1372,7 +1372,7 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
                 return;
             };
             let parent = full.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
-            crate::file_view::dir_picker(view, parent, Some(full), None, window, cx)
+            crate::file_view::dir_picker(parent, Some(full), None, window, cx)
         }))
         .on_action(
             cx.listener(|view, _: &crate::commands::GoToLine, window, cx| {

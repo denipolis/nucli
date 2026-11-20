@@ -27,7 +27,7 @@ fn with_suffix(base: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(text)
 }
 
-pub fn strip_jsonc(text: &str) -> String {
+fn strip_comments(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     let mut in_string = false;
@@ -64,15 +64,27 @@ pub fn strip_jsonc(text: &str) -> String {
                     last = next;
                 }
             }
-            (',', _) => {
-                let rest: String = chars.clone().take_while(|next| next.is_whitespace()).collect();
-                let after = chars.clone().nth(rest.chars().count());
-                if !matches!(after, Some('}') | Some(']')) {
-                    result.push(c);
-                }
-            }
             _ => result.push(c),
         }
+    }
+    result
+}
+
+pub fn strip_jsonc(text: &str) -> String {
+    let text = strip_comments(text);
+    let mut result = String::with_capacity(text.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    for (index, c) in text.char_indices() {
+        if in_string {
+            in_string = escaped || c != '"';
+            escaped = !escaped && c == '\\';
+        } else if c == '"' {
+            in_string = true;
+        } else if c == ',' && text[index + 1..].trim_start().starts_with(['}', ']']) {
+            continue;
+        }
+        result.push(c);
     }
     result
 }
@@ -100,10 +112,13 @@ fn package_entry(dir: &Path) -> Option<PathBuf> {
     });
     let fields = ["types", "typings", "module", "main"];
     let entries = fields.iter().filter_map(|key| json.get(*key).and_then(|value| value.as_str()).map(String::from));
-    entries.chain(exports).find_map(|entry| js_file(&dir.join(entry)))
+    entries.chain(exports).find_map(|entry| {
+        let target = dir.join(entry);
+        js_plain(&target).or_else(|| js_index(&target))
+    })
 }
 
-fn js_file(base: &Path) -> Option<PathBuf> {
+fn js_plain(base: &Path) -> Option<PathBuf> {
     if base.is_file() {
         return Some(normalize(base));
     }
@@ -126,17 +141,15 @@ fn js_file(base: &Path) -> Option<PathBuf> {
             return Some(found);
         }
     }
-    if base.is_dir() {
-        if let Some(found) = package_entry(base) {
-            return Some(found);
-        }
-        for ext in JS_EXTENSIONS {
-            if let Some(found) = file(base.join(format!("index.{ext}"))) {
-                return Some(found);
-            }
-        }
-    }
     None
+}
+
+fn js_index(dir: &Path) -> Option<PathBuf> {
+    JS_EXTENSIONS.iter().find_map(|ext| file(dir.join(format!("index.{ext}"))))
+}
+
+fn js_file(base: &Path) -> Option<PathBuf> {
+    js_plain(base).or_else(|| base.is_dir().then(|| package_entry(base).or_else(|| js_index(base))).flatten())
 }
 
 struct TsConfig {
@@ -360,7 +373,11 @@ pub fn go(project: &Path, file: &Path, spec: &str) -> Vec<PathBuf> {
         let module = std::fs::read_to_string(root.join("go.mod")).ok().and_then(|text| {
             text.lines().find_map(|line| line.trim().strip_prefix("module ").map(|name| name.trim().to_string()))
         });
-        if let Some(rest) = module.as_deref().and_then(|module| spec.strip_prefix(module)) {
+        if let Some(rest) = module
+            .as_deref()
+            .and_then(|module| spec.strip_prefix(module))
+            .filter(|rest| rest.is_empty() || rest.starts_with('/'))
+        {
             dirs.push(root.join(rest.trim_start_matches('/')));
         }
         dirs.push(root.join("vendor").join(spec));
@@ -452,10 +469,11 @@ mod tests {
 
     #[test]
     fn strips_jsonc() {
-        let text = "{\n // c\n \"a\": \"//x\", /* b */ \"p\": [1, 2,],\n}";
+        let text = "{\n // c\n \"a\": \"//x\", /* b */ \"p\": [1, 2,], // note\n \"q\": \"a,}\",\n}";
         let value: serde_json::Value = serde_json::from_str(&strip_jsonc(text)).unwrap();
         assert_eq!(value["a"], "//x");
         assert_eq!(value["p"].as_array().unwrap().len(), 2);
+        assert_eq!(value["q"], "a,}");
     }
 
     #[test]
@@ -473,6 +491,8 @@ mod tests {
             ("node_modules/pkg/package.json", "{\"types\": \"dist/index.d.ts\"}"),
             ("node_modules/pkg/dist/index.d.ts", ""),
             ("node_modules/@types/node/index.d.ts", ""),
+            ("node_modules/dot/package.json", "{\"main\": \".\"}"),
+            ("node_modules/dot/index.js", ""),
         ]);
         let root = dir.0.as_path();
         let app = root.join("src/app.ts");
@@ -485,6 +505,7 @@ mod tests {
         assert_eq!(resolve("src/lib/math"), Some("src/lib/math.ts".into()));
         assert_eq!(resolve("pkg"), Some("node_modules/pkg/dist/index.d.ts".into()));
         assert_eq!(resolve("node"), Some("node_modules/@types/node/index.d.ts".into()));
+        assert_eq!(resolve("dot"), Some("node_modules/dot/index.js".into()));
         assert_eq!(resolve("./missing"), None);
     }
 
@@ -537,6 +558,7 @@ mod tests {
         let root = dir.0.as_path();
         let main = root.join("main.go");
         assert_eq!(go(root, &main, "example.com/app/internal/db"), vec![root.join("internal/db/db.go")]);
+        assert!(go(root, &main, "example.com/apple/internal/db").is_empty());
         assert_eq!(path(root, &main, "docs/guide.md"), Some(root.join("docs/guide.md")));
         assert_eq!(path(root, &main, "./docs/guide.md#intro"), Some(root.join("docs/guide.md")));
         assert_eq!(path(root, &main, "https://x.dev/a"), None);

@@ -191,6 +191,31 @@ fn package_dependencies() {
 }
 
 #[test]
+fn default_exports_and_untyped_receivers() {
+    let dir = mock(&[
+        (
+            "a.ts",
+            "export function getDefaultOptions() {}\nexport const defaultTimeout = 5;\nexport default Foo;\nclass Foo {}\n",
+        ),
+        ("b.ts", "class Bar {}\nexport { Bar as default };\n"),
+        (
+            "main.ts",
+            "import A from './a';\nimport B from './b';\nnew A();\nnew B();\nlogger.info(1);\nclass Api { info() {} }\n",
+        ),
+        ("log.ts", "export class Logger { info() {} }\n"),
+        ("src/inspector.ts", "export function inspect() {}\n"),
+        ("src/test/inspect.ts", "export function inspect() {}\n"),
+    ]);
+    let root = dir.0.as_path();
+    assert_eq!(targets(root, at(root, "main.ts", "A();", 0)), vec!["a.ts:4:Foo"]);
+    assert_eq!(targets(root, at(root, "main.ts", "B();", 0)), vec!["b.ts:1:Bar"]);
+    assert_eq!(targets(root, at(root, "main.ts", ".info", 0)).len(), 2);
+    assert!(incidental(Path::new("src/test/inspect.ts")));
+    assert!(!incidental(Path::new("src/inspector.ts")));
+    assert!(incidental(Path::new("src/app.spec.ts")));
+}
+
+#[test]
 fn outlines_nest() {
     let text = "class A {\n  run() {}\n}\nfunction b() { const x = 1; }\n";
     let found: Vec<(String, &str, usize)> =
