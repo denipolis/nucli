@@ -246,7 +246,7 @@ pub const COMMANDS: &[Command] = &[
     command!("go_to_line", "Go to Line…", GoToLine, "ctrl-g", "ctrl-g", "FileView"),
     command!("browse_folder", "Browse Folder of File…", BrowseFolder, "cmd-shift-.", "ctrl-alt-shift-.", "FileView"),
     command!("go_back", "Go Back", GoBack, "ctrl--", "alt-left", "FileView"),
-    command!("go_forward", "Go Forward", GoForward, "ctrl-shift--", "alt-right", "FileView"),
+    command!("go_forward", "Go Forward", GoForward, "ctrl-_", "alt-right", "FileView"),
     command!("hide_file_view", "Hide File View", HideFileView, "escape", "escape", "FileView"),
     command!("open_settings", "Settings…", OpenSettings, "cmd-,", "ctrl-,"),
     command!("open_settings_file", "Open Settings File", OpenSettingsFile, "", ""),
