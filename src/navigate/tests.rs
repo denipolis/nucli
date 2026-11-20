@@ -70,6 +70,12 @@ fn typescript_navigation() {
         ),
         ("src/ui/button.tsx", "export class Button {\n  constructor() {}\n}\n"),
         ("src/ui/helpers.ts", "export const helper = (x: number) => x;\n"),
+        (
+            "src/view.tsx",
+            "import styles from './view.module.css';\nimport { Button as Btn } from './ui';\n\n\
+             export const View = () => <Btn className={styles.box} />;\n",
+        ),
+        ("src/view.module.css", ".box { color: red; }\n"),
         ("src/math.ts", "export function add(a: number, b: number) {\n  return a + b;\n}\n"),
         ("src/config.ts", "export interface Config {\n  name: string;\n}\n"),
         ("tsconfig.json", "{ \"compilerOptions\": { \"paths\": { \"@/*\": [\"./src/*\"] } } }"),
@@ -87,6 +93,9 @@ fn typescript_navigation() {
     assert_eq!(targets(root, at(root, file, ".stop()", 0)), vec!["src/app.ts:13:stop"]);
     assert_eq!(targets(root, at(root, file, " Button as", 0)), vec!["src/ui/button.tsx:1:Button"]);
     assert_eq!(at(root, file, " run(", 0), Outcome::Definition("run".into()));
+    let view = "src/view.tsx";
+    assert_eq!(targets(root, at(root, view, "<Btn", 0)), vec!["src/ui/button.tsx:1:Button"]);
+    assert_eq!(targets(root, at(root, view, ".box", 0)), vec!["src/view.module.css:1:view.module.css"]);
 }
 
 #[test]
@@ -102,7 +111,10 @@ fn rust_navigation() {
             "src/store.rs",
             "pub struct Store {}\n\nimpl Store {\n    pub fn new(x: u32) -> Self { Store {} }\n}\n\npub fn helper() {}\n",
         ),
-        ("src/view.rs", "pub fn render(store: &crate::store::Store) {}\n"),
+        (
+            "src/view.rs",
+            "pub fn render(store: &crate::store::Store) {}\n\nfn other() {\n    let map = std::collections::HashMap::new();\n}\n",
+        ),
     ]);
     let root = dir.0.as_path();
     let file = "src/main.rs";
@@ -113,6 +125,7 @@ fn rust_navigation() {
     assert_eq!(targets(root, at(root, file, "(total)", 0)), vec!["src/main.rs:6:total"]);
     assert_eq!(targets(root, at(root, file, ":render", 0)), vec!["src/view.rs:1:render"]);
     assert_eq!(targets(root, at(root, file, " view::", 0)), vec!["src/view.rs:1:view.rs"]);
+    assert_eq!(targets(root, at(root, "src/view.rs", ":new(", 0)), vec!["Nothing(\"new\")"]);
 }
 
 #[test]

@@ -168,7 +168,16 @@ fn jump(
 ) {
     let project = view.current_project_path(cx).unwrap_or_default();
     push_spot(view, cx);
-    let file = relative_spec(&project, &location.path);
+    let active =
+        view.state(cx).and_then(|state| state.current_project()).and_then(|project| project.active_file().cloned());
+    let same = active
+        .as_ref()
+        .and_then(|file| view.files.open.get(&key(&project, file)))
+        .is_some_and(|editor| editor.read(cx).full == location.path);
+    let file = match active {
+        Some(active) if same => active,
+        _ => relative_spec(&project, &location.path),
+    };
     open_file(view, &project, &file, None, window, cx);
     let editor = editor_for(view, &project, &file, cx);
     editor.update(cx, |editor, cx| {

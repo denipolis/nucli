@@ -692,6 +692,10 @@ impl Editor {
     }
 
     fn hover_link(&mut self, row: usize, x: Pixels, window: &Window, cx: &mut Context<Self>) {
+        if x < self.code_origin.x - self.scroll.0.borrow().base_handle.offset().x {
+            self.clear_link(cx);
+            return;
+        }
         let pos = self.pos_at(row, x, window, cx);
         let Some(cols) = self.link_range(pos) else {
             self.clear_link(cx);

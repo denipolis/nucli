@@ -795,6 +795,12 @@ fn identifier_target(
         if let Some(found) = resolver.rust_target(file, &parts, 0) {
             return found;
         }
+        let external = parts.first().is_some_and(|first| {
+            first.starts_with(|c: char| c.is_lowercase()) && !matches!(*first, "crate" | "self" | "super")
+        });
+        if external && parts.len() > 1 {
+            return Vec::new();
+        }
         if let Some(qualifier) = parts.len().checked_sub(2).map(|index| parts[index]) {
             let qualifier =
                 if qualifier == "Self" { enclosing_type(symbols, offset) } else { Some(qualifier.to_string()) };
@@ -831,15 +837,14 @@ fn identifier_target(
     }
     if let Some(qualifier) = member_parts(node, text) {
         let base = qualifier.split(['.', '(', '[', '!', '?']).next().unwrap_or(&qualifier).to_string();
-        if let Some(import) =
-            imports.iter().find(|import| import.binding == base && import.imported == Imported::Module)
-        {
+        let namespace = |import: &&Import| {
+            import.binding == base && matches!(import.imported, Imported::Module | Imported::Default)
+        };
+        if let Some(import) = imports.iter().find(namespace) {
             let files = resolver.module_files(language, file, &import.source);
             let found: Vec<Location> =
                 files.iter().flat_map(|module| resolver.exported(module, name, None, 1)).collect();
-            if !found.is_empty() {
-                return found;
-            }
+            return if found.is_empty() { files.iter().map(|module| file_start(module)).collect() } else { found };
         }
         let own = matches!(base.as_str(), "this" | "self" | "Self" | "cls" | "super");
         let container = if own { enclosing_type(symbols, offset) } else { Some(base.clone()) };
@@ -880,10 +885,7 @@ fn identifier_target(
     if let Some(import) =
         imports.iter().find(|import| import.binding == name && !(import.export && !import.source.is_empty()))
     {
-        let found = resolver.import_target(language, file, import, 0);
-        if !found.is_empty() {
-            return found;
-        }
+        return resolver.import_target(language, file, import, 0);
     }
     if !same.is_empty() {
         return same.iter().map(|s| here(s)).collect();
