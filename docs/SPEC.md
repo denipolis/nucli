@@ -259,7 +259,7 @@ Files, Search, Changes and History (commits) follow the current project; with no
   - Several definitions show a list under the pointer; none shows "No definition found" at the name for a moment. `⌥⌘`-click opens the definition in a new group to the right. URLs open in the browser.
   - `⌘`-click on a definition itself, or `⇧F12`, finds its references: Search runs for the name with match case and whole word.
   - `⇧⌘O` (Go to Symbol in File) lists the file's classes, functions, methods, types and fields, nested under their container. `⌃G` (Go to Line) takes `line` or `line:column`.
-  - Go Back and Go Forward (`⌃-` / `⌃_`, the mouse's back and forward buttons) move through the places left by go to definition, symbols, breadcrumbs and quick open. The Go menu holds these commands, quick open and next/previous change.
+  - Go Back and Go Forward (`⌃-` / `⌃⇧-`, the mouse's back and forward buttons) move through the places left by go to definition, symbols, breadcrumbs and quick open. The Go menu holds these commands, quick open and next/previous change.
 - The name under the cursor (or the selected text on one line) is highlighted wherever it appears; the bracket next to the cursor and its partner are boxed. Clicking a line number selects the line, `⇧`-click extends the selection by lines.
 - `esc` hides the file view (tabs stay); `⌘W` closes the shown file tab.
 - Context menu of a file tab: Close, Close Others, Close to the Right, Close All (one Save All / Don't Save / Cancel prompt for several unsaved files), Split Right, Split Down, Open in Default App, Open With…, Reveal in File Manager, Copy Path, Copy Relative Path.

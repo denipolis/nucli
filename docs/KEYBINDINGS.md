@@ -53,7 +53,7 @@ On Linux and Windows every default uses the same key as on macOS with the modifi
 | Go to symbol in file | `go_to_symbol` | `cmd-shift-o` | `ctrl-alt-shift-o` |
 | Go to line (`line` or `line:column`) | `go_to_line` | `ctrl-g` | `ctrl-g` |
 | Browse the folder of the shown file (the breadcrumbs' list) | `browse_folder` | `cmd-shift-.` | `ctrl-alt-shift-.` |
-| Go back / forward (also the mouse's back and forward buttons) | `go_back` / `go_forward` | `ctrl--` / `ctrl-_` | `alt-left` / `alt-right` |
+| Go back / forward (also the mouse's back and forward buttons) | `go_back` / `go_forward` | `ctrl--` / `ctrl-shift--` | `alt-left` / `alt-right` |
 | Hide the file view | `hide_file_view` | `escape` | `escape` |
 | Settings page | `open_settings` | `cmd-,` | `ctrl-,` |
 | Settings file | `open_settings_file` | | |

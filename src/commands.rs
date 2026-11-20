@@ -246,7 +246,7 @@ pub const COMMANDS: &[Command] = &[
     command!("go_to_line", "Go to Line…", GoToLine, "ctrl-g", "ctrl-g", "FileView"),
     command!("browse_folder", "Browse Folder of File…", BrowseFolder, "cmd-shift-.", "ctrl-alt-shift-.", "FileView"),
     command!("go_back", "Go Back", GoBack, "ctrl--", "alt-left", "FileView"),
-    command!("go_forward", "Go Forward", GoForward, "ctrl-_", "alt-right", "FileView"),
+    command!("go_forward", "Go Forward", GoForward, "ctrl-shift--", "alt-right", "FileView"),
     command!("hide_file_view", "Hide File View", HideFileView, "escape", "escape", "FileView"),
     command!("open_settings", "Settings…", OpenSettings, "cmd-,", "ctrl-,"),
     command!("open_settings_file", "Open Settings File", OpenSettingsFile, "", ""),
@@ -387,7 +387,10 @@ pub fn rebind(name: &str, key: Option<&str>) {
 }
 
 pub fn shifted_alias(key: &str) -> Option<String> {
-    let (head, last) = key.rsplit_once('-')?;
+    let (head, last) = match key.strip_suffix("--") {
+        Some(head) => (head, "-"),
+        None => key.rsplit_once('-')?,
+    };
     let symbol = match last {
         "1" => "!",
         "2" => "@",
@@ -400,6 +403,7 @@ pub fn shifted_alias(key: &str) -> Option<String> {
         "9" => "(",
         "0" => ")",
         "`" => "~",
+        "-" => "_",
         "[" => "{",
         "]" => "}",
         "=" => "+",
@@ -681,6 +685,8 @@ mod tests {
         assert_eq!(shifted_alias("ctrl-shift-2").as_deref(), Some("ctrl-@"));
         assert_eq!(shifted_alias("cmd-shift-]").as_deref(), Some("cmd-}"));
         assert_eq!(shifted_alias("ctrl-shift-`").as_deref(), Some("ctrl-~"));
+        assert_eq!(shifted_alias("ctrl-shift--").as_deref(), Some("ctrl-_"));
+        assert_eq!(shifted_alias("ctrl--"), None);
         assert_eq!(shifted_alias("ctrl-shift-t"), None);
         assert_eq!(shifted_alias("cmd-1"), None);
     }
