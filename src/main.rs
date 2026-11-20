@@ -26,6 +26,7 @@ mod hold;
 #[cfg(target_os = "macos")]
 mod import;
 mod menu;
+mod navigate;
 mod notify;
 mod onboarding;
 mod overview;

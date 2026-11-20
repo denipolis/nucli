@@ -100,6 +100,7 @@ pub struct Palette {
     pub prompt: bool,
     pub digits: bool,
     pub anchor: Option<gpui::Point<gpui::Pixels>>,
+    pub below: bool,
     scroll: UniformListScrollHandle,
     _subscription: Subscription,
 }
@@ -145,6 +146,7 @@ impl Palette {
             prompt: false,
             digits: false,
             anchor: None,
+            below: false,
             scroll: UniformListScrollHandle::new(),
             _subscription: subscription,
         };
@@ -159,6 +161,12 @@ impl Palette {
 
     pub fn anchored(mut self, position: gpui::Point<gpui::Pixels>) -> Self {
         self.anchor = Some(position);
+        self
+    }
+
+    pub fn anchored_below(mut self, position: gpui::Point<gpui::Pixels>) -> Self {
+        self.anchor = Some(position);
+        self.below = true;
         self
     }
 

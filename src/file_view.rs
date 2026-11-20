@@ -11,6 +11,8 @@ use gpui::{
 use crate::editor::{Content, Editor, EditorEvent};
 use crate::icons;
 use crate::menu::{self, Item};
+use crate::navigate::{self, Outcome};
+use crate::palette::{self, Palette};
 use crate::persist::Selected;
 use crate::splits::{Direction, Rect, Zone};
 use crate::splits_view::DropTarget;
@@ -22,6 +24,17 @@ use crate::window::WorkspaceView;
 pub struct Files {
     pub open: HashMap<String, Entity<Editor>>,
     pub strips: HashMap<String, (gpui::ScrollHandle, Option<String>)>,
+    pub window: Option<gpui::AnyWindowHandle>,
+    pub back: Vec<Spot>,
+    pub forward: Vec<Spot>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Spot {
+    project: PathBuf,
+    file: String,
+    line: usize,
+    col: usize,
 }
 
 #[derive(Clone)]
@@ -74,10 +87,245 @@ pub fn editor_for(
             let items = editor_menu(view, &editor, cx);
             view.open_menu(*position, items, cx);
         }
+        EditorEvent::Navigate { outcome, side, position } => {
+            let (outcome, side, position) = (outcome.clone(), *side, *position);
+            with_window(view, cx, move |view, window, cx| navigate(view, outcome, side, position, window, cx));
+        }
+        EditorEvent::References(word) => {
+            let word = word.clone();
+            with_window(view, cx, move |view, window, cx| crate::search_view::references(view, word, window, cx));
+        }
     })
     .detach();
     view.files.open.insert(id, editor.clone());
     editor
+}
+
+fn with_window(
+    view: &WorkspaceView,
+    cx: &mut Context<WorkspaceView>,
+    run: impl FnOnce(&mut WorkspaceView, &mut Window, &mut Context<WorkspaceView>) + 'static,
+) {
+    let Some(handle) = view.files.window else { return };
+    let this = cx.entity().downgrade();
+    cx.defer(move |cx: &mut App| {
+        let _ = handle.update(cx, |_, window, cx| {
+            let _ = this.update(cx, |view, cx| run(view, window, cx));
+        });
+    });
+}
+
+fn current_spot(view: &WorkspaceView, cx: &App) -> Option<Spot> {
+    let project = view.state(cx)?.current_project()?;
+    let file = project.active_file()?.clone();
+    let editor = view.files.open.get(&key(&project.path, &file))?;
+    let (line, col) = editor.read(cx).spot();
+    Some(Spot { project: project.path.clone(), file, line, col })
+}
+
+pub fn push_spot(view: &mut WorkspaceView, cx: &App) {
+    let Some(spot) = current_spot(view, cx) else { return };
+    if view.files.back.last() != Some(&spot) {
+        view.files.back.push(spot);
+        if view.files.back.len() > 50 {
+            view.files.back.remove(0);
+        }
+    }
+    view.files.forward.clear();
+}
+
+fn open_spot(view: &mut WorkspaceView, spot: Spot, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    open_file(view, &spot.project, &spot.file, None, window, cx);
+    let editor = editor_for(view, &spot.project, &spot.file, cx);
+    editor.update(cx, |editor, cx| {
+        editor.goto_text_line(spot.line, spot.col..spot.col);
+        cx.notify();
+    });
+}
+
+pub fn go_back(view: &mut WorkspaceView, forward: bool, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    let spot = if forward { view.files.forward.pop() } else { view.files.back.pop() };
+    let Some(spot) = spot else { return };
+    if let Some(current) = current_spot(view, cx) {
+        if forward { view.files.back.push(current) } else { view.files.forward.push(current) }
+    }
+    open_spot(view, spot, window, cx);
+}
+
+fn relative_spec(project: &Path, path: &Path) -> String {
+    match path.strip_prefix(project) {
+        Ok(relative) if !project.as_os_str().is_empty() => relative.to_string_lossy().replace('\\', "/"),
+        _ => path.to_string_lossy().into_owned(),
+    }
+}
+
+fn jump(
+    view: &mut WorkspaceView,
+    location: &navigate::Location,
+    side: bool,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    let project = view.current_project_path(cx).unwrap_or_default();
+    push_spot(view, cx);
+    let file = relative_spec(&project, &location.path);
+    open_file(view, &project, &file, None, window, cx);
+    let editor = editor_for(view, &project, &file, cx);
+    editor.update(cx, |editor, cx| {
+        editor.goto_text_line(location.line, location.cols.clone());
+        cx.notify();
+    });
+    if side {
+        split(view, Direction::Right, window, cx);
+    }
+}
+
+fn navigate(
+    view: &mut WorkspaceView,
+    outcome: Outcome,
+    side: bool,
+    position: Option<gpui::Point<gpui::Pixels>>,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    match outcome {
+        Outcome::Url(url) => cx.open_url(&url),
+        Outcome::Definition(name) => crate::search_view::references(view, name, window, cx),
+        Outcome::Locations(found) if found.len() == 1 => jump(view, &found[0], side, window, cx),
+        Outcome::Locations(found) if !found.is_empty() => {
+            let project = view.current_project_path(cx).unwrap_or_default();
+            let theme = ui::theme(cx);
+            let title = format!("{} definitions of {}", found.len(), found[0].name);
+            let items: Vec<palette::Item> = found
+                .into_iter()
+                .map(|location| {
+                    let name =
+                        location.path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+                    let (glyph, color) = icons::file(&name);
+                    let label = format!("{}:{}", relative_spec(&project, &location.path), location.line + 1);
+                    let detail = location.container.clone().unwrap_or_default();
+                    let preview = location.preview.clone();
+                    palette::Item::new(label, move |view, window, cx| jump(view, &location, side, window, cx))
+                        .glyph(glyph, Some(color.color(theme.dark)))
+                        .subtitle(preview)
+                        .detail(detail)
+                })
+                .collect();
+            let palette = cx.new(|cx| {
+                let palette = Palette::new("definition", &title, items, 0, cx);
+                match position {
+                    Some(position) => palette.anchored_below(position),
+                    None => palette,
+                }
+            });
+            view.show_palette(palette, window, cx);
+        }
+        _ => {}
+    }
+}
+
+pub fn dir_picker(
+    view: &mut WorkspaceView,
+    dir: PathBuf,
+    selected: Option<PathBuf>,
+    position: gpui::Point<gpui::Pixels>,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    let theme = ui::theme(cx);
+    let project = view.current_project_path(cx).unwrap_or_default();
+    let mut items = Vec::new();
+    let inside = !project.as_os_str().is_empty() && dir.starts_with(&project);
+    if let Some(parent) = dir.parent().filter(|_| !inside || dir != project) {
+        let (parent, child) = (parent.to_path_buf(), dir.clone());
+        items.push(
+            palette::Item::new("..", move |view, window, cx| {
+                dir_picker(view, parent.clone(), Some(child.clone()), position, window, cx)
+            })
+            .glyph(icons::FOLDER_OPEN, Some(theme.muted))
+            .detail("parent folder"),
+        );
+    }
+    let mut initial = items.len();
+    for entry in crate::files::read_dir(&dir, "") {
+        let path = dir.join(&entry.name);
+        if selected.as_ref().is_some_and(|selected| selected.starts_with(&path)) {
+            initial = items.len();
+        }
+        let item = if entry.is_dir {
+            let target = path.clone();
+            palette::Item::new(format!("{}/", entry.name), move |view, window, cx| {
+                dir_picker(view, target.clone(), None, position, window, cx)
+            })
+            .glyph(icons::FOLDER, Some(theme.muted))
+        } else {
+            let (glyph, color) = icons::file(&entry.name);
+            let (target, external) = (path.clone(), path.clone());
+            let mut item = palette::Item::new(entry.name.clone(), move |view, window, cx| {
+                push_spot(view, cx);
+                open_path(view, &target, None, window, cx);
+            })
+            .glyph(glyph, Some(color.color(theme.dark)));
+            item.alternate = Some(std::rc::Rc::new(move |_, _, cx| cx.open_with_system(&external)));
+            item
+        };
+        items.push(item);
+    }
+    let title = dir.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_else(|| "/".into());
+    let placeholder = if inside {
+        format!("filter {}", relative_spec(&project, &dir))
+    } else {
+        format!("filter {}", crate::paths::display(&dir))
+    };
+    let palette = cx.new(|cx| Palette::new(&title, &placeholder, items, initial, cx).anchored_below(position));
+    view.show_palette(palette, window, cx);
+}
+
+pub fn symbol_picker(
+    view: &mut WorkspaceView,
+    selected: Option<usize>,
+    position: Option<gpui::Point<gpui::Pixels>>,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+) {
+    let Some(editor) = active_editor(view, cx) else { return };
+    let theme = ui::theme(cx);
+    let data = editor.read(cx);
+    let line = |row: usize| data.rows.get(row).and_then(|row| row.new.or(row.old)).unwrap_or(row + 1);
+    let items: Vec<palette::Item> = data
+        .outline
+        .iter()
+        .map(|item| {
+            let (glyph, color) = icons::symbol(item.kind);
+            let (target, at, length) = (editor.clone(), item.at, item.name.len());
+            palette::Item::new(format!("{}{}", "  ".repeat(item.depth), item.name), move |view, window, cx| {
+                push_spot(view, cx);
+                target.update(cx, |editor, cx| {
+                    editor.select_at(at, length);
+                    cx.notify();
+                });
+                let focus = target.read(cx).focus.clone();
+                window.focus(&focus, cx);
+            })
+            .glyph(glyph, Some(color.color(theme.dark)))
+            .subtitle(item.kind)
+            .detail(format!("{}", line(item.start)))
+        })
+        .collect();
+    if items.is_empty() {
+        return;
+    }
+    let initial = selected.unwrap_or_else(|| {
+        data.symbol_path().last().and_then(|current| data.outline.iter().position(|item| item == *current)).unwrap_or(0)
+    });
+    let palette = cx.new(|cx| {
+        let palette = Palette::new("symbol", "go to symbol in file", items, initial, cx);
+        match position {
+            Some(position) => palette.anchored_below(position),
+            None => palette,
+        }
+    });
+    view.show_palette(palette, window, cx);
 }
 
 pub fn set_active_language(view: &WorkspaceView, language: Option<&'static str>, cx: &mut Context<WorkspaceView>) {
@@ -687,15 +935,117 @@ fn tab_strip(
     strip.into_any_element()
 }
 
+fn below(event: &gpui::ClickEvent) -> gpui::Point<gpui::Pixels> {
+    let position = event.position();
+    point(position.x - px(12.0), position.y + px(10.0))
+}
+
+fn crumb(
+    id: SharedString,
+    glyph: Option<(&'static str, gpui::Hsla)>,
+    label: String,
+    cx: &App,
+) -> gpui::Stateful<gpui::Div> {
+    let theme = ui::theme(cx);
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(5.0))
+        .text_color(theme.muted)
+        .hover(|style| style.text_color(theme.text))
+        .when_some(glyph, |this, (glyph, color)| this.child(div().text_color(color).child(glyph)))
+        .child(label)
+}
+
+fn crumbs(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> Vec<AnyElement> {
+    let theme = ui::theme(cx);
+    let (with_icons, with_symbols) =
+        (crate::settings::get(cx).breadcrumb_icons, crate::settings::get(cx).breadcrumb_symbols);
+    let data = editor.read(cx);
+    let full = data.full.clone();
+    let mut dirs: Vec<(String, PathBuf)> = Vec::new();
+    if Path::new(&data.path).is_absolute() {
+        let home = dirs::home_dir();
+        for dir in full.parent().into_iter().flat_map(Path::ancestors) {
+            let at_home = home.as_deref() == Some(dir);
+            let label = match dir.file_name() {
+                _ if at_home => "~".to_string(),
+                Some(name) => name.to_string_lossy().into_owned(),
+                None => dir.display().to_string(),
+            };
+            dirs.push((label, dir.to_path_buf()));
+            if at_home {
+                break;
+            }
+        }
+        dirs.reverse();
+    } else {
+        let mut dir = data.project.clone();
+        let parts: Vec<&str> = data.path.split('/').collect();
+        for part in &parts[..parts.len().saturating_sub(1)] {
+            dir = dir.join(part);
+            dirs.push((part.to_string(), dir.clone()));
+        }
+    }
+    let separator = || div().flex_none().text_color(theme.faint).child("›").into_any_element();
+    let mut elements = Vec::new();
+    for (index, (label, dir)) in dirs.into_iter().enumerate() {
+        let glyph = with_icons.then_some((icons::FOLDER, theme.muted));
+        let selected = full.clone();
+        elements.push(
+            crumb(SharedString::from(format!("crumb-{index}")), glyph, label, cx)
+                .on_click(cx.listener(move |view, event: &gpui::ClickEvent, window, cx| {
+                    dir_picker(view, dir.clone(), Some(selected.clone()), below(event), window, cx)
+                }))
+                .into_any_element(),
+        );
+        elements.push(separator());
+    }
+    let name = full.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+    let (glyph, color) = icons::file(&name);
+    let (parent, selected) = (full.parent().map(Path::to_path_buf).unwrap_or_default(), full.clone());
+    elements.push(
+        crumb("crumb-file".into(), with_icons.then_some((glyph, color.color(theme.dark))), name, cx)
+            .text_color(theme.text)
+            .on_click(cx.listener(move |view, event: &gpui::ClickEvent, window, cx| {
+                dir_picker(view, parent.clone(), Some(selected.clone()), below(event), window, cx)
+            }))
+            .into_any_element(),
+    );
+    if with_symbols && data.content == Content::Text {
+        let path: Vec<(usize, String, &'static str)> = data
+            .symbol_path()
+            .into_iter()
+            .filter_map(|item| {
+                Some((data.outline.iter().position(|known| known == item)?, item.name.clone(), item.kind))
+            })
+            .collect();
+        for (index, name, kind) in path {
+            let (glyph, color) = icons::symbol(kind);
+            elements.push(separator());
+            elements.push(
+                crumb(
+                    SharedString::from(format!("crumb-symbol-{index}")),
+                    with_icons.then_some((glyph, color.color(theme.dark))),
+                    name,
+                    cx,
+                )
+                .on_click(cx.listener(move |view, event: &gpui::ClickEvent, window, cx| {
+                    symbol_picker(view, Some(index), Some(below(event)), window, cx)
+                }))
+                .into_any_element(),
+            );
+        }
+    }
+    elements
+}
+
 fn path_bar(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> impl IntoElement {
     let theme = ui::theme(cx);
+    let crumbs = crumbs(editor, cx);
     let data = editor.read(cx);
-    let display = if Path::new(&data.path).is_absolute() {
-        crate::paths::display(Path::new(&data.path))
-    } else {
-        data.path.clone()
-    };
-    let crumbs = display.replace(['/', '\\'], " › ");
     let (changes, content) = (data.added + data.removed, data.content.clone());
     let full = data.full.clone();
     let button = |id: &'static str, glyph: &'static str| {
@@ -712,7 +1062,7 @@ fn path_bar(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> impl In
         .py(px(2.0))
         .border_b_1()
         .border_color(theme.border)
-        .child(div().flex_1().min_w_0().truncate().text_color(theme.muted).child(crumbs))
+        .child(div().flex().flex_1().min_w_0().overflow_hidden().items_center().gap(px(6.0)).children(crumbs))
         .when(changes > 0, |this| {
             this.child(
                 button("change-previous", icons::ARROW_UP)
@@ -1073,6 +1423,14 @@ pub fn render(view: &mut WorkspaceView, _window: &mut Window, cx: &mut Context<W
         .size_full()
         .bg(theme.background)
         .on_action(cx.listener(|view, _: &crate::commands::HideFileView, window, cx| hide(view, window, cx)))
+        .on_mouse_down(
+            MouseButton::Navigate(gpui::NavigationDirection::Back),
+            cx.listener(|view, _, window, cx| go_back(view, false, window, cx)),
+        )
+        .on_mouse_down(
+            MouseButton::Navigate(gpui::NavigationDirection::Forward),
+            cx.listener(|view, _, window, cx| go_back(view, true, window, cx)),
+        )
         .child(content)
         .child(crate::splits_view::area_probe(view))
         .children(preview)

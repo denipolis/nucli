@@ -221,42 +221,51 @@ fn config(name: &str) -> Option<&'static HighlightConfiguration> {
     CONFIGS[index].get_or_init(|| build(name)).as_ref()
 }
 
+pub fn grammar(name: &str) -> Option<Language> {
+    Some(match name {
+        "Rust" => tree_sitter_rust::LANGUAGE.into(),
+        "JavaScript" => tree_sitter_javascript::LANGUAGE.into(),
+        "TypeScript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+        "TSX" => tree_sitter_typescript::LANGUAGE_TSX.into(),
+        "Python" => tree_sitter_python::LANGUAGE.into(),
+        "Go" => tree_sitter_go::LANGUAGE.into(),
+        "JSON" => tree_sitter_json::LANGUAGE.into(),
+        "TOML" => tree_sitter_toml_ng::LANGUAGE.into(),
+        "YAML" => tree_sitter_yaml::LANGUAGE.into(),
+        "Shell" => tree_sitter_bash::LANGUAGE.into(),
+        "C" => tree_sitter_c::LANGUAGE.into(),
+        "C++" => tree_sitter_cpp::LANGUAGE.into(),
+        "CSS" => tree_sitter_css::LANGUAGE.into(),
+        "HTML" => tree_sitter_html::LANGUAGE.into(),
+        "Markdown" => tree_sitter_md::LANGUAGE.into(),
+        "Java" => tree_sitter_java::LANGUAGE.into(),
+        "Ruby" => tree_sitter_ruby::LANGUAGE.into(),
+        "Swift" => tree_sitter_swift::LANGUAGE.into(),
+        "Lua" => tree_sitter_lua::LANGUAGE.into(),
+        "Makefile" => tree_sitter_make::LANGUAGE.into(),
+        _ => return None,
+    })
+}
+
 fn build(name: &str) -> Option<HighlightConfiguration> {
     let js = tree_sitter_javascript::HIGHLIGHT_QUERY;
     let jsx = tree_sitter_javascript::JSX_HIGHLIGHT_QUERY;
     let ts = tree_sitter_typescript::HIGHLIGHTS_QUERY;
     let js_locals = tree_sitter_javascript::LOCALS_QUERY;
     let ts_locals = tree_sitter_typescript::LOCALS_QUERY;
-    let (language, highlights, injections, locals): (Language, String, &str, String) = match name {
-        "Rust" => (
-            tree_sitter_rust::LANGUAGE.into(),
-            tree_sitter_rust::HIGHLIGHTS_QUERY.into(),
-            tree_sitter_rust::INJECTIONS_QUERY,
-            String::new(),
-        ),
-        "JavaScript" => (
-            tree_sitter_javascript::LANGUAGE.into(),
-            format!("{js}\n{jsx}"),
-            tree_sitter_javascript::INJECTIONS_QUERY,
-            js_locals.into(),
-        ),
-        "TypeScript" => (
-            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-            format!("{js}\n{ts}"),
-            tree_sitter_javascript::INJECTIONS_QUERY,
-            format!("{js_locals}\n{ts_locals}"),
-        ),
+    let (highlights, injections, locals): (String, &str, String) = match name {
+        "Rust" => (tree_sitter_rust::HIGHLIGHTS_QUERY.into(), tree_sitter_rust::INJECTIONS_QUERY, String::new()),
+        "JavaScript" => (format!("{js}\n{jsx}"), tree_sitter_javascript::INJECTIONS_QUERY, js_locals.into()),
+        "TypeScript" => {
+            (format!("{js}\n{ts}"), tree_sitter_javascript::INJECTIONS_QUERY, format!("{js_locals}\n{ts_locals}"))
+        }
         "TSX" => (
-            tree_sitter_typescript::LANGUAGE_TSX.into(),
             format!("{js}\n{jsx}\n{ts}"),
             tree_sitter_javascript::INJECTIONS_QUERY,
             format!("{js_locals}\n{ts_locals}"),
         ),
-        "Python" => {
-            (tree_sitter_python::LANGUAGE.into(), tree_sitter_python::HIGHLIGHTS_QUERY.into(), "", String::new())
-        }
+        "Python" => (tree_sitter_python::HIGHLIGHTS_QUERY.into(), "", String::new()),
         "Go" => (
-            tree_sitter_go::LANGUAGE.into(),
             format!(
                 "(field_identifier) @property\n{}",
                 tree_sitter_go::HIGHLIGHTS_QUERY.replace("(field_identifier) @property\n(identifier) @variable\n", "")
@@ -264,55 +273,33 @@ fn build(name: &str) -> Option<HighlightConfiguration> {
             "",
             String::new(),
         ),
-        "JSON" => (tree_sitter_json::LANGUAGE.into(), tree_sitter_json::HIGHLIGHTS_QUERY.into(), "", String::new()),
-        "TOML" => {
-            (tree_sitter_toml_ng::LANGUAGE.into(), tree_sitter_toml_ng::HIGHLIGHTS_QUERY.into(), "", String::new())
+        "JSON" => (tree_sitter_json::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "TOML" => (tree_sitter_toml_ng::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "YAML" => (tree_sitter_yaml::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "Shell" => (tree_sitter_bash::HIGHLIGHT_QUERY.into(), "", String::new()),
+        "C" => (tree_sitter_c::HIGHLIGHT_QUERY.into(), "", String::new()),
+        "C++" => {
+            (format!("{}\n{}", tree_sitter_c::HIGHLIGHT_QUERY, tree_sitter_cpp::HIGHLIGHT_QUERY), "", String::new())
         }
-        "YAML" => (tree_sitter_yaml::LANGUAGE.into(), tree_sitter_yaml::HIGHLIGHTS_QUERY.into(), "", String::new()),
-        "Shell" => (tree_sitter_bash::LANGUAGE.into(), tree_sitter_bash::HIGHLIGHT_QUERY.into(), "", String::new()),
-        "C" => (tree_sitter_c::LANGUAGE.into(), tree_sitter_c::HIGHLIGHT_QUERY.into(), "", String::new()),
-        "C++" => (
-            tree_sitter_cpp::LANGUAGE.into(),
-            format!("{}\n{}", tree_sitter_c::HIGHLIGHT_QUERY, tree_sitter_cpp::HIGHLIGHT_QUERY),
-            "",
-            String::new(),
-        ),
-        "CSS" => (tree_sitter_css::LANGUAGE.into(), tree_sitter_css::HIGHLIGHTS_QUERY.into(), "", String::new()),
-        "HTML" => (
-            tree_sitter_html::LANGUAGE.into(),
-            tree_sitter_html::HIGHLIGHTS_QUERY.into(),
-            tree_sitter_html::INJECTIONS_QUERY,
-            String::new(),
-        ),
-        "Markdown" => (
-            tree_sitter_md::LANGUAGE.into(),
-            tree_sitter_md::HIGHLIGHT_QUERY_BLOCK.into(),
-            MARKDOWN_INJECTIONS,
-            String::new(),
-        ),
-        "Java" => (tree_sitter_java::LANGUAGE.into(), tree_sitter_java::HIGHLIGHTS_QUERY.into(), "", String::new()),
-        "Ruby" => (
-            tree_sitter_ruby::LANGUAGE.into(),
-            tree_sitter_ruby::HIGHLIGHTS_QUERY.into(),
-            "",
-            tree_sitter_ruby::LOCALS_QUERY.into(),
-        ),
+        "CSS" => (tree_sitter_css::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "HTML" => (tree_sitter_html::HIGHLIGHTS_QUERY.into(), tree_sitter_html::INJECTIONS_QUERY, String::new()),
+        "Markdown" => (tree_sitter_md::HIGHLIGHT_QUERY_BLOCK.into(), MARKDOWN_INJECTIONS, String::new()),
+        "Java" => (tree_sitter_java::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "Ruby" => (tree_sitter_ruby::HIGHLIGHTS_QUERY.into(), "", tree_sitter_ruby::LOCALS_QUERY.into()),
         "Swift" => (
-            tree_sitter_swift::LANGUAGE.into(),
             tree_sitter_swift::HIGHLIGHTS_QUERY.into(),
             tree_sitter_swift::INJECTIONS_QUERY,
             tree_sitter_swift::LOCALS_QUERY.into(),
         ),
         "Lua" => (
-            tree_sitter_lua::LANGUAGE.into(),
             tree_sitter_lua::HIGHLIGHTS_QUERY.into(),
             tree_sitter_lua::INJECTIONS_QUERY,
             tree_sitter_lua::LOCALS_QUERY.into(),
         ),
-        "Makefile" => (tree_sitter_make::LANGUAGE.into(), tree_sitter_make::HIGHLIGHTS_QUERY.into(), "", String::new()),
+        "Makefile" => (tree_sitter_make::HIGHLIGHTS_QUERY.into(), "", String::new()),
         _ => return None,
     };
-    let mut config = HighlightConfiguration::new(language, name, &highlights, injections, &locals).ok()?;
+    let mut config = HighlightConfiguration::new(grammar(name)?, name, &highlights, injections, &locals).ok()?;
     config.configure(&CAPTURES.map(|(capture, _)| capture));
     Some(config)
 }

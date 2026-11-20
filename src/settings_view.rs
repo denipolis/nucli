@@ -17,7 +17,7 @@ use crate::window::WorkspaceView;
 
 type Rows = Vec<Vec<Entity<TextInput>>>;
 
-const SECTIONS: [(SettingsSection, &str, &str, &str); 8] = [
+const SECTIONS: [(SettingsSection, &str, &str, &str); 9] = [
     (
         SettingsSection::General,
         icons::SETTINGS,
@@ -26,6 +26,7 @@ const SECTIONS: [(SettingsSection, &str, &str, &str); 8] = [
     ),
     (SettingsSection::Appearance, icons::THEME, "Appearance", "Theme, light or dark, and the size of the interface."),
     (SettingsSection::Terminal, icons::TERMINAL, "Terminal", "Font and cursor of terminals and the file view."),
+    (SettingsSection::FileView, icons::FILE, "File View", "Breadcrumbs above files and code navigation."),
     (SettingsSection::Agents, icons::AGENT, "Agents", "The agent CLIs you can start in a tab."),
     (SettingsSection::Shells, icons::COMMAND, "Shells", "The shells you can start in a tab."),
     (
@@ -547,6 +548,35 @@ pub fn terminal(current: &Settings, font: AnyElement, theme: &Theme) -> Vec<AnyE
     ]
 }
 
+fn file_view(current: &Settings, theme: &Theme) -> Vec<AnyElement> {
+    vec![
+        group(theme)
+            .child(row(
+                "Breadcrumb icons",
+                "Folder, file and symbol glyphs in the path bar",
+                checkbox(
+                    "breadcrumb-icons",
+                    current.breadcrumb_icons,
+                    |settings, on| settings.breadcrumb_icons = on,
+                    theme,
+                ),
+                theme,
+            ))
+            .child(row(
+                "Breadcrumb symbols",
+                "The class, function or other symbol around the cursor after the file name",
+                checkbox(
+                    "breadcrumb-symbols",
+                    current.breadcrumb_symbols,
+                    |settings, on| settings.breadcrumb_symbols = on,
+                    theme,
+                ),
+                theme,
+            ))
+            .into_any_element(),
+    ]
+}
+
 fn agents_page(page: &SettingsPage, current: &Settings, theme: &Theme) -> Vec<AnyElement> {
     let glyphs = current
         .agents
@@ -817,6 +847,7 @@ pub fn render(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Wo
         (SettingsSection::Terminal, Some(page)) => {
             terminal(&current, page.font_picker.clone().into_any_element(), &theme)
         }
+        (SettingsSection::FileView, _) => file_view(&current, &theme),
         (SettingsSection::Agents, Some(page)) => agents_page(page, &current, &theme),
         (SettingsSection::Shells, Some(page)) => shells_page(page, &current, &theme),
         (SettingsSection::StatusChips, _) => chips_page(&current, &theme, cx),

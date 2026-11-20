@@ -68,6 +68,7 @@ fn file_items(project: &Path, recent: &[String], files: &[String], cx: &App) -> 
         let relative = path.clone();
         let full = project.join(path);
         let mut item = Item::new(path.clone(), move |view, window, cx| {
+            crate::file_view::push_spot(view, cx);
             crate::file_view::open_file(view, &target, &relative, None, window, cx)
         })
         .glyph(glyph, Some(color.color(theme.dark)))

@@ -14,6 +14,7 @@ pub enum SettingsSection {
     General,
     Appearance,
     Terminal,
+    FileView,
     Agents,
     Shells,
     StatusChips,

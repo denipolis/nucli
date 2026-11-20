@@ -1357,6 +1357,15 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
             cx.open_with_system(&dir);
         }))
         .on_action(cx.listener(|view, _: &SelectLanguage, window, cx| crate::palettes::languages(view, window, cx)))
+        .on_action(cx.listener(|view, _: &crate::commands::GoBack, window, cx| {
+            crate::file_view::go_back(view, false, window, cx)
+        }))
+        .on_action(cx.listener(|view, _: &crate::commands::GoForward, window, cx| {
+            crate::file_view::go_back(view, true, window, cx)
+        }))
+        .on_action(cx.listener(|view, _: &crate::commands::GoToSymbol, window, cx| {
+            crate::file_view::symbol_picker(view, None, None, window, cx)
+        }))
         .on_action(cx.listener(|view, _: &Close, window, cx| close(view, window, cx)))
         .on_action(cx.listener(|view, _: &CloseProject, window, cx| {
             if let Some(path) = view.current_project_path(cx) {

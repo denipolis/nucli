@@ -2,7 +2,7 @@
 
 Defaults below. Every command can be rebound under Settings, Keybindings, or in `keybindings.json` (palette: "Open Keybindings File"): `{"cmd-t": "new_shell", "cmd-shift-d": null}`. Keys use `cmd`, `ctrl`, `alt`, `shift` and names like `enter`, `escape`, `tab`, `space`, `left`, `pageup`, `f7`; `null` removes a default. The command palette shows each command's name and current key.
 
-On Linux and Windows every default uses the same key as on macOS with the modifiers translated: `cmd` becomes `ctrl-shift`, `cmd-shift` becomes `ctrl-alt-shift`, `cmd-alt` becomes `ctrl-alt` and `ctrl-cmd` becomes `ctrl-alt-shift`. Plain `ctrl` letters belong to the terminal (`ctrl-c`, `ctrl-r`, …). Exceptions: font size and settings use plain `ctrl`, `new_tab_in_folder` is `ctrl-alt-t` because `ctrl-alt-shift-t` is `new_agent`, full screen is `f11` because `ctrl-alt-shift-f` is `find_in_files`, and inside the file view and text inputs the usual `ctrl-c`, `ctrl-v`, `ctrl-x`, `ctrl-a`, `ctrl-z`, `ctrl-shift-z` and `ctrl-s` work.
+On Linux and Windows every default uses the same key as on macOS with the modifiers translated: `cmd` becomes `ctrl-shift`, `cmd-shift` becomes `ctrl-alt-shift`, `cmd-alt` becomes `ctrl-alt` and `ctrl-cmd` becomes `ctrl-alt-shift`. Plain `ctrl` letters belong to the terminal (`ctrl-c`, `ctrl-r`, …). Exceptions: font size and settings use plain `ctrl`, `new_tab_in_folder` is `ctrl-alt-t` because `ctrl-alt-shift-t` is `new_agent`, full screen is `f11` because `ctrl-alt-shift-f` is `find_in_files`, go back and forward are `alt-left` and `alt-right` in the file view, and inside the file view and text inputs the usual `ctrl-c`, `ctrl-v`, `ctrl-x`, `ctrl-a`, `ctrl-z`, `ctrl-shift-z` and `ctrl-s` work.
 
 | Command | Name | macOS | Linux, Windows |
 |---|---|---|---|
@@ -48,6 +48,10 @@ On Linux and Windows every default uses the same key as on macOS with the modifi
 | Undo / redo / cut in the file view | `undo` / `redo` / `cut` | `cmd-z` / `cmd-shift-z` / `cmd-x` | `ctrl-z` / `ctrl-shift-z` / `ctrl-x` |
 | Save file | `save` | `cmd-s` | `ctrl-s` |
 | Next / previous change | `next_change` / `previous_change` | `f7` / `shift-f7` | `f7` / `shift-f7` |
+| Go to definition (also `cmd`-click, `cmd-alt`-click opens it to the right) | `go_to_definition` | `f12` | `f12` |
+| Find references (Search for the name) | `find_references` | `shift-f12` | `shift-f12` |
+| Go to symbol in file | `go_to_symbol` | `cmd-shift-o` | `ctrl-alt-shift-o` |
+| Go back / forward (also the mouse's back and forward buttons) | `go_back` / `go_forward` | `ctrl--` / `ctrl-shift--` | `alt-left` / `alt-right` |
 | Hide the file view | `hide_file_view` | `escape` | `escape` |
 | Settings page | `open_settings` | `cmd-,` | `ctrl-,` |
 | Settings file | `open_settings_file` | | |

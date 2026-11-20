@@ -208,7 +208,7 @@ impl WorkspaceView {
             prompt_text: String::new(),
             switcher: None,
             panel: Default::default(),
-            files: Default::default(),
+            files: crate::file_view::Files { window: Some(window.window_handle()), ..Default::default() },
             resizing: None,
             view_drag: false,
             dock_bounds: Default::default(),
@@ -474,11 +474,12 @@ impl Render for WorkspaceView {
                     MouseButton::Left,
                     cx.listener(|view, _, window, cx| view.dismiss_palette(window, cx)),
                 );
+            let below = palette.read(cx).below;
             let backdrop = match palette.read(cx).anchor {
                 Some(position) => backdrop.child(
                     gpui::anchored()
                         .position(position)
-                        .anchor(gpui::Anchor::BottomLeft)
+                        .anchor(if below { gpui::Anchor::TopLeft } else { gpui::Anchor::BottomLeft })
                         .snap_to_window_with_margin(px(8.0))
                         .child(content),
                 ),

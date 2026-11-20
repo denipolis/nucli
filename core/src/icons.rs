@@ -97,6 +97,21 @@ pub fn agent(command: &str) -> (&'static str, ItemColor) {
     }
 }
 
+pub fn symbol(kind: &str) -> (&'static str, ItemColor) {
+    match kind {
+        "class" => ("\u{eb5b}", ItemColor::Orange),
+        "interface" | "implementation" => ("\u{eb61}", ItemColor::Teal),
+        "type" => ("\u{ea91}", ItemColor::Teal),
+        "enum" => ("\u{ea95}", ItemColor::Orange),
+        "variant" => ("\u{eb5e}", ItemColor::Blue),
+        "function" | "method" | "macro" => ("\u{ea8c}", ItemColor::Purple),
+        "module" => ("\u{ea8b}", ItemColor::Gray),
+        "constant" => ("\u{eb5d}", ItemColor::Blue),
+        "field" | "property" => ("\u{eb65}", ItemColor::Blue),
+        _ => ("\u{ea88}", ItemColor::Blue),
+    }
+}
+
 pub fn file(name: &str) -> (&'static str, ItemColor) {
     let lower = name.to_lowercase();
     let by_name = match lower.as_str() {

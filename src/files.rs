@@ -40,7 +40,7 @@ struct Scan {
     ignored: HashSet<String>,
 }
 
-fn read_dir(root: &Path, relative: &str) -> Vec<Entry> {
+pub fn read_dir(root: &Path, relative: &str) -> Vec<Entry> {
     let folder = if relative.is_empty() { root.to_path_buf() } else { root.join(relative) };
     let Ok(read) = std::fs::read_dir(folder) else { return Vec::new() };
     let mut entries: Vec<Entry> = read

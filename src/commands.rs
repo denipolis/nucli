@@ -87,6 +87,11 @@ actions!(
         Save,
         NextChange,
         PreviousChange,
+        GoToDefinition,
+        FindReferences,
+        GoToSymbol,
+        GoBack,
+        GoForward,
         HideFileView,
         OpenSettings,
         OpenSettingsFile,
@@ -233,6 +238,11 @@ pub const COMMANDS: &[Command] = &[
     command!("save", "Save File", Save, "cmd-s", "ctrl-s", "FileView"),
     command!("next_change", "Next Change", NextChange, "f7", "f7", "FileView"),
     command!("previous_change", "Previous Change", PreviousChange, "shift-f7", "shift-f7", "FileView"),
+    command!("go_to_definition", "Go to Definition", GoToDefinition, "f12", "f12", "FileView"),
+    command!("find_references", "Find References", FindReferences, "shift-f12", "shift-f12", "FileView"),
+    command!("go_to_symbol", "Go to Symbol in File…", GoToSymbol, "cmd-shift-o", "ctrl-alt-shift-o"),
+    command!("go_back", "Go Back", GoBack, "ctrl--", "alt-left", "FileView"),
+    command!("go_forward", "Go Forward", GoForward, "ctrl-shift--", "alt-right", "FileView"),
     command!("hide_file_view", "Hide File View", HideFileView, "escape", "escape", "FileView"),
     command!("open_settings", "Settings…", OpenSettings, "cmd-,", "ctrl-,"),
     command!("open_settings_file", "Open Settings File", OpenSettingsFile, "", ""),
@@ -523,9 +533,6 @@ const VIEW_MENU: &[&str] = &[
     "show_changes",
     "show_commits",
     "-",
-    "next_change",
-    "previous_change",
-    "-",
     "focus_left",
     "focus_right",
     "focus_up",
@@ -536,6 +543,20 @@ const VIEW_MENU: &[&str] = &[
     "font_reset",
     "-",
     "toggle_full_screen",
+];
+
+const GO_MENU: &[&str] = &[
+    "go_back",
+    "go_forward",
+    "-",
+    "quick_open",
+    "go_to_symbol",
+    "-",
+    "go_to_definition",
+    "find_references",
+    "-",
+    "next_change",
+    "previous_change",
 ];
 
 const WINDOW_MENU: &[&str] = &[
@@ -556,13 +577,14 @@ const WINDOW_MENU: &[&str] = &[
     "select_tab_9",
 ];
 
-pub const WINDOW_MENUS: [&str; 4] = ["File", "Edit", "View", "Window"];
+pub const WINDOW_MENUS: [&str; 5] = ["File", "Edit", "View", "Go", "Window"];
 
 pub fn window_menu(index: usize) -> Vec<&'static str> {
     match index {
         0 => FILE_MENU.iter().chain(&["-", "open_settings", "about", "-", "quit"]).copied().collect(),
         1 => EDIT_MENU.to_vec(),
         2 => VIEW_MENU.to_vec(),
+        3 => GO_MENU.to_vec(),
         _ => WINDOW_MENU.to_vec(),
     }
 }
@@ -596,6 +618,7 @@ pub fn menus() -> Vec<Menu> {
         Menu { name: "File".into(), items: items(FILE_MENU), disabled: false },
         Menu { name: "Edit".into(), items: items(EDIT_MENU), disabled: false },
         Menu { name: "View".into(), items: items(VIEW_MENU), disabled: false },
+        Menu { name: "Go".into(), items: items(GO_MENU), disabled: false },
         Menu { name: "Window".into(), items: items(WINDOW_MENU), disabled: false },
     ]
 }

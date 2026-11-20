@@ -15,6 +15,7 @@ use crate::commands::{self, NextChange, PreviousChange, Save};
 use crate::find::Hit;
 use crate::git::{self, LineKind};
 use crate::highlight::{self, Token};
+use crate::navigate::{self, Outcome};
 use crate::settings;
 use crate::terminal::view::{cell_size, font};
 use crate::text_input::TextInput;
@@ -282,6 +283,67 @@ pub struct FindState {
 
 pub enum EditorEvent {
     Menu(Point<Pixels>),
+    Navigate { outcome: Outcome, side: bool, position: Option<Point<Pixels>> },
+    References(String),
+}
+
+struct Link {
+    row: usize,
+    cols: Range<usize>,
+    outcome: Option<Outcome>,
+}
+
+impl Link {
+    fn ready(&self) -> bool {
+        matches!(&self.outcome, Some(Outcome::Url(_) | Outcome::Definition(_)))
+            || matches!(&self.outcome, Some(Outcome::Locations(found)) if !found.is_empty())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct OutlineItem {
+    pub name: String,
+    pub kind: &'static str,
+    pub depth: usize,
+    pub start: usize,
+    pub end: usize,
+    pub at: Pos,
+}
+
+pub fn link_modifier(modifiers: &gpui::Modifiers) -> bool {
+    if cfg!(target_os = "macos") { modifiers.platform } else { modifiers.control }
+}
+
+fn outline(language: Option<&str>, rows: &[Row]) -> Vec<OutlineItem> {
+    let Some(language) = language else { return Vec::new() };
+    let mut starts = Vec::new();
+    let mut text = String::new();
+    for (index, row) in rows.iter().enumerate() {
+        if row.kind != LineKind::Removed {
+            starts.push((text.len(), index));
+            text.push_str(&row.text);
+            text.push('\n');
+        }
+    }
+    if starts.is_empty() || text.len() > 2 * 1024 * 1024 {
+        return Vec::new();
+    }
+    let at = |offset: usize| {
+        let slot = starts.partition_point(|(start, _)| *start <= offset).saturating_sub(1);
+        let (start, row) = starts[slot];
+        Pos { row, col: offset - start }
+    };
+    navigate::outline(language, &text)
+        .into_iter()
+        .map(|symbol| OutlineItem {
+            kind: symbol.kind,
+            depth: symbol.depth,
+            start: at(symbol.range.start).row,
+            end: at(symbol.range.end.saturating_sub(1).max(symbol.range.start)).row,
+            at: at(symbol.name_range.start),
+            name: symbol.name,
+        })
+        .collect()
 }
 
 pub struct Editor {
@@ -312,6 +374,12 @@ pub struct Editor {
     pending_line: Option<(usize, Range<usize>)>,
     first_load: bool,
     git_revision: u64,
+    link: Option<Link>,
+    link_generation: u64,
+    hovered: Option<(usize, Point<Pixels>)>,
+    notice: Option<(Pos, String)>,
+    notice_generation: u64,
+    pub outline: Vec<OutlineItem>,
     pub added: usize,
     pub removed: usize,
     pub language: Option<&'static str>,
@@ -356,6 +424,12 @@ impl Editor {
             pending_line: None,
             first_load: true,
             git_revision: 0,
+            link: None,
+            link_generation: 0,
+            hovered: None,
+            notice: None,
+            notice_generation: 0,
+            outline: Vec::new(),
             added: 0,
             removed: 0,
             language,
@@ -414,15 +488,230 @@ impl Editor {
         let rows = self.rows.clone();
         let language = self.current_language();
         cx.spawn(async move |this, cx| {
-            let tokens = cx.background_executor().spawn(async move { highlights(language, &rows) }).await;
+            let (tokens, outline) = cx
+                .background_executor()
+                .spawn(async move { (highlights(language, &rows), outline(language, &rows)) })
+                .await;
             let _ = this.update(cx, |editor, cx| {
                 if tokens.len() == editor.rows.len() {
                     editor.tokens = tokens;
+                    editor.outline = outline;
                     cx.notify();
                 }
             });
         })
         .detach();
+    }
+
+    pub fn symbol_path(&self) -> Vec<&OutlineItem> {
+        let row = self.cursor.row;
+        self.outline.iter().filter(|item| item.start <= row && row <= item.end).collect()
+    }
+
+    fn text_and_offset(&self, pos: Pos) -> Option<(String, usize)> {
+        if self.rows.get(pos.row)?.kind == LineKind::Removed {
+            return None;
+        }
+        let mut text = String::new();
+        let mut offset = None;
+        for (index, row) in self.rows.iter().enumerate() {
+            if row.kind == LineKind::Removed {
+                continue;
+            }
+            if index == pos.row {
+                offset = Some(text.len() + pos.col.min(row.text.len()));
+            }
+            text.push_str(&row.text);
+            text.push('\n');
+        }
+        Some((text, offset?))
+    }
+
+    fn resolve_at(&self, pos: Pos, cx: &mut Context<Self>) -> Option<gpui::Task<Outcome>> {
+        let (text, offset) = self.text_and_offset(pos)?;
+        let (project, full) = (self.project.clone(), self.full.clone());
+        let language = self.current_language().filter(|language| *language != highlight::PLAIN_TEXT);
+        Some(cx.background_executor().spawn(async move {
+            let request = navigate::Request { project: &project, file: &full, language, text: &text, offset };
+            navigate::resolve(&request, &|| {
+                if project.is_dir() { navigate::project_files(&project) } else { Default::default() }
+            })
+        }))
+    }
+
+    fn link_range(&self, pos: Pos) -> Option<Range<usize>> {
+        let row = self.rows.get(pos.row).filter(|row| row.kind != LineKind::Removed)?;
+        let text = &row.text;
+        if pos.col >= text.len() {
+            return None;
+        }
+        if let Some(range) = navigate::url_at(text, pos.col) {
+            return Some(range);
+        }
+        let token = self
+            .tokens
+            .get(pos.row)
+            .and_then(|tokens| tokens.iter().find(|(range, _)| range.contains(&pos.col)).map(|(_, token)| *token));
+        let path = navigate::path_at(text, pos.col).filter(|range| text[range.clone()].contains('/'));
+        match token {
+            Some(Token::String) => navigate::path_at(text, pos.col).or_else(|| navigate::word_at(text, pos.col)),
+            Some(Token::Comment) => path,
+            Some(Token::Number | Token::Punctuation) => None,
+            Some(Token::Keyword) => (self.current_language() == Some("Rust"))
+                .then(|| navigate::word_at(text, pos.col))
+                .flatten()
+                .filter(|range| matches!(&text[range.clone()], "crate" | "super" | "self")),
+            _ => path.or_else(|| navigate::word_at(text, pos.col)),
+        }
+    }
+
+    fn clear_link(&mut self, cx: &mut Context<Self>) {
+        if self.link.take().is_some() {
+            self.link_generation += 1;
+            cx.notify();
+        }
+    }
+
+    fn hover_link(&mut self, row: usize, x: Pixels, window: &Window, cx: &mut Context<Self>) {
+        let pos = self.pos_at(row, x, window, cx);
+        let Some(cols) = self.link_range(pos) else {
+            self.clear_link(cx);
+            return;
+        };
+        if self.link.as_ref().is_some_and(|link| link.row == row && link.cols == cols) {
+            return;
+        }
+        self.link_generation += 1;
+        let generation = self.link_generation;
+        self.link = Some(Link { row, cols, outcome: None });
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_millis(60)).await;
+            let Ok(Some(task)) =
+                this.update(
+                    cx,
+                    |editor, cx| {
+                        if editor.link_generation == generation { editor.resolve_at(pos, cx) } else { None }
+                    },
+                )
+            else {
+                return;
+            };
+            let outcome = task.await;
+            let _ = this.update(cx, |editor, cx| {
+                if editor.link_generation == generation
+                    && let Some(link) = editor.link.as_mut()
+                {
+                    link.outcome = Some(outcome);
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    pub fn go_to_definition(&mut self, pos: Pos, side: bool, position: Option<Point<Pixels>>, cx: &mut Context<Self>) {
+        let ready = self
+            .link
+            .as_ref()
+            .filter(|link| link.row == pos.row && link.cols.start <= pos.col && pos.col <= link.cols.end)
+            .and_then(|link| link.outcome.clone());
+        if let Some(outcome) = ready {
+            self.finish_navigation(pos, outcome, side, position, cx);
+            return;
+        }
+        let Some(task) = self.resolve_at(pos, cx) else { return };
+        let progress = crate::store::begin_progress("finding definition", cx);
+        cx.spawn(async move |this, cx| {
+            let outcome = task.await;
+            let _ = this.update(cx, |editor, cx| {
+                crate::store::finish_progress(progress, cx);
+                editor.finish_navigation(pos, outcome, side, position, cx);
+            });
+        })
+        .detach();
+    }
+
+    fn finish_navigation(
+        &mut self,
+        pos: Pos,
+        outcome: Outcome,
+        side: bool,
+        position: Option<Point<Pixels>>,
+        cx: &mut Context<Self>,
+    ) {
+        match outcome {
+            Outcome::Nothing(name) => {
+                let message = if name.is_empty() {
+                    "No definition found".to_string()
+                } else {
+                    format!("No definition found for '{name}'")
+                };
+                self.show_notice(pos, message, cx);
+            }
+            Outcome::Locations(found) if found.is_empty() => self.show_notice(pos, "No definition found".into(), cx),
+            outcome => {
+                self.clear_link(cx);
+                cx.emit(EditorEvent::Navigate { outcome, side, position });
+            }
+        }
+    }
+
+    fn show_notice(&mut self, pos: Pos, message: String, cx: &mut Context<Self>) {
+        self.notice = Some((pos, message));
+        self.notice_generation += 1;
+        let generation = self.notice_generation;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_millis(2500)).await;
+            let _ = this.update(cx, |editor, cx| {
+                if editor.notice_generation == generation {
+                    editor.notice = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    pub fn find_references(&mut self, cx: &mut Context<Self>) {
+        let word = self
+            .rows
+            .get(self.cursor.row)
+            .and_then(|row| navigate::word_at(&row.text, self.cursor.col).map(|range| row.text[range].to_string()));
+        if let Some(word) = word {
+            cx.emit(EditorEvent::References(word));
+        }
+    }
+
+    pub fn goto_text_line(&mut self, line: usize, cols: Range<usize>) {
+        if self.rows.is_empty() {
+            self.pending_line = Some((line + 1, cols));
+            return;
+        }
+        let row = self
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.kind != LineKind::Removed)
+            .nth(line)
+            .map_or(self.rows.len() - 1, |(index, _)| index);
+        let (start, end) = (self.clamp_col(row, cols.start), self.clamp_col(row, cols.end));
+        self.cursor = Pos { row, col: end };
+        self.anchor = (start != end).then_some(Pos { row, col: start });
+        self.scroll.scroll_to_item(row, ScrollStrategy::Center);
+    }
+
+    pub fn select_at(&mut self, at: Pos, length: usize) {
+        let row = at.row.min(self.rows.len().saturating_sub(1));
+        self.anchor = Some(Pos { row, col: self.clamp_col(row, at.col) });
+        self.cursor = Pos { row, col: self.clamp_col(row, at.col + length) };
+        self.scroll.scroll_to_item(row, ScrollStrategy::Center);
+    }
+
+    pub fn spot(&self) -> (usize, usize) {
+        let line = self.rows.iter().take(self.cursor.row).filter(|row| row.kind != LineKind::Removed).count();
+        (line, self.cursor.col)
     }
 
     pub fn can_undo(&self) -> bool {
@@ -444,20 +733,27 @@ impl Editor {
         let (project, path, commit) = (self.project.clone(), self.path.clone(), self.commit.clone());
         let language = self.current_language();
         cx.spawn(async move |this, cx| {
-            let (loaded, tokens) = cx
+            let (loaded, tokens, outline) = cx
                 .background_executor()
                 .spawn(async move {
                     let loaded = load(&project, &path, commit.as_deref());
                     let tokens = highlights(language, &loaded.rows);
-                    (loaded, tokens)
+                    let outline = outline(language, &loaded.rows);
+                    (loaded, tokens, outline)
                 })
                 .await;
-            let _ = this.update(cx, |editor, cx| editor.apply(loaded, tokens, cx));
+            let _ = this.update(cx, |editor, cx| editor.apply(loaded, tokens, outline, cx));
         })
         .detach();
     }
 
-    fn apply(&mut self, loaded: Loaded, tokens: Vec<Vec<(Range<usize>, Token)>>, cx: &mut Context<Self>) {
+    fn apply(
+        &mut self,
+        loaded: Loaded,
+        tokens: Vec<Vec<(Range<usize>, Token)>>,
+        outline: Vec<OutlineItem>,
+        cx: &mut Context<Self>,
+    ) {
         if self.dirty {
             return;
         }
@@ -476,6 +772,8 @@ impl Editor {
         self.content = loaded.content;
         self.rows = loaded.rows;
         self.tokens = tokens;
+        self.outline = outline;
+        self.link = None;
         self.original = loaded.text;
         self.trailing_newline = loaded.trailing_newline;
         self.modified = loaded.modified;
@@ -902,7 +1200,12 @@ impl Render for Editor {
                         let caret = (index == cursor.row && focused)
                             .then(|| text_width(&row.text[..cursor.col.min(row.text.len())]));
                         let text = SharedString::from(row.text.clone());
-                        let runs = editor.row_runs(index, &theme, &family, ligatures);
+                        let mut runs = editor.row_runs(index, &theme, &family, ligatures);
+                        let link = editor.link.as_ref().filter(|link| link.row == index && link.ready());
+                        if let Some(link) = link {
+                            runs = underline(runs, link.cols.clone(), theme.accent);
+                        }
+                        let pointer = link.is_some();
                         let this = cx.entity();
                         let marked = if index == cursor.row { editor.marked.clone() } else { None };
                         div()
@@ -913,11 +1216,20 @@ impl Render for Editor {
                             .flex_row()
                             .min_w_full()
                             .when_some(background, |this, color| this.bg(color))
+                            .when(pointer, |this| this.cursor_pointer())
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(move |editor, event: &gpui::MouseDownEvent, window, cx| {
                                     window.focus(&editor.focus, cx);
+                                    editor.notice = None;
                                     let pos = editor.pos_at(index, event.position.x, window, cx);
+                                    if link_modifier(&event.modifiers) && event.click_count == 1 {
+                                        editor.cursor = pos;
+                                        editor.anchor = None;
+                                        editor.go_to_definition(pos, event.modifiers.alt, Some(event.position), cx);
+                                        cx.notify();
+                                        return;
+                                    }
                                     if event.click_count == 2 {
                                         let start = editor.word_left_of(editor.right_of(pos));
                                         editor.anchor = Some(start);
@@ -952,9 +1264,14 @@ impl Render for Editor {
                                 }),
                             )
                             .on_mouse_move(cx.listener(move |editor, event: &gpui::MouseMoveEvent, window, cx| {
+                                editor.hovered = Some((index, event.position));
                                 if editor.selecting && event.pressed_button == Some(MouseButton::Left) {
                                     editor.cursor = editor.pos_at(index, event.position.x, window, cx);
                                     cx.notify();
+                                } else if link_modifier(&event.modifiers) && event.pressed_button.is_none() {
+                                    editor.hover_link(index, event.position.x, window, cx);
+                                } else {
+                                    editor.clear_link(cx);
                                 }
                             }))
                             .child(
@@ -1078,6 +1395,14 @@ impl Render for Editor {
             .on_mouse_up(MouseButton::Left, cx.listener(|editor, _, _, _| editor.end_drag()))
             .on_mouse_up_out(MouseButton::Left, cx.listener(|editor, _, _, _| editor.end_drag()))
             .on_mouse_move(cx.listener(Self::drag_scrollbar))
+            .on_modifiers_changed(cx.listener(|editor, event: &gpui::ModifiersChangedEvent, window, cx| {
+                match editor.hovered {
+                    Some((row, mouse)) if link_modifier(&event.modifiers) && window.mouse_position() == mouse => {
+                        editor.hover_link(row, mouse.x, window, cx)
+                    }
+                    _ => editor.clear_link(cx),
+                }
+            }))
             .relative()
             .on_action(cx.listener(|editor, _: &commands::Find, window, cx| editor.open_find(false, window, cx)))
             .on_action(cx.listener(|editor, _: &commands::Replace, window, cx| editor.open_find(true, window, cx)))
@@ -1092,6 +1417,10 @@ impl Render for Editor {
             .on_action(cx.listener(|editor, _: &commands::FindPrevious, _, cx| editor.find_step(-1, cx)))
             .on_action(cx.listener(Self::save))
             .on_action(cx.listener(|editor, _: &NextChange, _, cx| editor.jump_change(true, cx)))
+            .on_action(cx.listener(|editor, _: &commands::GoToDefinition, _, cx| {
+                editor.go_to_definition(editor.cursor, false, None, cx)
+            }))
+            .on_action(cx.listener(|editor, _: &commands::FindReferences, _, cx| editor.find_references(cx)))
             .on_action(cx.listener(|editor, _: &PreviousChange, _, cx| editor.jump_change(false, cx)))
             .on_action(cx.listener(|editor, _: &MoveLeft, _, cx| {
                 let pos = match editor.selection() {
@@ -1228,6 +1557,7 @@ impl Render for Editor {
             .children(self.scrollbar(Axis::Vertical, &theme, cx))
             .children(self.scrollbar(Axis::Horizontal, &theme, cx))
             .children(self.find_bar(cx))
+            .children(self.notice_box(gutter, cell, &theme))
             .child(
                 canvas(|_, _, _| {}, {
                     let focus = self.focus.clone();
@@ -1242,7 +1572,50 @@ impl Render for Editor {
     }
 }
 
+fn underline(runs: Vec<TextRun>, range: Range<usize>, color: Hsla) -> Vec<TextRun> {
+    let mut result = Vec::new();
+    let mut position = 0;
+    for run in runs {
+        let (start, end) = (position, position + run.len);
+        position = end;
+        let cuts = [start, range.start.clamp(start, end), range.end.clamp(start, end), end];
+        for pair in cuts.windows(2) {
+            if pair[1] <= pair[0] {
+                continue;
+            }
+            let inside = pair[0] >= range.start && pair[1] <= range.end;
+            let mut part = TextRun { len: pair[1] - pair[0], ..run.clone() };
+            if inside {
+                part.color = color;
+                part.underline = Some(gpui::UnderlineStyle { thickness: px(1.0), color: Some(color), wavy: false });
+            }
+            result.push(part);
+        }
+    }
+    result
+}
+
 impl Editor {
+    fn notice_box(&self, gutter: Pixels, cell: gpui::Size<Pixels>, theme: &Theme) -> Option<impl IntoElement + use<>> {
+        let (pos, message) = self.notice.clone()?;
+        let row = self.rows.get(pos.row)?;
+        let offset = self.scroll.0.borrow().base_handle.offset();
+        let x = gutter + cell.width * text_width(&row.text[..pos.col.min(row.text.len())]) + offset.x;
+        let y = cell.height * (pos.row as f32 + 1.0) + offset.y;
+        Some(
+            div()
+                .absolute()
+                .top(y)
+                .left(x.max(gutter))
+                .px(cell.width)
+                .bg(theme.elevated)
+                .border_1()
+                .border_color(theme.accent)
+                .text_color(theme.text)
+                .child(message),
+        )
+    }
+
     fn reveal_column(&mut self, gutter: Pixels, cell: Pixels) {
         let state = self.scroll.0.borrow();
         let (Some(size), Some(row)) = (state.last_item_size, self.rows.get(self.cursor.row)) else { return };
