@@ -80,7 +80,10 @@ pub fn editor_for(
         .and_then(|state| state.project(project))
         .and_then(|project| project.languages.get(file))
         .and_then(|name| crate::highlight::known_language(name));
-    let backend = crate::backend::Backend::of(&view.workspace, &root, cx);
+    let backend = match Path::new(&path).is_absolute() {
+        true => crate::backend::Backend::Local(root.clone()),
+        false => crate::backend::Backend::of(&view.workspace, &root, cx),
+    };
     let editor = cx.new(|cx| Editor::new(root, path, commit, language, backend, cx));
     cx.observe(&editor, |_, _, cx| cx.notify()).detach();
     cx.subscribe(&editor, |view, editor, event: &EditorEvent, cx| match event {

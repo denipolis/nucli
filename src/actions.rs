@@ -1416,7 +1416,9 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
             crate::file_view::symbol_picker(view, None, None, window, cx)
         }))
         .on_action(cx.listener(|view, _: &crate::commands::BrowseFolder, window, cx| {
-            let Some(full) = crate::file_view::active_editor(view, cx).map(|editor| editor.read(cx).full.clone())
+            let Some(full) = crate::file_view::active_editor(view, cx)
+                .filter(|editor| !editor.read(cx).backend.is_remote())
+                .map(|editor| editor.read(cx).full.clone())
             else {
                 return;
             };
