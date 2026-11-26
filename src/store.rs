@@ -317,6 +317,7 @@ pub struct Workspace {
     pub mru: Vec<String>,
     pub layouts: Vec<Layout>,
     pub notifications: Option<bool>,
+    pub uplink: Option<bool>,
 }
 
 impl Workspace {
@@ -333,6 +334,7 @@ impl Workspace {
             mru: Vec::new(),
             layouts: Vec::new(),
             notifications: None,
+            uplink: None,
         }
     }
 
@@ -450,6 +452,7 @@ impl Workspace {
             mru: Vec::new(),
             layouts: file.layouts,
             notifications: file.notifications,
+            uplink: file.uplink,
         }
     }
 }
@@ -902,6 +905,7 @@ impl Store {
                     scratch: project_file(&workspace.scratch),
                     layouts: workspace.layouts.clone(),
                     notifications: workspace.notifications,
+                    uplink: workspace.uplink,
                 })
                 .collect(),
             remotes: self

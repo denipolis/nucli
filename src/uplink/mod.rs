@@ -987,8 +987,11 @@ impl Uplink {
             .workspaces
             .iter()
             .filter(|item| !item.closed && store.windows.contains_key(&item.id))
-            .filter(|item| workspace.is_empty() || item.name == workspace)
-            .find(|item| item.project(&path).is_some_and(|project| project.uplink.unwrap_or(settings.uplink.share)))
+            .filter(|item| visible(item) && (workspace.is_empty() || item.name == workspace))
+            .find(|item| {
+                item.project(&path)
+                    .is_some_and(|project| project.uplink.or(item.uplink).unwrap_or(settings.uplink.share))
+            })
             .map(|item| item.id.clone())
         else {
             return;
@@ -1248,17 +1251,33 @@ pub fn shared(tab: &str, cx: &App) -> bool {
     }
     let store = store::store(cx).read(cx);
     let Some(session) = store.session(tab) else { return false };
-    let project =
-        store.workspaces.iter().filter(|workspace| !workspace.closed).find_map(|workspace| workspace.project_of(tab));
-    let Some(project) = project else { return false };
-    session.read(cx).uplink.or(project.uplink).unwrap_or(settings::get(cx).uplink.share)
+    let found = store
+        .workspaces
+        .iter()
+        .filter(|workspace| !workspace.closed)
+        .find_map(|workspace| Some((workspace, workspace.project_of(tab)?)));
+    let Some((workspace, project)) = found else { return false };
+    session.read(cx).uplink.or(project.uplink).or(workspace.uplink).unwrap_or(settings::get(cx).uplink.share)
 }
 
 pub fn project_shared(path: &Path, cx: &App) -> bool {
     let store = store::store(cx).read(cx);
-    let project =
-        store.workspaces.iter().filter(|workspace| !workspace.closed).find_map(|workspace| workspace.project(path));
-    project.is_some_and(|project| project.uplink.unwrap_or(settings::get(cx).uplink.share))
+    let found = store
+        .workspaces
+        .iter()
+        .filter(|workspace| !workspace.closed)
+        .find_map(|workspace| Some((workspace, workspace.project(path)?)));
+    found.is_some_and(|(workspace, project)| {
+        project.uplink.or(workspace.uplink).unwrap_or(settings::get(cx).uplink.share)
+    })
+}
+
+pub fn workspace_shared(workspace: &store::Workspace, cx: &App) -> bool {
+    workspace.uplink.unwrap_or(settings::get(cx).uplink.share)
+}
+
+fn visible(workspace: &store::Workspace) -> bool {
+    workspace.uplink != Some(false) || workspace.all_projects().any(|project| project.uplink == Some(true))
 }
 
 fn project_key(path: &Path) -> String {
@@ -1275,6 +1294,7 @@ fn catalog(device: &Device, cx: &App) -> Catalog {
     catalog.workspaces = store
         .workspaces
         .iter()
+        .filter(|workspace| visible(workspace))
         .map(|workspace| RemoteWorkspace {
             name: workspace.name.clone(),
             open: !workspace.closed,
@@ -1283,7 +1303,7 @@ fn catalog(device: &Device, cx: &App) -> Catalog {
         .collect();
     for workspace in store.workspaces.iter().filter(|workspace| !workspace.closed) {
         for project in workspace.all_projects() {
-            let project_on = project.uplink.unwrap_or(default);
+            let project_on = project.uplink.or(workspace.uplink).unwrap_or(default);
             let mut any = false;
             for id in project.tabs.iter().chain(&project.terminals) {
                 let Some(entity) = store.session(id) else { continue };

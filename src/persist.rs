@@ -198,6 +198,8 @@ pub struct WorkspaceFile {
     pub layouts: Vec<Layout>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notifications: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uplink: Option<bool>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]

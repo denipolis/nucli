@@ -31,8 +31,10 @@ fn shared_projects(cx: &App) -> Vec<(PathBuf, String)> {
         .workspaces
         .iter()
         .filter(|workspace| !workspace.closed)
-        .flat_map(|workspace| workspace.all_projects())
-        .filter(|project| !project.is_scratch() && project.uplink.unwrap_or(default))
+        .flat_map(|workspace| {
+            let on = workspace.uplink.unwrap_or(default);
+            workspace.all_projects().filter(move |project| !project.is_scratch() && project.uplink.unwrap_or(on))
+        })
         .map(|project| (project.path.clone(), workspace_of(&project.path, cx)))
         .collect()
 }
@@ -53,7 +55,10 @@ pub(super) fn workspace_of(path: &Path, cx: &App) -> String {
 
 fn open_workspace(name: &str, cx: &App) -> Option<String> {
     let store = store::store(cx).read(cx);
-    let workspace = store.workspaces.iter().find(|item| item.name == name && store.windows.contains_key(&item.id))?;
+    let workspace = store
+        .workspaces
+        .iter()
+        .find(|item| item.name == name && store.windows.contains_key(&item.id) && super::visible(item))?;
     Some(workspace.id.clone())
 }
 
@@ -340,7 +345,11 @@ impl Uplink {
             }
             Request::OpenWorkspace { workspace } => {
                 let store = store::store(cx).read(cx);
-                let Some(id) = store.workspaces.iter().find(|item| item.name == workspace).map(|item| item.id.clone())
+                let Some(id) = store
+                    .workspaces
+                    .iter()
+                    .find(|item| item.name == workspace && super::visible(item))
+                    .map(|item| item.id.clone())
                 else {
                     reply(&outbox, failed("This workspace does not exist."));
                     return;
@@ -353,7 +362,11 @@ impl Uplink {
             Request::RenameWorkspace { workspace, name } => {
                 let name = name.trim().to_string();
                 let store = store::store(cx).read(cx);
-                let Some(id) = store.workspaces.iter().find(|item| item.name == workspace).map(|item| item.id.clone())
+                let Some(id) = store
+                    .workspaces
+                    .iter()
+                    .find(|item| item.name == workspace && super::visible(item))
+                    .map(|item| item.id.clone())
                 else {
                     reply(&outbox, failed("This workspace does not exist."));
                     return;
@@ -376,7 +389,7 @@ impl Uplink {
                     .read(cx)
                     .workspaces
                     .iter()
-                    .find(|item| item.name == workspace)
+                    .find(|item| item.name == workspace && super::visible(item))
                     .map(|item| item.id.clone());
                 match id {
                     Some(id) => {

@@ -756,8 +756,26 @@ pub fn workspace_menu(view: &WorkspaceView, cx: &App) -> Vec<Item> {
         let id = workspace.id.clone();
         items.push(Item::Separator);
         items.push(menu::action(notifications_label(on), move |_, _, cx| set_workspace_notifications(&id, !on, cx)));
+        if crate::uplink::Uplink::enabled(cx) {
+            let shared = crate::uplink::workspace_shared(workspace, cx);
+            let id = workspace.id.clone();
+            items.push(menu::action(share_label(shared), move |_, _, cx| set_workspace_shared(&id, !shared, cx)));
+        }
     }
     items
+}
+
+pub fn share_label(on: bool) -> &'static str {
+    if on { "[x] Share over Uplink" } else { "[ ] Share over Uplink" }
+}
+
+pub fn set_workspace_shared(id: &str, on: bool, cx: &mut App) {
+    store::store(cx).update(cx, |store, cx| {
+        if let Some(workspace) = store.workspace_mut(id) {
+            workspace.uplink = Some(on);
+        }
+        store.changed(cx);
+    });
 }
 
 pub fn notifications_label(on: bool) -> &'static str {
@@ -872,8 +890,7 @@ pub fn project_menu(view: &WorkspaceView, path: &Path, cx: &App) -> Vec<Item> {
     if crate::uplink::Uplink::enabled(cx) {
         let shared = crate::uplink::project_shared(path, cx);
         let (workspace, share_target) = (view.workspace.clone(), target.clone());
-        let label = if shared { "[x] Share over Uplink" } else { "[ ] Share over Uplink" };
-        items.push(menu::action(label, move |_, _, cx| {
+        items.push(menu::action(share_label(shared), move |_, _, cx| {
             let (workspace, share_target) = (workspace.clone(), share_target.clone());
             store::store(cx).update(cx, |store, cx| {
                 if let Some(project) =
@@ -959,8 +976,7 @@ pub fn tab_menu(view: &WorkspaceView, id: &str, cx: &App) -> Vec<Item> {
     if crate::uplink::Uplink::enabled(cx) {
         let shared = crate::uplink::shared(id, cx);
         let tab = id.to_string();
-        let label = if shared { "[x] Share over Uplink" } else { "[ ] Share over Uplink" };
-        items.push(menu::action(label, move |_, _, cx| set_tab_shared(&tab, !shared, cx)));
+        items.push(menu::action(share_label(shared), move |_, _, cx| set_tab_shared(&tab, !shared, cx)));
     }
     let id = id.to_string();
     items.push(menu::action("Close Tab", move |view, window, cx| close_tab(view, &id, window, cx)));
