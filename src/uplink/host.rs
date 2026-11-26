@@ -243,6 +243,19 @@ fn project_of(request: &Request) -> Option<&str> {
     }
 }
 
+fn announce_resumed(outbox: &Outbox, conversation: &str, cx: &mut App) {
+    let store = store::store(cx).read(cx);
+    let found = store.sessions.iter().find(|(_, session)| {
+        let session = session.read(cx);
+        session.is_running() && session.conversation.as_deref() == Some(conversation)
+    });
+    let Some(tab) = found.map(|(id, _)| id.clone()) else { return };
+    if let Some(uplink) = super::uplink(cx) {
+        uplink.update(cx, |uplink, cx| uplink.push_catalogs(cx));
+    }
+    outbox.send(&Message::Opened { tab });
+}
+
 impl Uplink {
     pub(super) fn host_request(&mut self, key: Key, id: u64, request: Request, cx: &mut Context<Self>) {
         let Some(outbox) = self.links.get(&key).map(|link| link.outbox.clone()) else { return };
@@ -389,9 +402,11 @@ impl Uplink {
                     };
                     cx.update(|cx| {
                         let workspace = workspace_of(&found.cwd, cx);
+                        let conversation = found.id.clone();
                         actions::in_window(&workspace, cx, move |view, window, cx| {
                             actions::resume_anywhere(view, found, window, cx);
                             reply(&outbox, Response::Done);
+                            cx.defer(move |cx| announce_resumed(&outbox, &conversation, cx));
                         });
                     });
                 })

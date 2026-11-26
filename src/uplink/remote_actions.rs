@@ -24,6 +24,13 @@ fn tab_of(id: &str) -> String {
     id.rsplit(':').next().unwrap_or_default().to_string()
 }
 
+fn resume_there(workspace: String, key: Key, conversation: String, cx: &mut App) {
+    if let Some(uplink) = super::uplink(cx) {
+        uplink.update(cx, |uplink, _| uplink.opening = Some((key, None)));
+    }
+    send(workspace, key, Request::Resume { conversation }, cx);
+}
+
 fn send(workspace: String, key: Key, request: Request, cx: &mut App) {
     let Some(uplink) = super::uplink(cx) else { return };
     let answered = uplink.update(cx, |uplink, _| uplink.ask(key, request));
@@ -83,7 +90,7 @@ pub fn open_launcher(view: &mut WorkspaceView, project: &Path, launcher: &str, c
 
 pub fn resume(view: &WorkspaceView, conversation: &str, cx: &mut App) {
     if let Some(key) = host(&view.workspace, cx).filter(|_| control(&view.workspace, cx)) {
-        send(view.workspace.clone(), key, Request::Resume { conversation: conversation.to_string() }, cx);
+        resume_there(view.workspace.clone(), key, conversation.to_string(), cx);
     }
 }
 
@@ -576,7 +583,7 @@ pub fn history_rows(view: &WorkspaceView, query: &str, cx: &mut Context<Workspac
                 )
                 .on_click(cx.listener(move |view, _, _, cx| {
                     if let Some(key) = key.filter(|_| control) {
-                        send(view.workspace.clone(), key, Request::Resume { conversation: resume.clone() }, cx);
+                        resume_there(view.workspace.clone(), key, resume.clone(), cx);
                     }
                 }))
                 .on_mouse_down(
@@ -586,7 +593,7 @@ pub fn history_rows(view: &WorkspaceView, query: &str, cx: &mut Context<Workspac
                         if let Some(key) = key.filter(|_| control) {
                             let id = menu_id.clone();
                             items.push(menu::action("Resume", move |view, _, cx| {
-                                send(view.workspace.clone(), key, Request::Resume { conversation: id.clone() }, cx)
+                                resume_there(view.workspace.clone(), key, id.clone(), cx)
                             }));
                             items.push(Item::Separator);
                         }
