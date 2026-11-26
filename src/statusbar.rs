@@ -450,7 +450,7 @@ fn mirror_chips(
 ) -> Chips {
     let mut chips = Chips::new();
     if Chip::Uplink.shown(cx) {
-        let (id, key) = (session.id.clone(), remote.key);
+        let key = remote.key;
         let online = remote.online;
         chips.push((
             Chip::Uplink,
@@ -459,12 +459,7 @@ fn mirror_chips(
                 .when(!online, |this| this.child(div().text_color(theme.red).child("offline")))
                 .when(online && !remote.control, |this| this.child(div().text_color(theme.orange).child("view only")))
                 .on_click(cx.listener(move |view, event: &gpui::ClickEvent, _, cx| {
-                    let close = id.clone();
-                    let mut items = vec![menu::action("Close View", move |_, _, cx| {
-                        if let Some(uplink) = crate::uplink::uplink(cx) {
-                            uplink.update(cx, |uplink, cx| uplink.close_mirror(&close, cx));
-                        }
-                    })];
+                    let mut items = Vec::new();
                     if online {
                         items.push(menu::action("Disconnect", move |_, _, cx| {
                             if let Some(uplink) = crate::uplink::uplink(cx) {
@@ -500,10 +495,13 @@ fn mirror_chips(
             Chip::Branch,
             clickable(chip("status-branch", icons::BRANCH, theme), Chip::Branch, theme, cx)
                 .child(branch)
+                .on_click(cx.listener(|view, _, window, cx| crate::palettes::branches(view, window, cx)))
                 .into_any_element(),
         ));
     }
     if let Some(element) = changes_chip(remote.changes, theme, cx) {
+        let element =
+            element.on_click(|_, window, cx| window.dispatch_action(Box::new(crate::commands::ShowChanges), cx));
         chips.push((Chip::Changes, element.into_any_element()));
     }
     chips.extend(program_chip(session, theme, cx));
