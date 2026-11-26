@@ -161,6 +161,7 @@ pub type Tap = Box<dyn FnMut(&Feed) -> bool + Send>;
 pub enum Request {
     Input(Vec<u8>),
     Resize { cols: usize, rows: usize },
+    Hide,
     Clear,
 }
 
@@ -198,12 +199,12 @@ enum Backend {
         killer: Box<dyn ChildKiller + Send + Sync>,
         work: std::sync::mpsc::Sender<Work>,
         taps: Taps,
-        remote_size: bool,
+        local: Option<GridSize>,
+        votes: Vec<(u64, usize, usize)>,
     },
     Mirror {
         requests: Box<dyn Fn(Request) + Send>,
         requested: Option<(usize, usize)>,
-        typed: bool,
     },
 }
 
@@ -265,7 +266,7 @@ impl Terminal {
             Terminal {
                 term,
                 listener,
-                backend: Backend::Pty { master: pair.master, killer, work, taps, remote_size: false },
+                backend: Backend::Pty { master: pair.master, killer, work, taps, local: None, votes: Vec::new() },
                 pid,
                 anchor,
                 activity,
@@ -295,7 +296,7 @@ impl Terminal {
         let terminal = Terminal {
             term,
             listener,
-            backend: Backend::Mirror { requests, requested: None, typed: false },
+            backend: Backend::Mirror { requests, requested: None },
             pid: None,
             anchor: Arc::new(AtomicBool::new(false)),
             activity,
@@ -325,14 +326,7 @@ impl Terminal {
     }
 
     pub fn write(&mut self, bytes: &[u8]) {
-        if let Backend::Mirror { requests, requested, typed } = &mut self.backend {
-            *typed = true;
-            let current = self.listener.size.lock().map(|size| (size.cols, size.rows)).ok();
-            if let Some((cols, rows)) = *requested
-                && current != Some((cols, rows))
-            {
-                requests(Request::Resize { cols, rows });
-            }
+        if let Backend::Mirror { requests, .. } = &mut self.backend {
             requests(Request::Input(bytes.to_vec()));
             return;
         }
@@ -373,34 +367,65 @@ impl Terminal {
 
     pub fn resize(&mut self, size: GridSize) {
         match &mut self.backend {
-            Backend::Mirror { requests, requested, typed } => {
+            Backend::Mirror { requests, requested } => {
                 self.size = size;
                 if *requested != Some((size.cols, size.rows)) && size.cols >= 2 && size.rows >= 1 {
-                    let current = self.listener.size.lock().map(|size| (size.cols, size.rows)).ok();
-                    let owned = *typed && current == *requested;
                     *requested = Some((size.cols, size.rows));
-                    if owned {
-                        requests(Request::Resize { cols: size.cols, rows: size.rows });
-                    }
+                    requests(Request::Resize { cols: size.cols, rows: size.rows });
                 }
             }
-            Backend::Pty { remote_size: true, .. } => {}
-            Backend::Pty { .. } => self.apply_size(size),
+            Backend::Pty { local, .. } => {
+                *local = Some(size);
+                self.agree();
+            }
         }
     }
 
-    pub fn resize_remote(&mut self, cols: usize, rows: usize) {
-        let size = GridSize { cols: cols.clamp(2, 500), rows: rows.clamp(1, 200), ..self.size };
-        if let Backend::Pty { remote_size, .. } = &mut self.backend {
-            *remote_size = true;
+    pub fn vote(&mut self, voter: u64, size: Option<(usize, usize)>) {
+        if let Backend::Pty { votes, .. } = &mut self.backend {
+            votes.retain(|(id, ..)| *id != voter);
+            if let Some((cols, rows)) = size {
+                votes.push((voter, cols.clamp(2, 500), rows.clamp(1, 200)));
+            }
         }
-        self.apply_size(size);
+        self.agree();
     }
 
-    pub fn claim(&mut self) {
-        if let Backend::Pty { remote_size, .. } = &mut self.backend {
-            *remote_size = false;
+    pub fn keep_votes(&mut self, voters: &[u64]) {
+        if let Backend::Pty { votes, .. } = &mut self.backend {
+            votes.retain(|(id, ..)| voters.contains(id));
         }
+        self.agree();
+    }
+
+    pub fn hide(&mut self) {
+        match &mut self.backend {
+            Backend::Pty { local, .. } => {
+                if local.take().is_some() {
+                    self.agree();
+                }
+            }
+            Backend::Mirror { requests, requested } => {
+                if requested.take().is_some() {
+                    requests(Request::Hide);
+                }
+            }
+        }
+    }
+
+    pub fn revote(&mut self) {
+        if let Backend::Mirror { requested, .. } = &mut self.backend {
+            *requested = None;
+        }
+    }
+
+    fn agree(&mut self) {
+        let Backend::Pty { local, votes, .. } = &self.backend else { return };
+        let sizes =
+            local.iter().map(|size| (size.cols, size.rows)).chain(votes.iter().map(|(_, cols, rows)| (*cols, *rows)));
+        let Some((cols, rows)) = sizes.reduce(|a, b| (a.0.min(b.0), a.1.min(b.1))) else { return };
+        let cell = local.unwrap_or(self.size);
+        self.apply_size(GridSize { cols, rows, ..cell });
     }
 
     fn apply_size(&mut self, size: GridSize) {
@@ -798,6 +823,26 @@ mod tests {
         terminal.resize(GridSize { cols: 160, rows: 45, cell_width: 8.0, cell_height: 16.0 });
         terminal.write(b"echo nucli-resized\r\n");
         wait_for(&terminal, "nucli-resized");
+        terminal.kill();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn viewers_agree_on_the_smallest_size() {
+        let (mut terminal, _events) = run("/bin/sh", &[]);
+        let size = |terminal: &Terminal| (terminal.size().cols, terminal.size().rows);
+        let local = GridSize { cols: 120, rows: 40, cell_width: 8.0, cell_height: 16.0 };
+        terminal.resize(local);
+        terminal.vote(1, Some((80, 50)));
+        assert_eq!(size(&terminal), (80, 40));
+        terminal.resize(local);
+        assert_eq!(size(&terminal), (80, 40));
+        terminal.hide();
+        assert_eq!(size(&terminal), (80, 50));
+        terminal.keep_votes(&[]);
+        assert_eq!(size(&terminal), (80, 50));
+        terminal.resize(local);
+        assert_eq!(size(&terminal), (120, 40));
         terminal.kill();
     }
 

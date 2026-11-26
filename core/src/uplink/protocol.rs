@@ -128,6 +128,9 @@ pub enum Message {
         cols: u16,
         rows: u16,
     },
+    Hide {
+        tab: String,
+    },
     Clear {
         tab: String,
     },

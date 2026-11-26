@@ -326,6 +326,16 @@ impl Link {
         }
     }
 
+    pub fn conn(&self, key: &Key) -> Option<u64> {
+        self.online.get(key).map(|online| online.conn)
+    }
+
+    pub fn hide(&self, key: Key, tab: &str) {
+        if let Some(online) = self.online.get(&key) {
+            online.outbox.send(&Message::Hide { tab: tab.to_string() });
+        }
+    }
+
     pub fn resize(&self, key: Key, tab: &str, cols: usize, rows: usize) {
         if let Some(online) = self.online.get(&key) {
             let (cols, rows) = (cols.min(u16::MAX as usize) as u16, rows.min(u16::MAX as usize) as u16);

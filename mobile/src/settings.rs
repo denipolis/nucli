@@ -119,7 +119,7 @@ impl Home {
                     ),
             )
             .child(ui::hint(
-                "Used once the phone types into a terminal. Until then a terminal keeps its computer's size and fits the screen.",
+                "Used while the keyboard is open in a terminal. Otherwise a terminal keeps the size its computers agree on and fits the screen.",
                 theme,
             ))
             .child(ui::section("computers", theme));

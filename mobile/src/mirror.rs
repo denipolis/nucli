@@ -30,8 +30,7 @@ pub struct Mirror {
     term: Arc<FairMutex<Term<VoidListener>>>,
     focus: FocusHandle,
     marked: Option<String>,
-    fit: (usize, usize),
-    held: bool,
+    voted: Option<(u64, usize, usize)>,
     pub ctrl: bool,
     grid: Option<(Point<Pixels>, Size<Pixels>)>,
     scroll: f32,
@@ -69,8 +68,7 @@ impl Mirror {
             term,
             focus: cx.focus_handle().tab_stop(true),
             marked: None,
-            fit: (0, 0),
-            held: false,
+            voted: None,
             ctrl: false,
             grid: None,
             scroll: 0.0,
@@ -167,15 +165,7 @@ impl Mirror {
         if !self.control(cx) {
             return;
         }
-        let size = {
-            let mut term = self.term.lock();
-            term.scroll_display(Scroll::Bottom);
-            (term.columns(), term.screen_lines())
-        };
-        if self.fit.0 > 0 && (!self.held || size != self.fit) {
-            self.link.read(cx).resize(self.key, &self.tab, self.fit.0, self.fit.1);
-        }
-        self.held = true;
+        self.term.lock().scroll_display(Scroll::Bottom);
         self.link.read(cx).input(self.key, &self.tab, bytes);
         cx.notify();
     }
@@ -202,12 +192,15 @@ fn layout(mirror: &Entity<Mirror>, bounds: Bounds<Pixels>, focused: bool, window
     let fit =
         ((width / advance).floor().max(2.0) as usize, (f32::from(bounds.size.height) / line).floor().max(1.0) as usize);
     let (term, marked) = mirror.update(cx, |mirror, cx| {
-        let control = mirror.control(cx);
-        if control && (!mirror.held || mirror.fit != fit) {
-            mirror.link.read(cx).resize(mirror.key, &mirror.tab, fit.0, fit.1);
-            mirror.held = true;
+        let link = mirror.link.read(cx);
+        let vote = link.conn(&mirror.key).filter(|_| focused && mirror.control(cx)).map(|conn| (conn, fit.0, fit.1));
+        if vote != mirror.voted {
+            match vote {
+                Some((_, cols, rows)) => link.resize(mirror.key, &mirror.tab, cols, rows),
+                None => link.hide(mirror.key, &mirror.tab),
+            }
+            mirror.voted = vote;
         }
-        mirror.fit = fit;
         (mirror.term.clone(), mirror.marked.clone())
     });
     let (cols, rows) = {

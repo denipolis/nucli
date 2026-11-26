@@ -8,7 +8,7 @@ mod transfers;
 
 pub use nucli_core::uplink::{devices, invite, net, protocol, transfer, wire};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -530,14 +530,36 @@ impl Uplink {
     }
 
     fn release(&mut self, tab: &str, cx: &mut Context<Self>) {
-        if self.watchers.iter().any(|watcher| watcher.tab == tab && watcher.alive.load(Ordering::Acquire)) {
-            return;
-        }
+        let voters: Vec<u64> = self
+            .watchers
+            .iter()
+            .filter(|watcher| watcher.tab == tab && watcher.alive.load(Ordering::Acquire))
+            .filter(|watcher| {
+                self.device(&watcher.key).is_some_and(|device| !device.blocked && device.access == Access::Control)
+            })
+            .map(|watcher| watcher.conn)
+            .collect();
         if let Some(session) = store::store(cx).read(cx).session(tab).cloned() {
             session.update(cx, |session, cx| {
-                session.terminal.claim();
+                session.terminal.keep_votes(&voters);
                 cx.notify();
             });
+        }
+    }
+
+    fn hide_unseen(&mut self, cx: &mut Context<Self>) {
+        let store = store::store(cx).read(cx);
+        let shown: HashSet<String> = store
+            .workspaces
+            .iter()
+            .filter(|workspace| !workspace.closed && store.windows.contains_key(&workspace.id))
+            .flat_map(|workspace| workspace.visible_tabs())
+            .collect();
+        let tabs = self.watchers.iter().map(|watcher| &watcher.tab).chain(self.mirrors.keys());
+        let hidden: Vec<Entity<Session>> =
+            tabs.filter(|tab| !shown.contains(*tab)).filter_map(|tab| store.session(tab).cloned()).collect();
+        for session in hidden {
+            session.update(cx, |session, _| session.terminal.hide());
         }
     }
 
@@ -714,9 +736,11 @@ impl Uplink {
                 stopped.push(watcher.tab.clone());
             }
         }
-        for tab in stopped {
+        let watched: HashSet<String> = self.watchers.iter().map(|watcher| watcher.tab.clone()).collect();
+        for tab in stopped.into_iter().chain(watched) {
             self.release(&tab, cx);
         }
+        self.hide_unseen(cx);
         self.push_catalogs(cx);
     }
 
@@ -771,7 +795,15 @@ impl Uplink {
             Message::Resize { tab, cols, rows } => {
                 if let Some(session) = self.controlled(conn, key, &tab, cx) {
                     session.update(cx, |session, cx| {
-                        session.terminal.resize_remote(cols as usize, rows as usize);
+                        session.terminal.vote(conn, Some((cols as usize, rows as usize)));
+                        cx.notify();
+                    });
+                }
+            }
+            Message::Hide { tab } => {
+                if let Some(session) = store::store(cx).read(cx).session(&tab).cloned() {
+                    session.update(cx, |session, cx| {
+                        session.terminal.vote(conn, None);
                         cx.notify();
                     });
                 }
@@ -1064,6 +1096,9 @@ impl Uplink {
                             rows: rows.min(u16::MAX as usize) as u16,
                         });
                     }
+                    Request::Hide => {
+                        outbox.send(&Message::Hide { tab: remote_tab.clone() });
+                    }
                     Request::Clear => {
                         outbox.send(&Message::Clear { tab: remote_tab.clone() });
                     }
@@ -1089,6 +1124,12 @@ impl Uplink {
         }
         link.outbox.send(&Message::Watch { tab: target.tab.clone() });
         let key = target.key;
+        if let Some(session) = store::store(cx).read(cx).session(id).cloned() {
+            session.update(cx, |session, cx| {
+                session.terminal.revote();
+                cx.notify();
+            });
+        }
         self.update_mirrors(&key, cx);
     }
 

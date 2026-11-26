@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use alacritty_terminal::event::EventListener;
+use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::Point as GridPoint;
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::Term;
@@ -148,6 +149,7 @@ pub fn layout<T: EventListener>(
     let mut frame = Frame { rects: Vec::new(), lines: Vec::new(), cursor: Vec::new(), cell };
     let mut rows_runs: Vec<Vec<Run>> = (0..rows).map(|_| Vec::new()).collect();
     let term = term.lock();
+    letterbox(&mut frame, bounds, cell, (term.columns(), term.screen_lines().min(rows)), rows, theme);
     let content = term.renderable_content();
     let offset = content.display_offset as i32;
     let selection = content.selection;
@@ -306,6 +308,31 @@ pub fn layout<T: EventListener>(
         }
     }
     frame
+}
+
+fn letterbox(
+    frame: &mut Frame,
+    bounds: Bounds<Pixels>,
+    cell: Size<Pixels>,
+    (columns, lines): (usize, usize),
+    rows: usize,
+    theme: &Theme,
+) {
+    let right = (bounds.origin.x + cell.width * columns as f32).min(bounds.right());
+    let bottom = bounds.origin.y + cell.height * lines as f32;
+    if bounds.right() - right >= cell.width {
+        frame.rects.push((Bounds::from_corners(point(right, bounds.origin.y), bounds.bottom_right()), theme.surface));
+        frame
+            .rects
+            .push((Bounds::from_corners(point(right, bounds.origin.y), point(right + px(1.0), bottom)), theme.border));
+    }
+    if lines < rows {
+        frame.rects.push((Bounds::from_corners(point(bounds.origin.x, bottom), bounds.bottom_right()), theme.surface));
+        frame.rects.push((
+            Bounds::from_corners(point(bounds.origin.x, bottom), point(right + px(1.0), bottom + px(1.0))),
+            theme.border,
+        ));
+    }
 }
 
 pub fn paint(frame: &mut Frame, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {

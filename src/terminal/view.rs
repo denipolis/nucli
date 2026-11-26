@@ -242,7 +242,6 @@ impl Session {
             term.selection = None;
         }
         self.view.cursor_hidden = false;
-        self.terminal.claim();
         self.terminal.write(bytes);
         cx.notify();
     }
@@ -395,7 +394,6 @@ impl Session {
 
     fn mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus, cx);
-        self.terminal.claim();
         if event.button == MouseButton::Left
             && event.modifiers.secondary(cx)
             && let Some(link) = self.link_at(event.position)
