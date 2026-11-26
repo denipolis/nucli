@@ -263,13 +263,13 @@ fn references(
         template: None,
     };
     let progress = store::begin_progress("finding references", cx);
+    let backend = crate::backend::Backend::of(&view.workspace, &project, cx);
+    let searched = backend.ask::<Result<crate::search::Outcome, String>>(crate::backend::Query::Search { request }, cx);
     cx.spawn_in(window, async move |this, cx| {
-        let root = project.clone();
-        let outcome =
-            cx.background_executor().spawn(async move { crate::search::search(&root, &request, &|| false) }).await;
+        let outcome = searched.await;
         let _ = this.update_in(cx, |view, window, cx| {
             store::finish_progress(progress, cx);
-            let Ok(outcome) = outcome else { return };
+            let Some(Ok(outcome)) = outcome else { return };
             let found: Vec<navigate::Location> = outcome
                 .files
                 .into_iter()

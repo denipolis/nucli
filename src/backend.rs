@@ -32,6 +32,7 @@ pub enum Query {
     Branches { limit: usize },
     Search { request: crate::search::Request },
     Load { path: String, commit: Option<String> },
+    Resolve { path: String, text: String, offset: usize, language: Option<String> },
 }
 
 fn hash(text: &str) -> Result<&str, String> {
@@ -71,7 +72,32 @@ pub fn compute(root: &Path, query: Query) -> Result<Value, String> {
             let commit = commit.map(|text| hash(&text).map(String::from)).transpose()?;
             json(crate::editor::load(root, &path, commit.as_deref()))
         }
+        Query::Resolve { path, text, offset, language } => {
+            if Path::new(&path).is_absolute() || crate::uplink::host::inside(root, &path).is_none() {
+                return Err("This file is outside the project.".into());
+            }
+            let file = root.join(&path);
+            let request = crate::navigate::Request {
+                project: root,
+                file: &file,
+                language: language.as_deref(),
+                text: &text,
+                offset,
+                cancelled: &|| false,
+            };
+            let outcome = crate::navigate::resolve(&request, &|| crate::navigate::project_files(root));
+            json(confined(root, outcome))
+        }
     }
+}
+
+fn confined(root: &Path, outcome: crate::navigate::Outcome) -> crate::navigate::Outcome {
+    let crate::navigate::Outcome::Locations(mut found) = outcome else { return outcome };
+    found.retain(|location| {
+        let relative = location.path.strip_prefix(root).ok().and_then(Path::to_str);
+        relative.is_some_and(|relative| crate::uplink::host::inside(root, relative).is_some())
+    });
+    crate::navigate::Outcome::Locations(found)
 }
 
 pub fn answer(root: &Path, query: Value) -> Result<Value, String> {
@@ -175,5 +201,33 @@ impl Backend {
                 })
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::navigate::{Location, Outcome};
+
+    fn location(path: PathBuf) -> Location {
+        Location { path, line: 0, cols: 0..0, name: "run".into(), kind: "", container: None, preview: String::new() }
+    }
+
+    #[test]
+    fn resolved_locations_stay_inside_the_project() {
+        let base = std::env::temp_dir().join(format!("nucli-confined-{}", uuid::Uuid::new_v4()));
+        let root = base.join("project");
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/lib.rs"), "fn run() {}").unwrap();
+        std::fs::write(base.join("secret.rs"), "fn run() {}").unwrap();
+        let found = vec![location(root.join("src/lib.rs")), location(base.join("secret.rs"))];
+        let Outcome::Locations(kept) = confined(&root, Outcome::Locations(found)) else { panic!() };
+        assert_eq!(
+            kept.iter().map(|location| location.path.clone()).collect::<Vec<_>>(),
+            vec![root.join("src/lib.rs")]
+        );
+        let query = serde_json::json!({ "query": "resolve", "path": "../secret.rs", "text": "", "offset": 0, "language": null });
+        assert!(answer(&root, query).is_err());
+        std::fs::remove_dir_all(&base).unwrap();
     }
 }

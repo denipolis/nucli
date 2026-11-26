@@ -559,7 +559,22 @@ impl Editor {
 
     fn resolve_at(&mut self, pos: Pos, hover: Option<u64>, cx: &mut Context<Self>) -> Option<gpui::Task<Outcome>> {
         if self.backend.is_remote() {
-            return None;
+            if hover.is_some() {
+                return None;
+            }
+            let (text, offset) = self.text_and_offset(pos)?;
+            let language = self.current_language().filter(|language| *language != highlight::PLAIN_TEXT);
+            let query = crate::backend::Query::Resolve {
+                path: self.path.clone(),
+                text: text.to_string(),
+                offset,
+                language: language.map(String::from),
+            };
+            let asked = self.backend.ask::<Outcome>(query, cx);
+            return Some(
+                cx.background_executor()
+                    .spawn(async move { asked.await.unwrap_or_else(|| Outcome::Nothing(String::new())) }),
+            );
         }
         let (text, offset) = self.text_and_offset(pos)?;
         let (project, full) = (self.project.clone(), self.full.clone());

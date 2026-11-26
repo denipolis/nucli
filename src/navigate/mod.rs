@@ -24,18 +24,19 @@ pub struct Symbol {
     pub depth: usize,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Location {
     pub path: PathBuf,
     pub line: usize,
     pub cols: Range<usize>,
     pub name: String,
+    #[serde(skip)]
     pub kind: &'static str,
     pub container: Option<String>,
     pub preview: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Outcome {
     Locations(Vec<Location>),
     Definition(String),
