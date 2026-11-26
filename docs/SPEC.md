@@ -190,7 +190,7 @@ Running Claude Code subagents of a tab are listed under it in the Projects view 
 
 Projects (the tree), Agents (the board) and History are lists.
 
-- **Projects**: projects and their tabs. Tab rows: number, the agent's glyph and color, title (the terminal's title, or the profile name until there is one), the running program when the title does not name it (`exited` when the process ended), status on the right.
+- **Projects**: projects and their tabs. Tab rows: number, the agent's glyph and color, title (the terminal's title, or the profile name until there is one), the running program when the title does not name it (`exited` when the process ended), status on the right. While the settings page is open, it shows as the selected row `Settings` with a gear glyph at the end of the list; selecting any other row closes it.
 - **Agents**: this workspace's running agent tabs grouped by status: Waiting, Done, Working, Idle. While Uplink is on, running agents shared by connected devices join the same groups with `device · project` beside the title. Clicking selects the tab, or opens a remote one.
 - **History**: every conversation of every agent profile, newest first (max 150). Clicking resumes it in the project for its folder (opened as a project if needed).
 - **Filter** at the bottom of each list filters it by name, path and title; a matching project shows all its tabs; `enter` selects the first match, `esc` clears. `⌥⌘F` focuses the filter of the shown list, or shows Projects when no list is shown.

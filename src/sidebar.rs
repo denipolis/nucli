@@ -464,6 +464,7 @@ fn projects(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
         .flat_map(|project| project.tabs.iter())
         .filter_map(|id| store.session(id).map(|session| (id.clone(), session.clone())))
         .collect();
+    let settings = view.settings.is_some();
     let mut rows = Vec::new();
     let order = state.ordered_tabs();
     for project in state.all_projects() {
@@ -485,7 +486,7 @@ fn projects(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
         let loose = project.is_scratch();
         let collapsed = !loose && project.collapsed && query.trim().is_empty();
         if !loose {
-            let selected = state.selected == Some(Selected::Project(project.path.clone()));
+            let selected = !settings && state.selected == Some(Selected::Project(project.path.clone()));
             let status = if collapsed { hidden_status(view, project, cx) } else { None };
             rows.push(project_row(view, project, selected, status, cx));
         }
@@ -503,7 +504,7 @@ fn projects(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
                 last: group_of(tabs.get(index + 1)) != Some(group),
                 active: selected_group == Some(group) && !state.file_shown(),
             });
-            let selected = state.selected_tab() == Some(id.as_str());
+            let selected = !settings && state.selected_tab() == Some(id.as_str());
             let theme = ui::theme(cx);
             let mut info = TabInfo::new(session.read(cx), &theme, tick);
             info.loose = loose;
@@ -538,7 +539,33 @@ fn projects(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) 
             }
         }
     }
+    if settings && matches(query, &["Settings"]) {
+        rows.push(settings_row(cx));
+    }
     rows
+}
+
+fn settings_row(cx: &App) -> AnyElement {
+    let theme = ui::theme(cx);
+    div()
+        .flex()
+        .child(gutter(None, false, true, &theme))
+        .child(
+            div()
+                .flex()
+                .flex_1()
+                .min_w_0()
+                .items_center()
+                .gap(px(6.0))
+                .pl(px(6.0))
+                .pr(px(8.0))
+                .bg(theme.accent)
+                .text_color(theme.on_accent)
+                .child(div().w(px(14.0)))
+                .child(icons::SETTINGS)
+                .child(div().flex_1().truncate().child("Settings")),
+        )
+        .into_any_element()
 }
 
 type BoardGroup = Vec<(String, gpui::Entity<Session>, PathBuf)>;
