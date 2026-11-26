@@ -57,7 +57,13 @@ pub fn start(name: String, cx: &mut App) -> Entity<Link> {
     let path = crate::prefs::dir().join("uplink.json");
     let (identity, devices) = devices::load(&path);
     let (events, mut received) = futures::channel::mpsc::unbounded();
-    let hello = Hello { name, os: std::env::consts::OS.into(), version: env!("CARGO_PKG_VERSION").into(), port: 0 };
+    let hello = Hello {
+        name,
+        os: std::env::consts::OS.into(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        port: 0,
+        protocol: nucli_core::uplink::protocol::PROTOCOL,
+    };
     let shared = Shared::new(identity, hello, events);
     let browser = crate::nearby::start(&shared);
     let link = cx.new(|_| Link {

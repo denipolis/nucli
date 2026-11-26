@@ -76,6 +76,9 @@ pub fn receive(
             let name = target.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
             let temp = target.with_file_name(format!(".{name}.nucli-part"));
             let result = async {
+                if let Some(folder) = target.parent() {
+                    std::fs::create_dir_all(folder).map_err(|error| error.to_string())?;
+                }
                 let _ = std::fs::remove_file(&temp);
                 let mut file = std::fs::OpenOptions::new()
                     .write(true)

@@ -99,6 +99,14 @@ fn run(line: &str, cx: &mut App) {
         uplink(rest.trim(), cx);
         return;
     }
+    if command == "attach" {
+        let store = crate::store::store(cx).read(cx);
+        let selected = store.workspaces.iter().find_map(|workspace| workspace.selected_tab().map(String::from));
+        if let Some(session) = selected.and_then(|id| store.session(&id).cloned()) {
+            crate::uplink::files::attach(session, vec![std::path::PathBuf::from(rest.trim())], cx);
+        }
+        return;
+    }
     #[cfg(target_os = "macos")]
     if command == "event" {
         let event = rest.to_string();

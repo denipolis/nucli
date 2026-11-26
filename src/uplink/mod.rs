@@ -225,6 +225,7 @@ impl Uplink {
             os: std::env::consts::OS.into(),
             version: env!("CARGO_PKG_VERSION").into(),
             port: config.port,
+            protocol: protocol::PROTOCOL,
         };
         let renamed = self.shared.hello.lock().map(|current| *current != hello).unwrap_or(true);
         if let Ok(mut current) = self.shared.hello.lock() {
@@ -694,6 +695,10 @@ impl Uplink {
         if let Some(key) = key {
             self.open_mirror(key, tab, workspace, cx);
         }
+    }
+
+    pub fn protocol(&self, key: &Key) -> u32 {
+        self.links.get(key).map_or(0, |link| link.hello.protocol)
     }
 
     pub fn watchers_of(&self, tab: &str) -> Vec<Key> {

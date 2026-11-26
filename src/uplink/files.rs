@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
-use gpui::{App, AppContext, Context, PathPromptOptions, Window};
+use gpui::{App, AppContext, Context, Entity, Image, PathPromptOptions, Window};
 
 use super::protocol::{Request, Response};
 use super::wire::Key;
 use crate::palette::{Item, Palette};
+use crate::session::Session;
 use crate::window::WorkspaceView;
 use crate::{actions, icons, store};
 
@@ -30,6 +31,62 @@ pub fn upload(key: Key, project: &str, files: Vec<PathBuf>, workspace: &str, cx:
         })
         .detach();
     }
+}
+
+pub fn attach(session: Entity<Session>, files: Vec<PathBuf>, cx: &mut App) {
+    let Some(remote) = session.read(cx).remote.clone().filter(|remote| remote.control) else { return };
+    let Some(uplink) = super::uplink(cx) else { return };
+    let id = session.read(cx).id.clone();
+    let workspace = store::store(cx).read(cx).shower_of(&id).map(|workspace| workspace.id.clone()).unwrap_or_default();
+    if uplink.read(cx).protocol(&remote.key) < 1 {
+        let reason = format!("Update Nucli on {} to send files to its tabs.", remote.device);
+        actions::alert(&workspace, "Files were not sent", reason, cx);
+        return;
+    }
+    let sending: Vec<_> = files
+        .into_iter()
+        .map(|file| {
+            let name = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            let progress = store::begin_progress(format!("sending {name}"), cx);
+            let done = uplink.update(cx, |uplink, cx| uplink.attach(remote.key, &remote.tab, file, cx));
+            (name, progress, done)
+        })
+        .collect();
+    cx.spawn(async move |cx| {
+        let mut paths = Vec::new();
+        for (name, progress, done) in sending {
+            let outcome = done.await.unwrap_or_else(|_| Err("The transfer stopped.".into()));
+            cx.update(|cx| {
+                store::finish_progress(progress, cx);
+                match outcome {
+                    Ok(Response::Attached { text }) => paths.push(text),
+                    Ok(_) => {}
+                    Err(reason) => actions::alert(&workspace, &format!("{name} was not sent"), reason, cx),
+                }
+            });
+        }
+        if !paths.is_empty() {
+            session.update(cx, |session, cx| session.paste_text(&format!("{} ", paths.join(" ")), cx));
+        }
+    })
+    .detach();
+}
+
+pub fn attach_image(session: Entity<Session>, image: Image, cx: &mut App) {
+    let folder = std::env::temp_dir().join("nucli-paste").join(uuid::Uuid::new_v4().to_string());
+    let file = folder.join(format!("image.{}", image.format.extension()));
+    cx.spawn(async move |cx| {
+        let written = cx
+            .background_executor()
+            .spawn(async move {
+                std::fs::create_dir_all(&folder).and_then(|_| std::fs::write(&file, &image.bytes)).map(|_| file)
+            })
+            .await;
+        if let Ok(file) = written {
+            cx.update(|cx| attach(session, vec![file], cx));
+        }
+    })
+    .detach();
 }
 
 pub fn pick_upload(key: Key, project: String, workspace: String, cx: &mut App) {

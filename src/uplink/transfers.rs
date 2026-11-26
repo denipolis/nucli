@@ -119,6 +119,40 @@ impl Uplink {
             .detach();
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn accept_attach(
+        &mut self,
+        key: Key,
+        outbox: Outbox,
+        id: u64,
+        tab: &str,
+        name: String,
+        size: u64,
+        cx: &mut Context<Self>,
+    ) {
+        if !super::shared(tab, cx) {
+            reply(&outbox, id, failed("This tab is not shared."));
+            return;
+        }
+        if !transfer::valid_name(&name) {
+            reply(&outbox, id, failed(format!("\"{name}\" is not a valid file name.")));
+            return;
+        }
+        let folder = std::env::temp_dir().join("nucli-uplink").join(uuid::Uuid::new_v4().to_string());
+        let (sink, finished) = transfer::receive(folder.join(&name), true, size, cx.background_executor());
+        self.transfers.uploads.insert((key, id), sink);
+        cx.background_executor()
+            .spawn(async move {
+                let response = match finished.await {
+                    Ok(Ok(path)) => Response::Attached { text: crate::agents::quote(&path.to_string_lossy()) },
+                    Ok(Err(reason)) => failed(reason),
+                    Err(_) => failed("The transfer stopped."),
+                };
+                reply(&outbox, id, response);
+            })
+            .detach();
+    }
+
     pub(super) fn chunk(&mut self, key: Key, id: u64, data: Vec<u8>) {
         if let Some(own) = self.transfers.own.get(&id).filter(|own| own.key == key) {
             if let Some(sink) = &own.sink {
@@ -233,7 +267,29 @@ impl Uplink {
         folder: &str,
         file: PathBuf,
         cx: &mut Context<Self>,
-    ) -> oneshot::Receiver<Result<(), String>> {
+    ) -> oneshot::Receiver<Result<Response, String>> {
+        let (project, folder) = (project.to_string(), folder.to_string());
+        self.send_file(key, file, move |name, size| Request::Upload { project, folder, name, size }, cx)
+    }
+
+    pub fn attach(
+        &mut self,
+        key: Key,
+        tab: &str,
+        file: PathBuf,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<Response, String>> {
+        let tab = tab.to_string();
+        self.send_file(key, file, move |name, size| Request::Attach { tab, name, size }, cx)
+    }
+
+    fn send_file(
+        &mut self,
+        key: Key,
+        file: PathBuf,
+        request: impl FnOnce(String, u64) -> Request,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Result<Response, String>> {
         let (result, received) = oneshot::channel();
         let name = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
         let size = match file.metadata() {
@@ -243,8 +299,7 @@ impl Uplink {
                 return received;
             }
         };
-        let request = Request::Upload { project: project.to_string(), folder: folder.to_string(), name, size };
-        match self.request(key, request, None) {
+        match self.request(key, request(name, size), None) {
             Ok((id, outbox, stop, answered)) => {
                 let executor = cx.background_executor().clone();
                 cx.background_executor()
@@ -253,9 +308,9 @@ impl Uplink {
                             outbox.send(&Message::Sent { id });
                         }
                         let outcome = match answered.await {
-                            Ok(Response::Done) => Ok(()),
                             Ok(Response::Failed { reason }) => Err(reason),
-                            _ => Err("The transfer stopped.".into()),
+                            Ok(response) => Ok(response),
+                            Err(_) => Err("The transfer stopped.".into()),
                         };
                         let _ = result.send(outcome);
                     })

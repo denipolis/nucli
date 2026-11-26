@@ -674,7 +674,7 @@ mod tests {
 
     fn node(name: &str) -> (Arc<Shared>, futures::channel::mpsc::UnboundedReceiver<NetEvent>) {
         let (events, received) = futures::channel::mpsc::unbounded();
-        let hello = Hello { name: name.into(), os: "test".into(), version: "1".into(), port: 0 };
+        let hello = Hello { name: name.into(), os: "test".into(), version: "1".into(), ..Default::default() };
         (Shared::new(Identity::generate(), hello, events), received)
     }
 

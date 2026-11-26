@@ -5,6 +5,8 @@ use crate::session::{Activity, Kind};
 use crate::terminal::Feed;
 use crate::theme::ItemColor;
 
+pub const PROTOCOL: u32 = 1;
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(default)]
 pub struct Hello {
@@ -12,6 +14,7 @@ pub struct Hello {
     pub os: String,
     pub version: String,
     pub port: u16,
+    pub protocol: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -192,6 +195,7 @@ pub enum Request {
     Tree { project: String },
     Download { project: String, path: String },
     Upload { project: String, folder: String, name: String, size: u64 },
+    Attach { tab: String, name: String, size: u64 },
     Act { project: String, action: Action },
     Tab { tab: String, action: TabAction },
 }
@@ -259,6 +263,7 @@ pub enum Response {
     Commit { date: String, message: String, stats: String, changes: Vec<RemoteChange> },
     Branches { current: String, branches: Vec<String> },
     Tree { files: Vec<String> },
+    Attached { text: String },
     Done,
     Failed { reason: String },
 }
@@ -430,7 +435,13 @@ mod tests {
 
     #[test]
     fn frames_round_trip() {
-        let hello = Message::Hello(Hello { name: "mac".into(), os: "macos".into(), version: "2".into(), port: 7 });
+        let hello = Message::Hello(Hello {
+            name: "mac".into(),
+            os: "macos".into(),
+            version: "2".into(),
+            port: 7,
+            protocol: PROTOCOL,
+        });
         assert!(matches!(decode(&message(&hello)), Some(Frame::Message(decoded)) if decoded == hello));
         let catalog = Message::Catalog(Catalog { tabs: vec![RemoteTab::default()], ..Default::default() });
         assert!(matches!(decode(&message(&catalog)), Some(Frame::Message(decoded)) if decoded == catalog));

@@ -296,6 +296,7 @@ impl Uplink {
             }
             _ if !control => reply(&outbox, failed("This computer lets this device view only.")),
             Request::Tab { tab, action } => act::tab(&outbox, id, tab, action, cx),
+            Request::Attach { tab, name, size } => self.accept_attach(key, outbox, id, &tab, name, size, cx),
             Request::Folders { path } => {
                 let home = dirs::home_dir().unwrap_or_default();
                 let folder = if path.is_empty() { home } else { PathBuf::from(path) };

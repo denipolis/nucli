@@ -7,11 +7,11 @@ use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::TermMode;
 use alacritty_terminal::term::cell::Flags;
 use gpui::{
-    Anchor, AnyElement, App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId, ElementInputHandler,
-    Entity, EntityInputHandler, ExternalPaths, GlobalElementId, InspectorElementId, InteractiveElement, IntoElement,
-    KeyDownEvent, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point,
-    Render, ScrollDelta, ScrollEvent, SharedString, Size, Style, Styled, UTF16Selection, Window, anchored, deferred,
-    div, img, point, px, relative, size,
+    Anchor, AnyElement, App, Bounds, ClipboardEntry, ClipboardItem, Context, CursorStyle, Element, ElementId,
+    ElementInputHandler, Entity, EntityInputHandler, ExternalPaths, GlobalElementId, InspectorElementId,
+    InteractiveElement, IntoElement, KeyDownEvent, LayoutId, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, ParentElement, Pixels, Point, Render, ScrollDelta, ScrollEvent, SharedString, Size, Style, Styled,
+    UTF16Selection, Window, anchored, deferred, div, img, point, px, relative, size,
 };
 
 use crate::commands;
@@ -247,6 +247,13 @@ impl Session {
     }
 
     fn key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        let keystroke = &event.keystroke;
+        let image_paste =
+            keys::plain_control(keystroke, "v") || (keystroke.key == "v" && keystroke.modifiers == Modifiers::alt());
+        if image_paste && self.remote.is_some() && self.attach_clipboard(cx) {
+            cx.stop_propagation();
+            return;
+        }
         if keys::CLIPBOARD_KEYS {
             if keys::plain_control(&event.keystroke, "c")
                 && let Some(text) = self.terminal.selection_text()
@@ -281,10 +288,43 @@ impl Session {
     }
 
     fn paste_clipboard(&mut self, cx: &mut Context<Self>) {
-        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
-            let bytes = keys::paste(&text, self.terminal.mode());
-            self.input(&bytes, cx);
+        if self.remote.is_some() && self.attach_clipboard(cx) {
+            return;
         }
+        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+            self.paste_text(&text, cx);
+        }
+    }
+
+    pub fn paste_text(&mut self, text: &str, cx: &mut Context<Self>) {
+        let bytes = keys::paste(text, self.terminal.mode());
+        self.input(&bytes, cx);
+    }
+
+    fn attach_clipboard(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(item) = cx.read_from_clipboard() else { return false };
+        let entries = item.entries();
+        if entries.iter().any(|entry| matches!(entry, ClipboardEntry::String(_))) {
+            return false;
+        }
+        let session = cx.entity();
+        let paths = entries.iter().find_map(|entry| match entry {
+            ClipboardEntry::ExternalPaths(paths) => Some(paths.paths().to_vec()),
+            _ => None,
+        });
+        if let Some(paths) = paths {
+            cx.defer(move |cx| crate::uplink::files::attach(session, paths, cx));
+            return true;
+        }
+        let image = entries.iter().find_map(|entry| match entry {
+            ClipboardEntry::Image(image) => Some(image.clone()),
+            _ => None,
+        });
+        if let Some(image) = image {
+            cx.defer(move |cx| crate::uplink::files::attach_image(session, image, cx));
+            return true;
+        }
+        false
     }
 
     fn select_all(&mut self, _: &commands::SelectAll, _window: &mut Window, cx: &mut Context<Self>) {
@@ -530,12 +570,13 @@ impl Session {
 
     fn type_paths(&mut self, paths: &[std::path::PathBuf], cx: &mut Context<Self>) {
         if self.remote.is_some() {
+            let (session, paths) = (cx.entity(), paths.to_vec());
+            cx.defer(move |cx| crate::uplink::files::attach(session, paths, cx));
             return;
         }
         let text: Vec<String> = paths.iter().map(|path| crate::agents::quote(&path.to_string_lossy())).collect();
         if !text.is_empty() {
-            let bytes = keys::paste(&format!("{} ", text.join(" ")), self.terminal.mode());
-            self.input(&bytes, cx);
+            self.paste_text(&format!("{} ", text.join(" ")), cx);
         }
     }
 }
