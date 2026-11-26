@@ -233,7 +233,8 @@ impl ChangesPanel {
         let collapsed = if staged { self.staged_collapsed } else { self.changes_collapsed };
         let id = if staged { "staged" } else { "unstaged" };
         let (stage_all, unstage_all, discard_all) = (changes.clone(), changes.clone(), changes.clone());
-        let tracked_or_new = !staged;
+        let control = self.backend.controls(cx);
+        let tracked_or_new = !staged && control;
         let mut section = div().flex().flex_col().child(
             div()
                 .id(SharedString::from(format!("section-{id}")))
@@ -266,7 +267,7 @@ impl ChangesPanel {
                         )),
                     )
                 })
-                .when(staged, |this| {
+                .when(staged && control, |this| {
                     this.child(action_button(format!("{id}-unstage"), icons::REMOVE, theme.yellow).on_click(
                         cx.listener(move |panel, _, _, cx| {
                             panel.batch(Batch::Unstage, unstage_all.clone(), cx);
@@ -353,33 +354,35 @@ impl ChangesPanel {
             .child(div().flex_none().text_color(color.color(theme.dark)).child(glyph))
             .child(div().min_w_0().truncate().child(name))
             .child(div().flex_1().min_w_0().truncate().text_color(theme.faint).child(folder))
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .invisible()
-                    .group_hover(hover_group, |style| style.visible())
-                    .when(!staged, |this| {
-                        this.child(action_button(format!("discard-{id}"), icons::DISCARD, theme.red).on_click(
-                            cx.listener(move |panel, _, _, cx| {
-                                panel.batch(Batch::Discard, vec![discard_change.clone()], cx);
+            .when(self.backend.controls(cx), |this| {
+                this.child(
+                    div()
+                        .flex()
+                        .flex_none()
+                        .invisible()
+                        .group_hover(hover_group, |style| style.visible())
+                        .when(!staged, |this| {
+                            this.child(action_button(format!("discard-{id}"), icons::DISCARD, theme.red).on_click(
+                                cx.listener(move |panel, _, _, cx| {
+                                    panel.batch(Batch::Discard, vec![discard_change.clone()], cx);
+                                    cx.stop_propagation();
+                                }),
+                            ))
+                        })
+                        .child(
+                            action_button(
+                                format!("toggle-{id}"),
+                                if staged { icons::REMOVE } else { icons::ADD },
+                                if staged { theme.yellow } else { theme.green },
+                            )
+                            .on_click(cx.listener(move |panel, _, _, cx| {
+                                let kind = if staged { Batch::Unstage } else { Batch::Stage };
+                                panel.batch(kind, vec![toggle_change.clone()], cx);
                                 cx.stop_propagation();
-                            }),
-                        ))
-                    })
-                    .child(
-                        action_button(
-                            format!("toggle-{id}"),
-                            if staged { icons::REMOVE } else { icons::ADD },
-                            if staged { theme.yellow } else { theme.green },
-                        )
-                        .on_click(cx.listener(move |panel, _, _, cx| {
-                            let kind = if staged { Batch::Unstage } else { Batch::Stage };
-                            panel.batch(kind, vec![toggle_change.clone()], cx);
-                            cx.stop_propagation();
-                        })),
-                    ),
-            )
+                            })),
+                        ),
+                )
+            })
             .child(div().flex_none().w(px(10.0)).text_color(letter_color).child(change.status.to_string()))
             .on_click(cx.listener(move |_, _, _, cx| show(&open_change, cx)))
             .on_mouse_down(
@@ -418,9 +421,10 @@ fn change_menu(
         let (panel, change) = (panel.clone(), change.clone());
         menu::action(label, move |_, _, cx| panel.update(cx, |panel, cx| panel.batch(kind, vec![change.clone()], cx)))
     };
-    if change.staged {
+    let control = panel.read(cx).backend.controls(cx);
+    if control && change.staged {
         items.push(batch("Unstage", Batch::Unstage));
-    } else {
+    } else if control {
         items.push(batch("Stage", Batch::Stage));
         items.push(batch("Discard Changes", Batch::Discard));
     }
@@ -459,6 +463,7 @@ impl Render for ChangesPanel {
         let staged: Vec<Change> = status.changes.iter().filter(|change| change.staged).cloned().collect();
         let unstaged: Vec<Change> = status.changes.iter().filter(|change| !change.staged).cloned().collect();
         let can_commit = !staged.is_empty() && !self.message.read(cx).text.trim().is_empty();
+        let control = self.backend.controls(cx);
         let summary = if status.changes.is_empty() {
             "no changes".to_string()
         } else {
@@ -485,29 +490,31 @@ impl Render for ChangesPanel {
                             .child(div().text_color(theme.red).child(format!("-{}", status.removed)))
                     }),
             )
-            .child(
-                div()
-                    .flex_none()
-                    .mx(px(8.0))
-                    .px(px(6.0))
-                    .border_1()
-                    .border_color(theme.border)
-                    .child(self.message.clone()),
-            )
-            .child(
-                div()
-                    .id("commit-button")
-                    .flex()
-                    .flex_none()
-                    .justify_center()
-                    .mx(px(8.0))
-                    .mt(px(4.0))
-                    .mb(px(6.0))
-                    .when(can_commit, |this| this.bg(theme.green).text_color(theme.on_accent))
-                    .when(!can_commit, |this| this.bg(theme.hover).text_color(theme.faint))
-                    .child(format!("{} Commit", icons::CHECK))
-                    .on_click(cx.listener(|panel, _, _, cx| panel.commit(cx))),
-            );
+            .when(control, |this| {
+                this.child(
+                    div()
+                        .flex_none()
+                        .mx(px(8.0))
+                        .px(px(6.0))
+                        .border_1()
+                        .border_color(theme.border)
+                        .child(self.message.clone()),
+                )
+                .child(
+                    div()
+                        .id("commit-button")
+                        .flex()
+                        .flex_none()
+                        .justify_center()
+                        .mx(px(8.0))
+                        .mt(px(4.0))
+                        .mb(px(6.0))
+                        .when(can_commit, |this| this.bg(theme.green).text_color(theme.on_accent))
+                        .when(!can_commit, |this| this.bg(theme.hover).text_color(theme.faint))
+                        .child(format!("{} Commit", icons::CHECK))
+                        .on_click(cx.listener(|panel, _, _, cx| panel.commit(cx))),
+                )
+            });
         if status.changes.is_empty() {
             body = body.child(div().px(px(10.0)).py(px(6.0)).text_color(theme.faint).child("working tree clean"));
         }

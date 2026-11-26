@@ -118,12 +118,21 @@ impl Backend {
         matches!(self, Backend::Remote { .. })
     }
 
+    pub fn controls(&self, cx: &App) -> bool {
+        match self {
+            Backend::Local(_) => true,
+            Backend::Remote { key, .. } => {
+                crate::uplink::remote_actions::catalog(key, cx).is_some_and(|catalog| catalog.control)
+            }
+        }
+    }
+
     pub fn writable(&self, cx: &App) -> bool {
         match self {
             Backend::Local(_) => true,
             Backend::Remote { key, .. } => {
                 crate::uplink::uplink(cx).is_some_and(|uplink| uplink.read(cx).protocol(key) >= WRITE_PROTOCOL)
-                    && crate::uplink::remote_actions::catalog(key, cx).is_some_and(|catalog| catalog.control)
+                    && self.controls(cx)
             }
         }
     }

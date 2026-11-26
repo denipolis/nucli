@@ -281,8 +281,16 @@ fn named(panel: &Entity<CommitsPanel>, label: &'static str, title: &'static str,
     })
 }
 
-fn commit_menu(panel: &Entity<CommitsPanel>, commit: &Commit) -> Vec<Item> {
+fn commit_menu(panel: &Entity<CommitsPanel>, commit: &Commit, control: bool) -> Vec<Item> {
     let hash = commit.hash.as_str();
+    let copies = vec![
+        menu::copy("Copy Hash", hash),
+        menu::copy("Copy Short Hash", &hash[..hash.len().min(7)]),
+        menu::copy("Copy Message", commit.subject.clone()),
+    ];
+    if !control {
+        return copies;
+    }
     let mut items = Vec::new();
     for reference in &commit.refs {
         match reference {
@@ -338,9 +346,7 @@ fn commit_menu(panel: &Entity<CommitsPanel>, commit: &Commit) -> Vec<Item> {
         items.extend(deletable);
     }
     items.push(Item::Separator);
-    items.push(menu::copy("Copy Hash", hash));
-    items.push(menu::copy("Copy Short Hash", &hash[..hash.len().min(7)]));
-    items.push(menu::copy("Copy Message", commit.subject.clone()));
+    items.extend(copies);
     items
 }
 
@@ -363,7 +369,7 @@ fn commit_file_menu(
             crate::file_view::open_file(view, &root, &path, None, window, cx)
         }));
     }
-    if change.status != 'D' {
+    if change.status != 'D' && panel.read(cx).backend.controls(cx) {
         items.push(confirmed(
             git_item(panel, "Restore This Version…", &["checkout", hash, "--", &change.path]),
             format!("Restore {} from this commit?", change.path),
@@ -760,8 +766,9 @@ impl Render for CommitsPanel {
                                 .on_mouse_down(
                                     MouseButton::Right,
                                     cx.listener(move |panel, event: &gpui::MouseDownEvent, _, cx| {
+                                        let control = panel.backend.controls(cx);
                                         let (items, position) =
-                                            (commit_menu(&cx.entity(), &menu_commit), event.position);
+                                            (commit_menu(&cx.entity(), &menu_commit, control), event.position);
                                         crate::actions::in_window(&panel.workspace, cx, move |view, _, cx| {
                                             view.open_menu(position, items, cx)
                                         });

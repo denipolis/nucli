@@ -112,7 +112,10 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
                     ),
                 ),
         );
-    content = content.child(section("new", cx));
+    let control = crate::backend::Backend::of(&view.workspace, &project.path, cx).controls(cx);
+    if control {
+        content = content.child(section("new", cx));
+    }
     if remote {
         for (index, launcher) in crate::uplink::remote_actions::launchers(view, cx).into_iter().enumerate() {
             let (glyph, color) = if launcher.agent {
@@ -183,16 +186,20 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
         ));
     }
     let terminal_target = project.path.clone();
-    content = content.child(row(
-        "new-terminal".into(),
-        icons::PANEL,
-        theme.muted,
-        "new terminal in the panel",
-        shell,
-        commands::key_for("new_terminal", cx),
-        std::rc::Rc::new(move |view, window, cx| crate::actions::new_terminal_in(view, &terminal_target, window, cx)),
-        cx,
-    ));
+    if control {
+        content = content.child(row(
+            "new-terminal".into(),
+            icons::PANEL,
+            theme.muted,
+            "new terminal in the panel",
+            shell,
+            commands::key_for("new_terminal", cx),
+            std::rc::Rc::new(move |view, window, cx| {
+                crate::actions::new_terminal_in(view, &terminal_target, window, cx)
+            }),
+            cx,
+        ));
+    }
     if !tab_infos.is_empty() {
         content = content.child(section("tabs", cx));
         for (info, folder) in tab_infos.into_iter().zip(folders) {
