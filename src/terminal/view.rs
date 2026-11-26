@@ -344,7 +344,23 @@ impl Session {
         cx.notify();
     }
 
-    fn link_at(&self, position: Point<Pixels>) -> Option<Link> {
+    fn remote_files(&self, cx: &mut App) -> Option<crate::uplink::FileList> {
+        let remote = self.remote.as_ref().filter(|remote| !remote.root.is_empty())?;
+        crate::uplink::remote_actions::project_files(remote.key, std::path::Path::new(&remote.root), cx)
+    }
+
+    fn file_target(&self, token: &str, files: Option<&std::collections::HashSet<String>>) -> Option<Target> {
+        let Some(remote) = &self.remote else { return links::classify(token, self.working_dir(), &self.project) };
+        let root = std::path::Path::new(&remote.root);
+        let cwd = remote.cwd.as_deref().map(std::path::Path::new).unwrap_or(root);
+        let known = |path: &std::path::Path| {
+            let relative = path.strip_prefix(root).ok().and_then(|relative| relative.to_str());
+            relative.zip(files).is_some_and(|(relative, files)| files.contains(relative))
+        };
+        links::find(token, cwd, root, &known)
+    }
+
+    fn link_at(&self, position: Point<Pixels>, files: Option<&std::collections::HashSet<String>>) -> Option<Link> {
         let (point, _) = grid_point(self, position)?;
         let term = self.terminal.term.lock();
         let grid = term.grid();
@@ -377,8 +393,7 @@ impl Session {
             let uri = link.uri().to_string();
             drop(term);
             let target = match uri.strip_prefix("file://") {
-                Some(_) if self.remote.is_some() => None,
-                Some(path) => links::classify(path, self.working_dir(), &self.project),
+                Some(path) => self.file_target(path, files),
                 None => Some(Target::Url(uri)),
             }?;
             return Some(Link { start: cells[start], end: cells[end], target });
@@ -386,15 +401,17 @@ impl Session {
         let text: Vec<char> = cells.iter().map(|&cell| grid[cell].c).collect();
         let (start, end, token) = links::token_at(&text, index)?;
         drop(term);
-        let target = links::classify(&token, self.working_dir(), &self.project)?;
-        if self.remote.is_some() && matches!(target, Target::File(..)) {
-            return None;
-        }
+        let target = self.file_target(&token, files)?;
         Some(Link { start: cells[start], end: cells[end], target })
     }
 
     fn update_hover(&mut self, position: Point<Pixels>, modifiers: &gpui::Modifiers, cx: &mut Context<Self>) {
-        let hover = if modifiers.secondary(cx) { self.link_at(position) } else { None };
+        let hover = if modifiers.secondary(cx) {
+            let files = self.remote_files(cx);
+            self.link_at(position, files.as_deref())
+        } else {
+            None
+        };
         if hover != self.view.hover {
             self.view.preview = hover.as_ref().and_then(image_size);
             self.view.hover = hover;
@@ -434,9 +451,10 @@ impl Session {
 
     fn mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus, cx);
+        let files = self.remote_files(cx);
         if event.button == MouseButton::Left
             && event.modifiers.secondary(cx)
-            && let Some(link) = self.link_at(event.position)
+            && let Some(link) = self.link_at(event.position, files.as_deref())
         {
             self.view.link_clicked = true;
             match link.target {
@@ -455,7 +473,8 @@ impl Session {
             return;
         }
         if event.button == MouseButton::Right {
-            cx.emit(SessionEvent::Menu(event.position, self.link_at(event.position).map(|link| link.target)));
+            let target = self.link_at(event.position, files.as_deref()).map(|link| link.target);
+            cx.emit(SessionEvent::Menu(event.position, target));
             return;
         }
         if event.button != MouseButton::Left {

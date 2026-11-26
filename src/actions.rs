@@ -976,7 +976,9 @@ pub fn terminal_menu(view: &WorkspaceView, id: &str, target: Option<Target>, cx:
         Some(Target::File(path, line)) => {
             items.push(menu::copy("Copy Path", path.to_string_lossy()));
             let reveal = path.clone();
-            items.push(menu::action(reveal_label(), move |_, _, cx| cx.reveal_path(&reveal)));
+            if !remote(view, cx) {
+                items.push(menu::action(reveal_label(), move |_, _, cx| cx.reveal_path(&reveal)));
+            }
             items.push(menu::action("Open File", move |view, window, cx| view.open_path(&path, line, window, cx)));
             items.push(Item::Separator);
         }

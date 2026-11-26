@@ -650,3 +650,32 @@ pub fn branches(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<
     })
     .detach();
 }
+
+pub fn project_files(key: Key, root: &Path, cx: &mut App) -> Option<super::FileList> {
+    let uplink = super::uplink(cx)?;
+    let revision = store::store(cx).read(cx).revision(root);
+    let (stale, files) = match uplink.read(cx).files.get(root) {
+        Some((at, files)) => (*at != revision, files.clone()),
+        None => (true, None),
+    };
+    if stale {
+        let (root, kept) = (root.to_path_buf(), files.clone());
+        uplink.update(cx, |uplink, _| uplink.files.insert(root.clone(), (revision, kept)));
+        let backend = crate::backend::Backend::Remote { key, root: root.clone() };
+        let asked = backend.ask::<Vec<String>>(crate::backend::Query::Files, cx);
+        cx.spawn(async move |cx| {
+            let Some(list) = asked.await else { return };
+            cx.update(|cx| {
+                if let Some(uplink) = super::uplink(cx) {
+                    uplink.update(cx, |uplink, _| {
+                        if let Some(entry) = uplink.files.get_mut(&root) {
+                            entry.1 = Some(std::sync::Arc::new(list.into_iter().collect()));
+                        }
+                    });
+                }
+            });
+        })
+        .detach();
+    }
+    files
+}

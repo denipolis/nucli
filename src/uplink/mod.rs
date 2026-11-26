@@ -56,6 +56,8 @@ fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|time| time.as_secs()).unwrap_or(0)
 }
 
+pub type FileList = std::sync::Arc<std::collections::HashSet<String>>;
+
 pub struct Link {
     pub conn: u64,
     pub hello: Hello,
@@ -109,6 +111,7 @@ pub struct Uplink {
     push: Option<Task<()>>,
     opening: Option<(Key, Option<(String, crate::splits::Direction)>)>,
     pub split: Option<(String, crate::splits::Direction)>,
+    pub files: HashMap<PathBuf, (u64, Option<FileList>)>,
     transfers: transfers::Transfers,
     pub histories: HashMap<Key, (Instant, Option<Vec<protocol::RemoteConversation>>)>,
 }
@@ -138,6 +141,7 @@ pub fn init(cx: &mut App) {
             push: None,
             opening: None,
             split: None,
+            files: HashMap::new(),
             transfers: Default::default(),
             histories: HashMap::new(),
         };
@@ -1134,6 +1138,7 @@ impl Uplink {
                 device: self.device_name(&key),
                 tab: tab.to_string(),
                 project,
+                root: meta.project.clone(),
                 cwd: meta.cwd.clone(),
                 branch: meta.branch.clone(),
                 changes: meta.changes,

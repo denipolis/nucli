@@ -68,6 +68,7 @@ pub struct Remote {
     pub device: String,
     pub tab: String,
     pub project: String,
+    pub root: String,
     pub cwd: Option<String>,
     pub branch: Option<String>,
     pub changes: Option<crate::git::DiffStat>,
@@ -218,6 +219,7 @@ impl Session {
         self.exit = (!tab.running).then_some(Some(u32::from(tab.failed)));
         self.agent_info = tab.info.clone();
         if let Some(remote) = &mut self.remote {
+            remote.root = tab.project.clone();
             remote.cwd = tab.cwd.clone();
             remote.branch = tab.branch.clone();
             remote.changes = tab.changes;

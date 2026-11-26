@@ -21,7 +21,7 @@ Paths are under `src/` unless they start with `core/` or `grammars/`.
 | `core/src/terminal/render.rs` | Turns a terminal grid into rectangles and shaped text runs (`layout`) and paints them (`paint`): colors, selection, find matches, links, cursor and IME text. |
 | `core/src/terminal/keys.rs` | Keystroke to bytes: legacy sequences and the kitty protocol. |
 | `core/src/terminal/boxes.rs` | Box and block characters as rectangles. |
-| `terminal/links.rs` | Finding URLs and `path:line:col` under the mouse. |
+| `terminal/links.rs` | Finding URLs and `path:line:col` under the mouse. `find` takes the test for "is a file": the disk locally, and for a remote tab the project's file list from `Query::Files`, which `remote_actions::project_files` caches in `Uplink.files` per project and fetches again when the project's revision changes. |
 | `terminal/find.rs` | Terminal find bar. |
 | `terminal/snapshot.rs` | Serializes a terminal's state (scrollback, screen, styles, links, modes, cursor) into the bytes that rebuild it, for a remote view joining midway. |
 | `window.rs` | `WorkspaceView`, the window root: title bar, layout, overlays, focus. |

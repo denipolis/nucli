@@ -59,6 +59,10 @@ fn split_position(token: &str) -> (&str, Option<usize>) {
 }
 
 pub fn classify(token: &str, cwd: &Path, project: &Path) -> Option<Target> {
+    find(token, cwd, project, &|path| path.is_file())
+}
+
+pub fn find(token: &str, cwd: &Path, project: &Path, is_file: &dyn Fn(&Path) -> bool) -> Option<Target> {
     for scheme in ["http://", "https://", "ftp://", "mailto:"] {
         if token.starts_with(scheme) {
             return Some(Target::Url(token.to_string()));
@@ -72,12 +76,12 @@ pub fn classify(token: &str, cwd: &Path, project: &Path) -> Option<Target> {
     let path = path
         .strip_prefix("a/")
         .or_else(|| path.strip_prefix("b/"))
-        .filter(|rest| !cwd.join(path).exists() && cwd.join(rest).exists())
+        .filter(|rest| !is_file(&cwd.join(path)) && is_file(&cwd.join(rest)))
         .unwrap_or(path);
     let expanded = crate::paths::expand(path);
     let candidates =
         if expanded.is_absolute() { vec![expanded] } else { vec![cwd.join(&expanded), project.join(&expanded)] };
-    candidates.into_iter().find(|candidate| candidate.is_file()).map(|file| Target::File(file, line))
+    candidates.into_iter().find(|candidate| is_file(candidate)).map(|file| Target::File(file, line))
 }
 
 #[cfg(test)]
@@ -111,5 +115,16 @@ mod tests {
         assert_eq!(classify("a.rs:12:4", cwd, other), Some(Target::File(dir.join("a.rs"), Some(12))));
         assert_eq!(classify("a.rs", other, cwd), Some(Target::File(dir.join("a.rs"), None)));
         assert_eq!(classify("missing.rs", cwd, other), None);
+    }
+
+    #[test]
+    fn finds_files_another_computer_lists() {
+        let (root, cwd) = (Path::new("/host/project"), Path::new("/host/project/src"));
+        let known = |path: &Path| path == Path::new("/host/project/src/util.rs");
+        let file = Some(Target::File(PathBuf::from("/host/project/src/util.rs"), Some(3)));
+        assert_eq!(find("util.rs:3", cwd, root, &known), file);
+        assert_eq!(find("src/util.rs:3", root, root, &known), file);
+        assert_eq!(find("b/src/util.rs:3", root, root, &known), file);
+        assert_eq!(find("src/main.rs", root, root, &known), None);
     }
 }
