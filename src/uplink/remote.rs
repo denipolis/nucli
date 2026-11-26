@@ -83,6 +83,11 @@ fn mirror(remote: &mut Workspace, catalog: &Catalog, key: &Key) {
         });
     }
     remote.mru.retain(|tab| tabs.contains(tab));
+    let gone: Vec<String> =
+        remote.layouts.iter().flat_map(crate::splits::tabs).filter(|tab| !tabs.contains(tab)).collect();
+    for tab in gone {
+        crate::splits::remove(&mut remote.layouts, &tab);
+    }
 }
 
 impl Uplink {
@@ -156,5 +161,40 @@ impl Uplink {
             }
             cx.notify();
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::persist::Layout;
+    use crate::uplink::protocol::{RemoteProject, RemoteTab};
+
+    #[test]
+    fn mirroring_drops_splits_of_closed_tabs() {
+        let key = [7; 32];
+        let (kept, closed) = (mirror_id(&key, "kept"), mirror_id(&key, "closed"));
+        let mut remote = Workspace::new("Personal");
+        remote.layouts = vec![Layout::Row {
+            children: vec![Layout::Pane { tab: kept.clone() }, Layout::Pane { tab: closed.clone() }],
+        }];
+        let catalog = Catalog {
+            projects: vec![RemoteProject {
+                path: "/work".into(),
+                name: "work".into(),
+                workspace: "Personal".into(),
+                ..Default::default()
+            }],
+            tabs: vec![RemoteTab {
+                id: "kept".into(),
+                project: "/work".into(),
+                workspace: "Personal".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        mirror(&mut remote, &catalog, &key);
+        assert_eq!(remote.project(std::path::Path::new("/work")).map(|project| project.tabs.clone()), Some(vec![kept]));
+        assert!(remote.layouts.iter().flat_map(crate::splits::tabs).all(|tab| tab != closed));
     }
 }
