@@ -145,6 +145,8 @@ pub enum Message {
         launcher: String,
         #[serde(default)]
         workspace: String,
+        #[serde(default)]
+        panel: bool,
     },
     Opened {
         tab: String,

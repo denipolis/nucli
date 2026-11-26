@@ -615,7 +615,7 @@ impl Store {
         after: Option<String>,
         cx: &mut Context<Self>,
     ) -> Option<String> {
-        let cwd = self.workspace(workspace)?.project(project)?.cwd();
+        let cwd = self.workspace(workspace).filter(|state| state.host.is_none())?.project(project)?.cwd();
         let profiles = settings::get(cx).agents.clone();
         let (spec, panel) = match &launcher {
             Launcher::Agent(profile) => {

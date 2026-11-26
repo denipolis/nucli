@@ -13,12 +13,12 @@ fn name_of(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_string()
 }
 
-pub fn upload(key: Key, project: &str, files: Vec<PathBuf>, workspace: &str, cx: &mut App) {
+pub fn upload(key: Key, project: &str, folder: &str, files: Vec<PathBuf>, workspace: &str, cx: &mut App) {
     let Some(uplink) = super::uplink(cx) else { return };
     for file in files {
         let name = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
         let progress = store::begin_progress(format!("uploading {name}"), cx);
-        let done = uplink.update(cx, |uplink, cx| uplink.upload(key, project, "", file, cx));
+        let done = uplink.update(cx, |uplink, cx| uplink.upload(key, project, folder, file, cx));
         let workspace = workspace.to_string();
         cx.spawn(async move |cx| {
             let outcome = done.await.unwrap_or_else(|_| Err("The transfer stopped.".into()));
@@ -89,7 +89,7 @@ pub fn attach_image(session: Entity<Session>, image: Image, cx: &mut App) {
     .detach();
 }
 
-pub fn pick_upload(key: Key, project: String, workspace: String, cx: &mut App) {
+pub fn pick_upload(key: Key, project: String, folder: String, workspace: String, cx: &mut App) {
     let picked = cx.prompt_for_paths(PathPromptOptions {
         files: true,
         directories: false,
@@ -98,7 +98,7 @@ pub fn pick_upload(key: Key, project: String, workspace: String, cx: &mut App) {
     });
     cx.spawn(async move |cx| {
         if let Ok(Ok(Some(files))) = picked.await {
-            cx.update(|cx| upload(key, &project, files, &workspace, cx));
+            cx.update(|cx| upload(key, &project, &folder, files, &workspace, cx));
         }
     })
     .detach();

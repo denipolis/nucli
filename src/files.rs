@@ -241,6 +241,13 @@ impl FilesPanel {
 
     fn drop(&mut self, sources: Vec<PathBuf>, folder: String, cut: bool, cx: &mut Context<Self>) {
         let root = self.root.clone();
+        if self.remote {
+            if let Some(key) = crate::uplink::remote_actions::host(&self.workspace, cx) {
+                let project = root.to_string_lossy().into_owned();
+                crate::uplink::files::upload(key, &project, &folder, sources, &self.workspace, cx);
+            }
+            return;
+        }
         in_window(&self.workspace, cx, move |_, window, cx| {
             crate::file_ops::transfer(&root, sources, &folder, cut, window, cx)
         });
@@ -309,7 +316,7 @@ impl Render for FilesPanel {
                         let dragged = DraggedPath { path: panel.root.join(&row.path), title: row.name.clone() };
                         let selection = theme.selection;
                         let local = !panel.remote;
-                        let target = row.is_dir && local;
+                        let target = row.is_dir;
                         div()
                             .id(("file-row", index))
                             .h(line)
@@ -321,9 +328,11 @@ impl Render for FilesPanel {
                             .pr(px(8.0))
                             .text_color(text)
                             .hover(|style| style.bg(theme.hover))
-                            .when(target, |this| {
+                            .when(target && local, |this| {
                                 this.drag_over::<DraggedPath>(move |style, _, _, _| style.bg(selection))
-                                    .drag_over::<ExternalPaths>(move |style, _, _, _| style.bg(selection))
+                            })
+                            .when(target, |this| {
+                                this.drag_over::<ExternalPaths>(move |style, _, _, _| style.bg(selection))
                             })
                             .child(
                                 div()
@@ -339,16 +348,16 @@ impl Render for FilesPanel {
                                 this.on_drag(dragged, |drag: &DraggedPath, _, _, cx| {
                                     cx.new(|_| crate::sidebar::DragPreview(drag.title.clone()))
                                 })
-                                .on_drop(cx.listener(move |panel, drag: &DraggedPath, window, cx| {
-                                    let cut = !window.modifiers().alt;
-                                    panel.drop(vec![drag.path.clone()], drop_folder.clone(), cut, cx);
-                                }))
                                 .on_drop(cx.listener(
-                                    move |panel, paths: &ExternalPaths, _, cx| {
-                                        panel.drop(paths.paths().to_vec(), external_folder.clone(), false, cx);
+                                    move |panel, drag: &DraggedPath, window, cx| {
+                                        let cut = !window.modifiers().alt;
+                                        panel.drop(vec![drag.path.clone()], drop_folder.clone(), cut, cx);
                                     },
                                 ))
                             })
+                            .on_drop(cx.listener(move |panel, paths: &ExternalPaths, _, cx| {
+                                panel.drop(paths.paths().to_vec(), external_folder.clone(), false, cx);
+                            }))
                             .on_click(cx.listener(move |panel, _, _, cx| {
                                 if click.is_dir {
                                     panel.toggle(&click.path, cx);
@@ -380,10 +389,10 @@ impl Render for FilesPanel {
             this.on_drop(cx.listener(|panel, drag: &DraggedPath, window, cx| {
                 panel.drop(vec![drag.path.clone()], String::new(), !window.modifiers().alt, cx);
             }))
-            .on_drop(cx.listener(|panel, paths: &ExternalPaths, _, cx| {
-                panel.drop(paths.paths().to_vec(), String::new(), false, cx);
-            }))
         })
+        .on_drop(cx.listener(|panel, paths: &ExternalPaths, _, cx| {
+            panel.drop(paths.paths().to_vec(), String::new(), false, cx);
+        }))
         .on_mouse_down(
             MouseButton::Right,
             cx.listener(|panel, event: &gpui::MouseDownEvent, _, cx| {

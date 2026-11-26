@@ -64,10 +64,41 @@ pub fn launch_first(
     let Some(launcher) = catalog.launchers.iter().find(|launcher| launcher.agent == agent) else {
         return launch(view, project, Some(agent), window, cx);
     };
+    open(view, key, project, &launcher.name, false, cx);
+}
+
+pub fn launchers(view: &WorkspaceView, cx: &App) -> Vec<super::protocol::RemoteLauncher> {
+    host(&view.workspace, cx)
+        .and_then(|key| catalog(&key, cx))
+        .filter(|catalog| catalog.control)
+        .map(|catalog| catalog.launchers)
+        .unwrap_or_default()
+}
+
+pub fn open_launcher(view: &mut WorkspaceView, project: &Path, launcher: &str, cx: &mut Context<WorkspaceView>) {
+    if let Some(key) = host(&view.workspace, cx) {
+        open(view, key, project, launcher, false, cx);
+    }
+}
+
+pub fn resume(view: &WorkspaceView, conversation: &str, cx: &mut App) {
+    if let Some(key) = host(&view.workspace, cx).filter(|_| control(&view.workspace, cx)) {
+        send(view.workspace.clone(), key, Request::Resume { conversation: conversation.to_string() }, cx);
+    }
+}
+
+pub fn new_terminal(view: &mut WorkspaceView, project: &Path, cx: &mut Context<WorkspaceView>) {
+    let Some(key) = host(&view.workspace, cx) else { return };
+    let Some(catalog) = catalog(&key, cx).filter(|catalog| catalog.control) else { return };
+    let shell = catalog.launchers.iter().find(|launcher| !launcher.agent).map(|launcher| launcher.name.clone());
+    open(view, key, project, &shell.unwrap_or_default(), true, cx);
+}
+
+fn open(view: &WorkspaceView, key: Key, project: &Path, launcher: &str, panel: bool, cx: &mut Context<WorkspaceView>) {
     let name = view.state(cx).map(|state| state.name.clone()).unwrap_or_default();
     let path = project.to_string_lossy().into_owned();
     if let Some(uplink) = super::uplink(cx) {
-        uplink.update(cx, |uplink, cx| uplink.request_open(key, &path, &launcher.name, &name, cx));
+        uplink.update(cx, |uplink, cx| uplink.request_open(key, &path, launcher, &name, panel, cx));
     }
 }
 
@@ -97,7 +128,9 @@ pub fn launch(
             };
             palette::Item::new(launcher.name.clone(), move |_, _, cx| {
                 if let Some(uplink) = super::uplink(cx) {
-                    uplink.update(cx, |uplink, cx| uplink.request_open(key, &path, &launcher_name, &workspace, cx));
+                    uplink.update(cx, |uplink, cx| {
+                        uplink.request_open(key, &path, &launcher_name, &workspace, false, cx)
+                    });
                 }
             })
             .glyph(glyph, color)
@@ -225,7 +258,7 @@ pub fn project_menu(view: &WorkspaceView, path: &Path, cx: &App) -> Vec<Item> {
         if catalog.control {
             let upload = remote_path.clone();
             items.push(menu::action("Upload Files…", move |view, _, cx| {
-                super::files::pick_upload(key, upload.clone(), view.workspace.clone(), cx)
+                super::files::pick_upload(key, upload.clone(), String::new(), view.workspace.clone(), cx)
             }));
             items.push(Item::Separator);
             let renamed = path.to_path_buf();
@@ -295,6 +328,10 @@ pub fn file_menu(view: &WorkspaceView, root: &Path, path: &str, is_dir: bool, cx
                 );
             }));
         }
+        let (upload, project) = (folder.clone(), project.clone());
+        items.push(menu::action("Upload Files…", move |view, _, cx| {
+            super::files::pick_upload(key, project.clone(), upload.clone(), view.workspace.clone(), cx)
+        }));
         items.push(Item::Separator);
     }
     if !path.is_empty() {
@@ -461,7 +498,7 @@ pub fn workspace_menu(view: &WorkspaceView, cx: &App) -> Vec<Item> {
     items
 }
 
-fn conversations(
+pub fn conversations(
     view: &WorkspaceView,
     cx: &mut Context<WorkspaceView>,
 ) -> Option<Vec<super::protocol::RemoteConversation>> {

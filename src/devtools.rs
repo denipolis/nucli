@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use gpui::{App, Keystroke, Modifiers};
+use gpui::{App, InputEvent, Keystroke, Modifiers};
 
 use crate::commands;
 
@@ -230,6 +230,15 @@ fn run(line: &str, cx: &mut App) {
             if let (Some(id), Some(path)) = (parts.next().and_then(|id| id.parse().ok()), parts.next()) {
                 capture(id, path);
             }
+        }
+        "drop" => {
+            let mut parts = rest.splitn(3, ' ');
+            let (Some(x), Some(y), Some(path)) = (parts.next(), parts.next(), parts.next()) else { return };
+            let (Ok(x), Ok(y)) = (x.parse::<f32>(), y.parse::<f32>()) else { return };
+            let position = gpui::point(gpui::px(x), gpui::px(y));
+            let paths = gpui::ExternalPaths(vec![std::path::PathBuf::from(path.trim())].into());
+            window.dispatch_event(gpui::FileDropEvent::Entered { position, paths }.to_platform_input(), cx);
+            window.dispatch_event(gpui::FileDropEvent::Submit { position }.to_platform_input(), cx);
         }
         "action" => {
             if let Some(command) = commands::find(rest.trim()) {

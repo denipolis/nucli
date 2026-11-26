@@ -64,10 +64,11 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
     else {
         return empty(view, cx);
     };
+    let remote = view.state(cx).is_some_and(|state| state.host.is_some());
     let store = view.store(cx);
     let tick = store.tick_fast;
     let last_launcher = store.last_launcher.clone();
-    let shell = store.terminal_shell(cx);
+    let shell = if remote { String::new() } else { store.terminal_shell(cx) };
     let conversations = store.conversations_for(&project.path).cloned();
     let tab_infos: Vec<crate::sidebar::TabInfo> = project
         .tabs
@@ -92,7 +93,9 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
         .collect();
     let settings = settings::get(cx).clone();
     let tint = project.color.map(|color| color.color(theme.dark)).unwrap_or(theme.accent);
-    let branch = crate::git::current_branch(&project.path)
+    let branch = (!remote)
+        .then(|| crate::git::current_branch(&project.path))
+        .flatten()
         .map(|branch| format!("  {} {branch}", icons::BRANCH))
         .unwrap_or_default();
     let last = project.last_launcher.clone().or(last_launcher);
@@ -110,7 +113,35 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
                 ),
         );
     content = content.child(section("new", cx));
+    if remote {
+        for (index, launcher) in crate::uplink::remote_actions::launchers(view, cx).into_iter().enumerate() {
+            let (glyph, color) = if launcher.agent {
+                let (glyph, color) = icons::agent(&launcher.command);
+                (glyph, color.color(theme.dark))
+            } else {
+                (icons::TERMINAL, theme.muted)
+            };
+            let title = format!("new {} {}", launcher.name, if launcher.agent { "session" } else { "tab" });
+            let (target, name) = (project.path.clone(), launcher.name.clone());
+            let run: Run = std::rc::Rc::new(move |view, _, cx| {
+                crate::uplink::remote_actions::open_launcher(view, &target, &name, cx)
+            });
+            content = content.child(row(
+                format!("new-remote-{index}").into(),
+                glyph,
+                color,
+                title,
+                launcher.command,
+                "",
+                run,
+                cx,
+            ));
+        }
+    }
     let mut agents: Vec<_> = settings.agents.iter().filter(|profile| profile.is_launchable()).cloned().collect();
+    if remote {
+        agents.clear();
+    }
     agents.sort_by_key(|profile| Some(&profile.name) != last.as_ref());
     let new_agent = commands::key_for("new_agent", cx);
     for (index, profile) in agents.into_iter().enumerate() {
@@ -133,7 +164,7 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
             cx,
         ));
     }
-    for (index, shell) in settings.shells.iter().filter(|shell| shell.is_launchable()).cloned().enumerate() {
+    for (index, shell) in settings.shells.iter().filter(|shell| shell.is_launchable() && !remote).cloned().enumerate() {
         let target = project.path.clone();
         let title = format!("new {} tab", shell.name);
         let path = shell.path.clone();
@@ -180,6 +211,10 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
         }
     }
     content = content.child(section("conversations", cx));
+    if remote {
+        content = remote_conversations(view, content, &project.path, cx);
+        return frame(content);
+    }
     let loaded = conversations.is_some();
     match conversations {
         None => content = content.child(div().px(px(8.0)).text_color(theme.faint).child("loading…")),
@@ -225,6 +260,10 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
         let path = project.path.clone();
         cx.defer(move |cx| crate::store::store(cx).update(cx, |store, cx| store.refresh_conversations(path, cx)));
     }
+    frame(content)
+}
+
+fn frame(content: gpui::Div) -> AnyElement {
     div()
         .id("overview")
         .size_full()
@@ -234,6 +273,40 @@ pub fn project(view: &mut WorkspaceView, path: &Path, cx: &mut Context<Workspace
         .px(px(24.0))
         .child(content)
         .into_any_element()
+}
+
+fn remote_conversations(
+    view: &WorkspaceView,
+    mut content: gpui::Div,
+    path: &Path,
+    cx: &mut Context<WorkspaceView>,
+) -> gpui::Div {
+    let theme = ui::theme(cx);
+    let project = path.to_string_lossy().into_owned();
+    let Some(list) = crate::uplink::remote_actions::conversations(view, cx) else {
+        return content.child(div().px(px(8.0)).text_color(theme.faint).child("loading…"));
+    };
+    let list: Vec<_> = list.into_iter().filter(|item| item.project == project).take(12).collect();
+    if list.is_empty() {
+        return content.child(div().px(px(8.0)).text_color(theme.faint).child("no conversations in this folder yet"));
+    }
+    for (index, item) in list.into_iter().enumerate() {
+        let modified = std::time::UNIX_EPOCH + std::time::Duration::from_secs(item.modified);
+        let subtitle = format!("{} · {}", item.profile, relative_age(modified));
+        let (glyph, color) = icons::agent(&item.agent);
+        let id = item.id.clone();
+        content = content.child(row(
+            format!("conversation-{index}").into(),
+            glyph,
+            color.color(theme.dark),
+            item.title,
+            subtitle,
+            "",
+            std::rc::Rc::new(move |view, _, cx| crate::uplink::remote_actions::resume(view, &id, cx)),
+            cx,
+        ));
+    }
+    content
 }
 
 pub fn empty(_view: &mut WorkspaceView, cx: &mut Context<WorkspaceView>) -> AnyElement {

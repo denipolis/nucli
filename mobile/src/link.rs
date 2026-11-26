@@ -256,6 +256,7 @@ impl Link {
                 project: project.to_string(),
                 launcher: launcher.to_string(),
                 workspace: workspace.to_string(),
+                panel: false,
             });
         }
     }

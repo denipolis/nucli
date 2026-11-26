@@ -835,7 +835,9 @@ impl Uplink {
                     });
                 }
             }
-            Message::Open { project, launcher, workspace } => self.host_open(key, &project, &launcher, &workspace, cx),
+            Message::Open { project, launcher, workspace, panel } => {
+                self.host_open(key, &project, &launcher, &workspace, panel, cx)
+            }
             Message::Opened { tab } => {
                 if let Some((opener, workspace)) = self.opening.take()
                     && opener == key
@@ -945,7 +947,15 @@ impl Uplink {
         });
     }
 
-    fn host_open(&mut self, key: Key, project: &str, launcher: &str, workspace: &str, cx: &mut Context<Self>) {
+    fn host_open(
+        &mut self,
+        key: Key,
+        project: &str,
+        launcher: &str,
+        workspace: &str,
+        panel: bool,
+        cx: &mut Context<Self>,
+    ) {
         let Some(device) = self.device(&key) else { return };
         if device.blocked || device.access != Access::Control {
             return;
@@ -965,6 +975,7 @@ impl Uplink {
             return;
         };
         let launcher = match settings.agents.iter().find(|profile| profile.name == launcher) {
+            _ if panel => Launcher::Terminal,
             Some(profile) => Launcher::Agent(profile.clone()),
             None => match settings.shells.iter().find(|shell| shell.name == launcher) {
                 Some(shell) => Launcher::Shell(shell.clone()),
@@ -1079,7 +1090,7 @@ impl Uplink {
         }
         cx.defer(move |cx| {
             crate::window::open(&workspace, cx);
-            crate::actions::in_window(&workspace, cx, move |view, window, cx| view.select_tab(&id, window, cx));
+            crate::actions::in_window(&workspace, cx, move |view, window, cx| view.reveal_tab(&id, window, cx));
         });
     }
 
@@ -1185,12 +1196,21 @@ impl Uplink {
         }
     }
 
-    pub fn request_open(&mut self, key: Key, project: &str, launcher: &str, workspace: &str, cx: &mut Context<Self>) {
+    pub fn request_open(
+        &mut self,
+        key: Key,
+        project: &str,
+        launcher: &str,
+        workspace: &str,
+        panel: bool,
+        cx: &mut Context<Self>,
+    ) {
         let Some(link) = self.links.get(&key) else { return };
         link.outbox.send(&Message::Open {
             project: project.to_string(),
             launcher: launcher.to_string(),
             workspace: workspace.to_string(),
+            panel,
         });
         self.opening = Some((key, workspace.to_string()));
         let _ = cx;

@@ -357,7 +357,7 @@ pub fn show_project(view: &mut WorkspaceView, path: &Path, window: &mut Window, 
 
 pub fn new_terminal_in(view: &mut WorkspaceView, path: &Path, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     if remote(view, cx) {
-        crate::uplink::remote_actions::launch_first(view, path, false, window, cx);
+        crate::uplink::remote_actions::new_terminal(view, path, cx);
         return;
     }
     let workspace = view.workspace.clone();
