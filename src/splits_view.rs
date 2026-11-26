@@ -469,6 +469,9 @@ pub fn split(view: &mut WorkspaceView, row: bool, window: &mut Window, cx: &mut 
         return;
     };
     if view.state(cx).is_some_and(|state| state.host.is_some()) {
+        if !crate::uplink::remote_actions::launchers(view, cx).iter().any(|launcher| !launcher.agent) {
+            return;
+        }
         let direction = if row { Direction::Right } else { Direction::Down };
         if let Some(uplink) = crate::uplink::uplink(cx) {
             uplink.update(cx, |uplink, _| uplink.split = Some((current, direction)));
