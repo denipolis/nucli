@@ -451,7 +451,8 @@ impl Session {
 
     fn mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus, cx);
-        let files = self.remote_files(cx);
+        let wants_link = event.button == MouseButton::Right || event.modifiers.secondary(cx);
+        let files = if wants_link { self.remote_files(cx) } else { None };
         if event.button == MouseButton::Left
             && event.modifiers.secondary(cx)
             && let Some(link) = self.link_at(event.position, files.as_deref())
