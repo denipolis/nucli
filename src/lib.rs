@@ -267,6 +267,18 @@ pub extern "C" fn nucli_main() {
     run();
 }
 
+fn clear_remote_cache(cx: &App) {
+    let folder = paths::cache_dir().join("remote");
+    let old: Vec<_> = std::fs::read_dir(folder).into_iter().flatten().flatten().map(|entry| entry.path()).collect();
+    cx.background_executor()
+        .spawn(async move {
+            for path in old {
+                let _ = std::fs::remove_dir_all(path);
+            }
+        })
+        .detach();
+}
+
 pub fn run() {
     let application = start_application();
     let (opened, mut opened_events) = futures::channel::mpsc::unbounded::<Vec<std::path::PathBuf>>();
@@ -286,6 +298,7 @@ pub fn run() {
         }
         cx.on_action(|_: &Quit, cx| cx.defer(actions::request_quit));
         quit_on_terminate(cx);
+        clear_remote_cache(cx);
         cx.spawn(async move |cx| {
             use futures::StreamExt;
             while let Some(folders) = opened_events.next().await {
