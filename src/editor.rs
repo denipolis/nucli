@@ -125,7 +125,7 @@ pub struct Row {
     pub new: Option<usize>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default, serde::Serialize, serde::Deserialize)]
 pub struct Pos {
     pub row: usize,
     pub col: usize,

@@ -104,7 +104,7 @@ pub fn pick_upload(key: Key, project: String, workspace: String, cx: &mut App) {
     .detach();
 }
 
-fn save(key: Key, project: String, path: String, workspace: String, cx: &mut App) {
+pub(super) fn save(key: Key, project: String, path: String, workspace: String, cx: &mut App) {
     let name = name_of(&path);
     let folder = dirs::download_dir().or_else(dirs::home_dir).unwrap_or_default();
     let chosen = cx.prompt_for_new_path(&folder, Some(&name));

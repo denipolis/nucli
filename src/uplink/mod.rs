@@ -1,6 +1,6 @@
 mod act;
 pub mod files;
-mod host;
+pub(crate) mod host;
 pub mod page;
 pub mod pairing;
 mod remote;
@@ -1281,6 +1281,7 @@ fn catalog(device: &Device, cx: &App) -> Catalog {
                     color: project.color,
                     workspace: workspace.name.clone(),
                     muted: !project.notifications.or(workspace.notifications).unwrap_or(true),
+                    revision: store.revision(&project.path) + store.git_revision(&project.path),
                 });
             }
         }

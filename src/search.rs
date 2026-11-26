@@ -23,7 +23,7 @@ pub struct Options {
     pub replace: bool,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Found {
     pub hit: Hit,
     pub preview: String,
@@ -31,13 +31,13 @@ pub struct Found {
     pub replacement: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FileHits {
     pub path: String,
     pub found: Vec<Found>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Request {
     pub text: String,
     pub options: find::Options,
@@ -46,7 +46,7 @@ pub struct Request {
     pub template: Option<String>,
 }
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct Outcome {
     pub files: Vec<FileHits>,
     pub capped: bool,

@@ -3,12 +3,14 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
+use serde::{Deserialize, Serialize};
+
 const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 const WHOLE_FILE: &str = "-U100000000";
 const MAX_TEXT_SIZE: u64 = 4000000;
 const COLORS: usize = 8;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Change {
     pub path: String,
     pub status: char,
@@ -17,7 +19,7 @@ pub struct Change {
     pub removed: usize,
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct Status {
     pub branch: String,
     pub changes: Vec<Change>,
@@ -28,14 +30,14 @@ pub struct Status {
 
 pub use nucli_core::chips::DiffStat;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LineKind {
     Context,
     Added,
     Removed,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DiffLine {
     pub kind: LineKind,
     pub text: String,
@@ -43,7 +45,7 @@ pub struct DiffLine {
     pub new: Option<usize>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Commit {
     pub hash: String,
     pub parents: Vec<String>,
@@ -53,7 +55,7 @@ pub struct Commit {
     pub subject: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Segment {
     pub from: usize,
     pub to: usize,
@@ -61,7 +63,7 @@ pub struct Segment {
     pub color: usize,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GraphRow {
     pub column: usize,
     pub color: usize,
@@ -347,7 +349,7 @@ pub fn commit(dir: &Path, message: &str) -> Result<(), String> {
     run_checked(dir, &["commit", "-m", message]).map(drop)
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum GitRef {
     Head,
     Current(String),
@@ -468,7 +470,7 @@ pub fn graph(commits: &[Commit]) -> Vec<GraphRow> {
     rows
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CommitDetails {
     pub date: String,
     pub message: String,
@@ -541,7 +543,7 @@ pub fn files(dir: &Path) -> Option<Vec<String>> {
     Some(files)
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct TreeStatus {
     pub changes: Vec<(String, char, bool)>,
     pub ignored: Vec<String>,

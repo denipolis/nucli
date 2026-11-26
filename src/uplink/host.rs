@@ -57,7 +57,7 @@ fn open_workspace(name: &str, cx: &App) -> Option<String> {
     Some(workspace.id.clone())
 }
 
-pub(super) fn inside(root: &Path, relative: &str) -> Option<PathBuf> {
+pub(crate) fn inside(root: &Path, relative: &str) -> Option<PathBuf> {
     let relative = Path::new(relative);
     if relative.components().any(|part| !matches!(part, Component::Normal(_))) {
         return None;
@@ -213,6 +213,10 @@ fn answer(request: Request, root: PathBuf) -> Response {
             None => failed("The commit was not found."),
         },
         Request::Tree { .. } => Response::Tree { files: super::transfers::tree(&root) },
+        Request::Query { query, .. } => match crate::backend::answer(&root, query) {
+            Ok(value) => Response::Answer { value },
+            Err(reason) => failed(reason),
+        },
         Request::Branches { .. } => Response::Branches {
             current: git::status(&root).map(|status| status.branch).unwrap_or_default(),
             branches: git::branches(&root, BRANCH_LIMIT),
@@ -231,6 +235,7 @@ fn project_of(request: &Request) -> Option<&str> {
         | Request::Commit { project, .. }
         | Request::Branches { project }
         | Request::Tree { project }
+        | Request::Query { project, .. }
         | Request::Download { project, .. }
         | Request::Upload { project, .. }
         | Request::Act { project, .. } => Some(project),

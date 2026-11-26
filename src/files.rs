@@ -7,14 +7,17 @@ use gpui::{
     ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px, uniform_list,
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::actions::in_window;
+use crate::backend::{Backend, Query};
 use crate::file_ops::DraggedPath;
 use crate::icons;
 use crate::store;
 use crate::ui;
 use crate::window::WorkspaceView;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
     pub name: String,
     pub is_dir: bool,
@@ -32,8 +35,9 @@ pub struct TreeRow {
     pub ignored: bool,
 }
 
-#[derive(Default)]
-struct Scan {
+#[derive(Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Scan {
     entries: HashMap<String, Vec<Entry>>,
     letters: HashMap<String, char>,
     folders: HashMap<String, bool>,
@@ -58,7 +62,7 @@ pub fn read_dir(root: &Path, relative: &str) -> Vec<Entry> {
     entries
 }
 
-fn list(root: &Path, expanded: &BTreeSet<String>) -> HashMap<String, Vec<Entry>> {
+pub fn list(root: &Path, expanded: &BTreeSet<String>) -> HashMap<String, Vec<Entry>> {
     let mut entries = HashMap::new();
     entries.insert(String::new(), read_dir(root, ""));
     for folder in expanded {
@@ -67,7 +71,7 @@ fn list(root: &Path, expanded: &BTreeSet<String>) -> HashMap<String, Vec<Entry>>
     entries
 }
 
-fn decorations(root: &Path) -> Scan {
+pub fn decorations(root: &Path) -> Scan {
     let mut result = Scan::default();
     let Some(tree) = crate::git::tree_status(root) else { return result };
     for (path, status, staged) in tree.changes {
@@ -124,6 +128,7 @@ fn build_rows(scan: &Scan, expanded: &BTreeSet<String>) -> Vec<TreeRow> {
 pub struct FilesPanel {
     workspace: String,
     root: PathBuf,
+    remote: bool,
     revision: u64,
     scans: HashMap<PathBuf, Scan>,
     rows: Vec<TreeRow>,
@@ -143,9 +148,11 @@ impl FilesPanel {
             }
         })
         .detach();
+        let remote = Backend::of(&workspace, &root, cx).is_remote();
         let mut panel = FilesPanel {
             workspace,
             root,
+            remote,
             revision: 0,
             scans: HashMap::new(),
             rows: Vec::new(),
@@ -169,6 +176,7 @@ impl FilesPanel {
     fn set_root(&mut self, root: &Path, cx: &mut Context<Self>) {
         if self.root != root {
             self.root = root.to_path_buf();
+            self.remote = Backend::of(&self.workspace, root, cx).is_remote();
             self.revision = store::store(cx).read(cx).revision(root);
             self.rebuild(cx);
             self.reload(cx);
@@ -190,10 +198,10 @@ impl FilesPanel {
         self.listing += 1;
         let listing = self.listing;
         let root = self.root.clone();
-        let expanded = self.expanded(cx);
+        let expanded = self.expanded(cx).into_iter().collect();
+        let listed = Backend::of(&self.workspace, &root, cx).ask(Query::List { expanded }, cx);
         cx.spawn(async move |this, cx| {
-            let folder = root.clone();
-            let entries = cx.background_executor().spawn(async move { list(&folder, &expanded) }).await;
+            let entries = listed.await.unwrap_or_default();
             let _ = this.update(cx, |panel, cx| {
                 if panel.listing == listing {
                     panel.scans.entry(root).or_default().entries = entries;
@@ -212,9 +220,9 @@ impl FilesPanel {
         self.decorating = true;
         let root = self.root.clone();
         let progress = store::begin_progress("git status", cx);
+        let decorated = Backend::of(&self.workspace, &root, cx).ask::<Scan>(Query::Decorations, cx);
         cx.spawn(async move |this, cx| {
-            let folder = root.clone();
-            let found = cx.background_executor().spawn(async move { decorations(&folder) }).await;
+            let found = decorated.await.unwrap_or_default();
             let _ = this.update(cx, |panel, cx| {
                 store::finish_progress(progress, cx);
                 panel.decorating = false;
@@ -249,6 +257,14 @@ impl FilesPanel {
         });
         self.rebuild(cx);
         self.list(cx);
+    }
+}
+
+fn file_menu(view: &WorkspaceView, root: &Path, path: &str, is_dir: bool, cx: &App) -> Vec<crate::menu::Item> {
+    if view.state(cx).is_some_and(|state| state.host.is_some()) {
+        crate::uplink::remote_actions::file_menu(view, root, path, is_dir, cx)
+    } else {
+        crate::file_ops::menu(root, path, is_dir, view, cx)
     }
 }
 
@@ -292,7 +308,8 @@ impl Render for FilesPanel {
                         let (drop_folder, external_folder) = (folder.clone(), folder);
                         let dragged = DraggedPath { path: panel.root.join(&row.path), title: row.name.clone() };
                         let selection = theme.selection;
-                        let target = row.is_dir;
+                        let local = !panel.remote;
+                        let target = row.is_dir && local;
                         div()
                             .id(("file-row", index))
                             .h(line)
@@ -318,16 +335,20 @@ impl Render for FilesPanel {
                             .when_some(right, |this, (label, color)| {
                                 this.child(div().flex_none().text_color(color).child(label))
                             })
-                            .on_drag(dragged, |drag: &DraggedPath, _, _, cx| {
-                                cx.new(|_| crate::sidebar::DragPreview(drag.title.clone()))
+                            .when(local, |this| {
+                                this.on_drag(dragged, |drag: &DraggedPath, _, _, cx| {
+                                    cx.new(|_| crate::sidebar::DragPreview(drag.title.clone()))
+                                })
+                                .on_drop(cx.listener(move |panel, drag: &DraggedPath, window, cx| {
+                                    let cut = !window.modifiers().alt;
+                                    panel.drop(vec![drag.path.clone()], drop_folder.clone(), cut, cx);
+                                }))
+                                .on_drop(cx.listener(
+                                    move |panel, paths: &ExternalPaths, _, cx| {
+                                        panel.drop(paths.paths().to_vec(), external_folder.clone(), false, cx);
+                                    },
+                                ))
                             })
-                            .on_drop(cx.listener(move |panel, drag: &DraggedPath, window, cx| {
-                                let cut = !window.modifiers().alt;
-                                panel.drop(vec![drag.path.clone()], drop_folder.clone(), cut, cx);
-                            }))
-                            .on_drop(cx.listener(move |panel, paths: &ExternalPaths, _, cx| {
-                                panel.drop(paths.paths().to_vec(), external_folder.clone(), false, cx);
-                            }))
                             .on_click(cx.listener(move |panel, _, _, cx| {
                                 if click.is_dir {
                                     panel.toggle(&click.path, cx);
@@ -344,7 +365,7 @@ impl Render for FilesPanel {
                                     let (root, row, position) = (panel.root.clone(), menu_row.clone(), event.position);
                                     cx.stop_propagation();
                                     in_window(&panel.workspace, cx, move |view, _, cx| {
-                                        let items = crate::file_ops::menu(&root, &row.path, row.is_dir, view, cx);
+                                        let items = file_menu(view, &root, &row.path, row.is_dir, cx);
                                         view.open_menu(position, items, cx);
                                     });
                                 }),
@@ -355,18 +376,20 @@ impl Render for FilesPanel {
             }),
         )
         .size_full()
-        .on_drop(cx.listener(|panel, drag: &DraggedPath, window, cx| {
-            panel.drop(vec![drag.path.clone()], String::new(), !window.modifiers().alt, cx);
-        }))
-        .on_drop(cx.listener(|panel, paths: &ExternalPaths, _, cx| {
-            panel.drop(paths.paths().to_vec(), String::new(), false, cx);
-        }))
+        .when(!self.remote, |this| {
+            this.on_drop(cx.listener(|panel, drag: &DraggedPath, window, cx| {
+                panel.drop(vec![drag.path.clone()], String::new(), !window.modifiers().alt, cx);
+            }))
+            .on_drop(cx.listener(|panel, paths: &ExternalPaths, _, cx| {
+                panel.drop(paths.paths().to_vec(), String::new(), false, cx);
+            }))
+        })
         .on_mouse_down(
             MouseButton::Right,
             cx.listener(|panel, event: &gpui::MouseDownEvent, _, cx| {
                 let (root, position) = (panel.root.clone(), event.position);
                 in_window(&panel.workspace, cx, move |view, _, cx| {
-                    let items = crate::file_ops::menu(&root, "", true, view, cx);
+                    let items = file_menu(view, &root, "", true, cx);
                     view.open_menu(position, items, cx);
                 });
             }),

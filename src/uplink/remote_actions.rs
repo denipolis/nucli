@@ -248,3 +248,112 @@ pub fn project_menu(view: &WorkspaceView, path: &Path, cx: &App) -> Vec<Item> {
     }
     items
 }
+
+fn join(folder: &str, name: &str) -> String {
+    if folder.is_empty() { name.to_string() } else { format!("{folder}/{name}") }
+}
+
+fn ask_name(
+    view: &mut WorkspaceView,
+    title: &str,
+    value: &str,
+    window: &mut Window,
+    cx: &mut Context<WorkspaceView>,
+    done: impl Fn(String) -> Action + 'static,
+    root: std::path::PathBuf,
+) {
+    actions::prompt(view, title, value, window, cx, move |text, view, _, cx| {
+        if !text.is_empty() {
+            project_action(&view.workspace.clone(), &root, done(text), cx);
+        }
+    });
+}
+
+pub fn file_menu(view: &WorkspaceView, root: &Path, path: &str, is_dir: bool, cx: &App) -> Vec<Item> {
+    let Some(key) = host(&view.workspace, cx) else { return Vec::new() };
+    let control = control(&view.workspace, cx);
+    let folder = if is_dir {
+        path.to_string()
+    } else {
+        path.rsplit_once('/').map(|(parent, _)| parent.to_string()).unwrap_or_default()
+    };
+    let project = root.to_string_lossy().into_owned();
+    let mut items = Vec::new();
+    if control {
+        for (label, directory) in [("New File…", false), ("New Folder…", true)] {
+            let (folder, root) = (folder.clone(), root.to_path_buf());
+            items.push(menu::action(label, move |view, window, cx| {
+                let folder = folder.clone();
+                ask_name(
+                    view,
+                    label.trim_end_matches('…'),
+                    "",
+                    window,
+                    cx,
+                    move |name| Action::Create { path: join(&folder, &name), folder: directory },
+                    root.clone(),
+                );
+            }));
+        }
+        items.push(Item::Separator);
+    }
+    if !path.is_empty() {
+        if !is_dir {
+            let (download, project) = (path.to_string(), project.clone());
+            items.push(menu::action("Download…", move |view, _, cx| {
+                super::files::save(key, project.clone(), download.clone(), view.workspace.clone(), cx)
+            }));
+        }
+        if control {
+            let (from, base) = (path.to_string(), root.to_path_buf());
+            let name = path.rsplit('/').next().unwrap_or(path).to_string();
+            items.push(menu::action("Rename…", move |view, window, cx| {
+                let from = from.clone();
+                let parent = from.rsplit_once('/').map(|(parent, _)| parent.to_string()).unwrap_or_default();
+                ask_name(
+                    view,
+                    "Rename",
+                    &name,
+                    window,
+                    cx,
+                    move |name| Action::Rename { from: from.clone(), to: join(&parent, &name) },
+                    base.clone(),
+                );
+            }));
+            let (copied, copy_base) = (path.to_string(), root.to_path_buf());
+            items.push(menu::action("Duplicate", move |view, _, cx| {
+                project_action(&view.workspace.clone(), &copy_base, Action::Duplicate { path: copied.clone() }, cx)
+            }));
+            let (deleted, delete_base) = (path.to_string(), root.to_path_buf());
+            items.push(menu::action("Delete", move |view, window, cx| {
+                let answer = window.prompt(
+                    PromptLevel::Warning,
+                    &format!("Delete {deleted}?"),
+                    Some("It goes to the trash of the other computer."),
+                    &["Delete", "Cancel"],
+                    cx,
+                );
+                let (workspace, root, deleted) = (view.workspace.clone(), delete_base.clone(), deleted.clone());
+                cx.spawn(async move |_, cx| {
+                    if answer.await == Ok(0) {
+                        cx.update(|cx| project_action(&workspace, &root, Action::Delete { path: deleted }, cx));
+                    }
+                })
+                .detach();
+            }));
+            items.push(Item::Separator);
+            let (opened, revealed, open_base) = (path.to_string(), path.to_string(), root.to_path_buf());
+            let reveal_root = open_base.clone();
+            items.push(menu::action("Open on That Computer", move |view, _, cx| {
+                project_action(&view.workspace.clone(), &open_base, Action::Open { path: opened.clone() }, cx)
+            }));
+            items.push(menu::action("Reveal on That Computer", move |view, _, cx| {
+                project_action(&view.workspace.clone(), &reveal_root, Action::Reveal { path: revealed.clone() }, cx)
+            }));
+            items.push(Item::Separator);
+        }
+        items.push(menu::copy("Copy Path", root.join(path).to_string_lossy().into_owned()));
+        items.push(menu::copy("Copy Relative Path", path.to_string()));
+    }
+    items
+}

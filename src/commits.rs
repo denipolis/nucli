@@ -9,6 +9,7 @@ use gpui::{
     canvas, div, fill, point, px, relative, size, uniform_list,
 };
 
+use crate::backend::{Backend, Query};
 use crate::git::{self, Change, Commit, CommitDetails, GitRef, GraphRow};
 use crate::history::relative_age;
 use crate::icons;
@@ -16,6 +17,7 @@ use crate::menu::{self, Item};
 use crate::store;
 use crate::theme::ItemColor;
 use crate::ui;
+use crate::uplink::protocol::{Action, Reset};
 use crate::window::WorkspaceView;
 
 const LANE: f32 = 12.0;
@@ -41,6 +43,7 @@ enum Row {
 pub struct CommitsPanel {
     workspace: String,
     root: PathBuf,
+    backend: Backend,
     revision: u64,
     commits: Vec<Commit>,
     graph: Vec<GraphRow>,
@@ -64,9 +67,11 @@ impl CommitsPanel {
             }
         })
         .detach();
+        let backend = Backend::of(&workspace, &root, cx);
         let mut panel = CommitsPanel {
             workspace,
             root,
+            backend,
             revision: 0,
             commits: Vec::new(),
             graph: Vec::new(),
@@ -85,6 +90,7 @@ impl CommitsPanel {
     fn set_root(&mut self, root: &Path, cx: &mut Context<Self>) {
         if self.root != root {
             self.root = root.to_path_buf();
+            self.backend = Backend::of(&self.workspace, root, cx);
             match self.cache.get(root).cloned() {
                 Some((commits, graph)) => {
                     self.loaded = true;
@@ -113,16 +119,9 @@ impl CommitsPanel {
         self.loading = true;
         let root = self.root.clone();
         let progress = store::begin_progress("git log", cx);
+        let asked = self.backend.ask::<(Option<Vec<Commit>>, Vec<GraphRow>)>(Query::Log { limit: 500 }, cx);
         cx.spawn(async move |this, cx| {
-            let folder = root.clone();
-            let (commits, graph) = cx
-                .background_executor()
-                .spawn(async move {
-                    let commits = git::log(&folder, 500);
-                    let graph = commits.as_ref().map(|commits| git::graph(commits)).unwrap_or_default();
-                    (commits, graph)
-                })
-                .await;
+            let (commits, graph) = asked.await.unwrap_or_default();
             let _ = this.update(cx, |panel, cx| {
                 store::finish_progress(progress, cx);
                 panel.loading = false;
@@ -162,11 +161,11 @@ impl CommitsPanel {
         self.expanded = Some(index);
         self.files = None;
         cx.notify();
-        let root = self.root.clone();
         let hash = self.commits[index].hash.clone();
         let progress = store::begin_progress("git show", cx);
+        let asked = self.backend.ask::<Option<Vec<Change>>>(Query::CommitChanges { hash }, cx);
         cx.spawn(async move |this, cx| {
-            let files = cx.background_executor().spawn(async move { git::commit_changes(&root, &hash) }).await;
+            let files = asked.await.flatten();
             let _ = this.update(cx, |panel, cx| {
                 store::finish_progress(progress, cx);
                 if panel.expanded == Some(index) {
@@ -181,11 +180,21 @@ impl CommitsPanel {
     fn git(&mut self, text: String, args: Vec<String>, cx: &mut Context<Self>) {
         let (root, workspace) = (self.root.clone(), self.workspace.clone());
         let progress = store::begin_progress(text, cx);
+        let remote = self.backend.is_remote().then(|| match action(&args) {
+            Some(action) => self.backend.act(action, cx),
+            None => gpui::Task::ready(Err("The other computer cannot run this.".to_string())),
+        });
         cx.spawn(async move |this, cx| {
-            let result = cx
-                .background_executor()
-                .spawn(async move { git::run_checked(&root, &args.iter().map(String::as_str).collect::<Vec<_>>()) })
-                .await;
+            let result = match remote {
+                Some(acted) => acted.await,
+                None => {
+                    cx.background_executor()
+                        .spawn(async move {
+                            git::run_checked(&root, &args.iter().map(String::as_str).collect::<Vec<_>>()).map(drop)
+                        })
+                        .await
+                }
+            };
             let _ = this.update(cx, |panel, cx| {
                 store::finish_progress(progress, cx);
                 if let Err(error) = result {
@@ -210,6 +219,30 @@ impl CommitsPanel {
         }
         rows
     }
+}
+
+fn action(args: &[String]) -> Option<Action> {
+    let mut args: Vec<&str> = args.iter().map(String::as_str).collect();
+    if let Some(index) = args.windows(2).position(|pair| pair == ["-m", "1"]) {
+        args.drain(index..index + 2);
+    }
+    let owned = |text: &str| text.to_string();
+    Some(match args.as_slice() {
+        ["switch", "--track", remote] => Action::Track { remote: owned(remote) },
+        ["switch", "--detach", hash] => Action::Detach { hash: owned(hash) },
+        ["switch", "-c", name, hash] => Action::Branch { name: owned(name), at: Some(owned(hash)) },
+        ["switch", branch] => Action::Switch { branch: owned(branch) },
+        ["tag", "-d", name] => Action::DeleteTag { name: owned(name) },
+        ["tag", name, hash] => Action::Tag { name: owned(name), at: owned(hash) },
+        ["cherry-pick", hash] => Action::CherryPick { hash: owned(hash) },
+        ["revert", "--no-edit", hash] => Action::Revert { hash: owned(hash) },
+        ["reset", "--soft", hash] => Action::Reset { hash: owned(hash), mode: Reset::Soft },
+        ["reset", "--mixed", hash] => Action::Reset { hash: owned(hash), mode: Reset::Mixed },
+        ["reset", "--hard", hash] => Action::Reset { hash: owned(hash), mode: Reset::Hard },
+        ["branch", "-D", name] => Action::DeleteBranch { name: owned(name) },
+        ["checkout", hash, "--", path] => Action::Restore { hash: owned(hash), path: owned(path) },
+        _ => return None,
+    })
 }
 
 fn git_item(panel: &Entity<CommitsPanel>, label: impl Into<SharedString>, args: &[&str]) -> Item {
@@ -339,7 +372,12 @@ fn commit_file_menu(
         ));
     }
     items.push(Item::Separator);
-    items.extend(crate::file_view::file_menu(view, &root.join(&change.path), &change.path, cx));
+    if panel.read(cx).backend.is_remote() {
+        items.push(menu::copy("Copy Path", root.join(&change.path).to_string_lossy().into_owned()));
+        items.push(menu::copy("Copy Relative Path", change.path.clone()));
+    } else {
+        items.extend(crate::file_view::file_menu(view, &root.join(&change.path), &change.path, cx));
+    }
     items
 }
 
@@ -467,10 +505,10 @@ struct CommitTooltip {
 }
 
 impl CommitTooltip {
-    fn new(root: PathBuf, commit: Commit, lane: Hsla, cx: &mut Context<Self>) -> Self {
-        let hash = commit.hash.clone();
+    fn new(backend: Backend, commit: Commit, lane: Hsla, cx: &mut Context<Self>) -> Self {
+        let asked = backend.ask::<Option<CommitDetails>>(Query::CommitDetails { hash: commit.hash.clone() }, cx);
         cx.spawn(async move |this, cx| {
-            let details = cx.background_executor().spawn(async move { git::commit_details(&root, &hash) }).await;
+            let details = asked.await.flatten();
             let _ = this.update(cx, |tooltip, cx| {
                 tooltip.details = details;
                 cx.notify();
@@ -659,7 +697,7 @@ impl Render for CommitsPanel {
                             let menu_commit = commit.clone();
                             let hidden_refs = commit.refs.len().saturating_sub(2);
                             let lane = graph.as_ref().map_or(theme.accent, |row| lane_color(row.color, theme.dark));
-                            let (tooltip_root, tooltip_commit) = (panel.root.clone(), commit.clone());
+                            let (tooltip_backend, tooltip_commit) = (panel.backend.clone(), commit.clone());
                             div()
                                 .id(("commit-row", index))
                                 .h(line)
@@ -715,8 +753,8 @@ impl Render for CommitsPanel {
                                         .child(relative_age(time)),
                                 )
                                 .tooltip(move |_, cx| {
-                                    let (root, commit) = (tooltip_root.clone(), tooltip_commit.clone());
-                                    cx.new(|cx| CommitTooltip::new(root, commit, lane, cx)).into()
+                                    let (backend, commit) = (tooltip_backend.clone(), tooltip_commit.clone());
+                                    cx.new(|cx| CommitTooltip::new(backend, commit, lane, cx)).into()
                                 })
                                 .on_click(cx.listener(move |panel, _, _, cx| panel.toggle(commit_index, cx)))
                                 .on_mouse_down(
@@ -768,5 +806,23 @@ mod tests {
     fn reads_co_authors() {
         let message = "feat: a\n\nbody\n\nCo-Authored-By: Some One <a@b.c>\nco-authored-by: Other";
         assert_eq!(co_authors(message), vec!["Some One".to_string(), "Other".to_string()]);
+    }
+
+    #[test]
+    fn menu_commands_map_to_remote_actions() {
+        let args = |list: &[&str]| list.iter().map(|arg| arg.to_string()).collect::<Vec<_>>();
+        assert_eq!(action(&args(&["switch", "1"])), Some(Action::Switch { branch: "1".into() }));
+        assert_eq!(action(&args(&["cherry-pick", "-m", "1", "abc"])), Some(Action::CherryPick { hash: "abc".into() }));
+        assert_eq!(
+            action(&args(&["switch", "-c", "", "abc"])),
+            Some(Action::Branch { name: String::new(), at: Some("abc".into()) })
+        );
+        assert_eq!(action(&args(&["tag", "-d", "v1"])), Some(Action::DeleteTag { name: "v1".into() }));
+        assert_eq!(action(&args(&["tag", "v1", "abc"])), Some(Action::Tag { name: "v1".into(), at: "abc".into() }));
+        assert_eq!(
+            action(&args(&["reset", "--hard", "abc"])),
+            Some(Action::Reset { hash: "abc".into(), mode: Reset::Hard })
+        );
+        assert_eq!(action(&args(&["push"])), None);
     }
 }

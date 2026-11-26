@@ -5,7 +5,7 @@ use crate::session::{Activity, Kind};
 use crate::terminal::Feed;
 use crate::theme::ItemColor;
 
-pub const PROTOCOL: u32 = 1;
+pub const PROTOCOL: u32 = 2;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(default)]
@@ -89,6 +89,7 @@ pub struct RemoteProject {
     pub color: Option<ItemColor>,
     pub workspace: String,
     pub muted: bool,
+    pub revision: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -198,6 +199,7 @@ pub enum Request {
     Download { project: String, path: String },
     Upload { project: String, folder: String, name: String, size: u64 },
     Attach { tab: String, name: String, size: u64 },
+    Query { project: String, query: serde_json::Value },
     Act { project: String, action: Action },
     Tab { tab: String, action: TabAction },
 }
@@ -266,6 +268,7 @@ pub enum Response {
     Branches { current: String, branches: Vec<String> },
     Tree { files: Vec<String> },
     Attached { text: String },
+    Answer { value: serde_json::Value },
     Done,
     Failed { reason: String },
 }

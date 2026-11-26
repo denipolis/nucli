@@ -7,11 +7,13 @@ use gpui::{
     Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
+use crate::backend::{Backend, Query};
 use crate::git::{self, Change, Status};
 use crate::icons;
 use crate::store;
 use crate::text_input::{InputEvent, TextInput};
 use crate::ui;
+use crate::uplink::protocol::Action;
 use crate::window::WorkspaceView;
 
 const ROW_LIMIT: usize = 500;
@@ -19,6 +21,7 @@ const ROW_LIMIT: usize = 500;
 pub struct ChangesPanel {
     workspace: String,
     root: PathBuf,
+    backend: Backend,
     revision: u64,
     status: Option<Status>,
     cache: HashMap<PathBuf, Option<Status>>,
@@ -55,9 +58,11 @@ impl ChangesPanel {
             }
         })
         .detach();
+        let backend = Backend::of(&workspace, &root, cx);
         let mut panel = ChangesPanel {
             workspace,
             root,
+            backend,
             revision: 0,
             status: None,
             cache: HashMap::new(),
@@ -75,6 +80,7 @@ impl ChangesPanel {
     fn set_root(&mut self, root: &Path, cx: &mut Context<Self>) {
         if self.root != root {
             self.root = root.to_path_buf();
+            self.backend = Backend::of(&self.workspace, root, cx);
             let cached = self.cache.get(root).cloned();
             self.loaded = cached.is_some();
             self.status = cached.flatten();
@@ -91,9 +97,9 @@ impl ChangesPanel {
         self.loading = true;
         let root = self.root.clone();
         let progress = store::begin_progress("git status", cx);
+        let asked = self.backend.ask::<Option<Status>>(Query::Status, cx);
         cx.spawn(async move |this, cx| {
-            let folder = root.clone();
-            let status = cx.background_executor().spawn(async move { git::status(&folder) }).await;
+            let status = asked.await.flatten();
             let _ = this.update(cx, |panel, cx| {
                 store::finish_progress(progress, cx);
                 panel.loading = false;
@@ -135,10 +141,39 @@ impl ChangesPanel {
         .detach();
     }
 
+    fn act(
+        &mut self,
+        action: Action,
+        done: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        let acted = self.backend.act(action, cx);
+        let workspace = self.workspace.clone();
+        let progress = store::begin_progress("git on the other computer", cx);
+        cx.spawn(async move |this, cx| {
+            let result = acted.await;
+            let _ = this.update(cx, |panel, cx| {
+                store::finish_progress(progress, cx);
+                match result {
+                    Ok(()) => done(panel, cx),
+                    Err(reason) => crate::actions::alert(&workspace, "git failed", reason, cx),
+                }
+                panel.reload(cx);
+            });
+        })
+        .detach();
+    }
+
     fn commit(&mut self, cx: &mut Context<Self>) {
         let text = self.message.read(cx).text.trim().to_string();
         let has_staged = self.status.as_ref().is_some_and(|status| status.changes.iter().any(|change| change.staged));
         if text.is_empty() || !has_staged {
+            return;
+        }
+        if self.backend.is_remote() {
+            let clear =
+                |panel: &mut Self, cx: &mut Context<Self>| panel.message.update(cx, |input, cx| input.clear(cx));
+            self.act(Action::Commit { message: text }, clear, cx);
             return;
         }
         self.run(
@@ -155,6 +190,8 @@ impl ChangesPanel {
             return;
         }
         match kind {
+            Batch::Stage if self.backend.is_remote() => self.act(Action::Stage { paths }, |_, _| {}, cx),
+            Batch::Unstage if self.backend.is_remote() => self.act(Action::Unstage { paths }, |_, _| {}, cx),
             Batch::Stage => self.run("git add", move |root| git::stage(root, &paths), |_, _| {}, cx),
             Batch::Unstage => self.run("git restore --staged", move |root| git::unstage(root, &paths), |_, _| {}, cx),
             Batch::Discard => self.confirm_discard(changes, cx),
@@ -177,6 +214,11 @@ impl ChangesPanel {
             cx.spawn(async move |cx| {
                 if answer.await == Ok(0) {
                     panel.update(cx, |panel, cx| {
+                        if panel.backend.is_remote() {
+                            let paths = changes.iter().map(|change| change.path.clone()).collect();
+                            panel.act(Action::Discard { paths }, |_, _| {}, cx);
+                            return;
+                        }
                         let root = panel.root.clone();
                         panel.run("discarding changes", move |_| discard(&root, &changes), |_, _| {}, cx);
                     });
@@ -296,8 +338,10 @@ impl ChangesPanel {
         let dragged = crate::file_ops::DraggedPath { path: self.root.join(&change.path), title: name.clone() };
         div()
             .id(SharedString::from(format!("change-row-{id}")))
-            .on_drag(dragged, |drag: &crate::file_ops::DraggedPath, _, _, cx| {
-                cx.new(|_| crate::sidebar::DragPreview(drag.title.clone()))
+            .when(!self.backend.is_remote(), |this| {
+                this.on_drag(dragged, |drag: &crate::file_ops::DraggedPath, _, _, cx| {
+                    cx.new(|_| crate::sidebar::DragPreview(drag.title.clone()))
+                })
             })
             .group(group)
             .flex()
@@ -381,7 +425,10 @@ fn change_menu(
         items.push(batch("Discard Changes", Batch::Discard));
     }
     items.push(Item::Separator);
-    if deleted {
+    if panel.read(cx).backend.is_remote() {
+        items.push(menu::copy("Copy Path", full.to_string_lossy().into_owned()));
+        items.push(menu::copy("Copy Relative Path", change.path.clone()));
+    } else if deleted {
         items.extend(crate::file_view::path_menu(&full, &change.path));
     } else {
         items.extend(crate::file_view::file_menu(view, &full, &change.path, cx));

@@ -143,6 +143,13 @@ impl Uplink {
             for remote in store.remotes.iter_mut().filter(|remote| !remote.closed && host_of(remote, &encoded)) {
                 mirror(remote, &catalog, key);
             }
+            for project in catalog.projects.iter().filter(|project| names.contains(&project.workspace)) {
+                let path = PathBuf::from(&project.path);
+                if store.revision(&path) != project.revision {
+                    store.revisions.insert(path.clone(), project.revision);
+                    store.git_revisions.insert(path, project.revision);
+                }
+            }
             store.changed(cx);
         });
     }

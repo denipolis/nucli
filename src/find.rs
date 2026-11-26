@@ -13,7 +13,7 @@ pub struct Options {
     pub preserve: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hit {
     pub start: Pos,
     pub end: Pos,
