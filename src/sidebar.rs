@@ -606,6 +606,9 @@ fn board(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> 
 }
 
 fn history(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> Vec<AnyElement> {
+    if view.state(cx).is_some_and(|state| state.host.is_some()) {
+        return crate::uplink::remote_actions::history_rows(view, query, cx);
+    }
     let theme = ui::theme(cx);
     let Some(list) = view.store(cx).history.clone() else {
         return vec![div().p(px(10.0)).text_color(theme.faint).child("loading…").into_any_element()];

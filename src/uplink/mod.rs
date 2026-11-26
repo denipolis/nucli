@@ -109,6 +109,7 @@ pub struct Uplink {
     push: Option<Task<()>>,
     opening: Option<(Key, String)>,
     transfers: transfers::Transfers,
+    pub histories: HashMap<Key, (Instant, Option<Vec<protocol::RemoteConversation>>)>,
 }
 
 pub fn init(cx: &mut App) {
@@ -136,6 +137,7 @@ pub fn init(cx: &mut App) {
             push: None,
             opening: None,
             transfers: Default::default(),
+            histories: HashMap::new(),
         };
         uplink.trust();
         uplink

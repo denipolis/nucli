@@ -84,6 +84,7 @@ fn file_items(project: &Path, recent: &[String], files: &[String], cx: &App) -> 
 }
 
 fn load_files(
+    workspace: &str,
     project: PathBuf,
     palette: gpui::Entity<Palette>,
     recent: Vec<String>,
@@ -91,9 +92,10 @@ fn load_files(
     cx: &mut Context<WorkspaceView>,
 ) {
     let progress = store::begin_progress("listing files", cx);
+    let listed =
+        crate::backend::Backend::of(workspace, &project, cx).ask::<Vec<String>>(crate::backend::Query::Files, cx);
     cx.spawn(async move |_, cx| {
-        let dir = project.clone();
-        let files = cx.background_executor().spawn(async move { list_files(&dir) }).await;
+        let files = listed.await.unwrap_or_default();
         cx.update(|cx| {
             store::finish_progress(progress, cx);
             palette.update(cx, |palette, cx| {
@@ -126,7 +128,7 @@ pub fn quick_open(view: &mut WorkspaceView, window: &mut Window, cx: &mut Contex
     let items = file_items(&project.path, &project.recent_files, &[], cx);
     let placeholder = format!("search files in {}", project.display_name());
     let palette = cx.new(|cx| Palette::new("open", &placeholder, items, 0, cx));
-    load_files(project.path.clone(), palette.clone(), project.recent_files.clone(), true, cx);
+    load_files(&view.workspace.clone(), project.path.clone(), palette.clone(), project.recent_files.clone(), true, cx);
     view.show_palette(palette, window, cx);
 }
 
@@ -325,6 +327,10 @@ pub fn languages(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context
 }
 
 pub fn branches(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    if view.state(cx).is_some_and(|state| state.host.is_some()) {
+        crate::uplink::remote_actions::branches(view, window, cx);
+        return;
+    }
     let Some(dir) = view
         .selected_session(cx)
         .map(|session| session.read(cx).working_dir().to_path_buf())

@@ -241,13 +241,22 @@ impl SearchPanel {
         cx.notify();
         let (root, counter) = (self.root.clone(), self.generation.clone());
         let progress = store::begin_progress("searching", cx);
+        let backend = crate::backend::Backend::of(&self.workspace, &root, cx);
+        let remote = backend.is_remote().then(|| {
+            backend
+                .ask::<Result<search::Outcome, String>>(crate::backend::Query::Search { request: request.clone() }, cx)
+        });
         cx.spawn(async move |this, cx| {
-            let outcome = cx
-                .background_executor()
-                .spawn(
-                    async move { search::search(&root, &request, &|| counter.load(Ordering::Relaxed) != generation) },
-                )
-                .await;
+            let outcome = match remote {
+                Some(asked) => asked.await.unwrap_or_else(|| Err("The other computer did not answer.".to_string())),
+                None => {
+                    cx.background_executor()
+                        .spawn(async move {
+                            search::search(&root, &request, &|| counter.load(Ordering::Relaxed) != generation)
+                        })
+                        .await
+                }
+            };
             let _ = this.update(cx, |panel, cx| {
                 store::finish_progress(progress, cx);
                 if panel.generation.load(Ordering::Relaxed) != generation {
@@ -358,6 +367,11 @@ impl SearchPanel {
     }
 
     fn replace(&mut self, targets: Vec<(String, Vec<Hit>)>, cx: &mut Context<Self>) {
+        if crate::backend::Backend::of(&self.workspace, &self.root, cx).is_remote() {
+            self.notice = Some("replace works in projects of this computer".into());
+            cx.notify();
+            return;
+        }
         let request = self.request(cx);
         if request.template.is_none() || targets.is_empty() {
             return;

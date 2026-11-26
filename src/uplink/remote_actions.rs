@@ -357,3 +357,259 @@ pub fn file_menu(view: &WorkspaceView, root: &Path, path: &str, is_dir: bool, cx
     }
     items
 }
+
+fn separator(path: &str) -> char {
+    if path.contains('\\') && !path.contains('/') { '\\' } else { '/' }
+}
+
+pub fn browse(view: &mut WorkspaceView, path: String, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    let Some(key) = host(&view.workspace, cx) else { return };
+    let Some(uplink) = super::uplink(cx) else { return };
+    let control = control(&view.workspace, cx);
+    let name = view.state(cx).map(|state| state.name.clone()).unwrap_or_default();
+    let asked = uplink.update(cx, |uplink, _| uplink.ask(key, Request::Folders { path }));
+    cx.spawn_in(window, async move |this, cx| {
+        let Ok(Response::Folders { path, folders }) = asked.await else { return };
+        let _ = this.update_in(cx, |view, window, cx| {
+            let slash = separator(&path);
+            let trimmed = path.trim_end_matches(slash).to_string();
+            let mut items = Vec::new();
+            if control {
+                let (target, workspace) = (path.clone(), name.clone());
+                let folder = trimmed.rsplit(slash).next().unwrap_or(&trimmed).to_string();
+                items.push(
+                    palette::Item::new(format!("[add {folder}]"), move |view, _, cx| {
+                        let workspace_id = view.workspace.clone();
+                        let request = Request::AddProject { path: target.clone(), workspace: Some(workspace.clone()) };
+                        send(workspace_id, key, request, cx);
+                    })
+                    .glyph(icons::ADD, None),
+                );
+            }
+            if let Some((parent, _)) = trimmed.rsplit_once(slash) {
+                let parent = if parent.is_empty() || parent.ends_with(':') {
+                    format!("{parent}{slash}")
+                } else {
+                    parent.to_string()
+                };
+                items.push(
+                    palette::Item::new("..", move |view, window, cx| browse(view, parent.clone(), window, cx))
+                        .glyph(icons::CHEVRON_UP, None),
+                );
+            }
+            for folder in folders {
+                let target = format!("{trimmed}{slash}{folder}");
+                items.push(
+                    palette::Item::new(folder, move |view, window, cx| browse(view, target.clone(), window, cx))
+                        .glyph(icons::FOLDER, None),
+                );
+            }
+            let palette = cx.new(|cx| Palette::new("folders", &path, items, 0, cx));
+            view.show_palette(palette, window, cx);
+        });
+    })
+    .detach();
+}
+
+pub fn rename_workspace(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    let Some(key) = host(&view.workspace, cx).filter(|_| control(&view.workspace, cx)) else { return };
+    let current = view.state(cx).map(|state| state.name.clone()).unwrap_or_default();
+    actions::prompt(view, "rename workspace", &current.clone(), window, cx, move |name, view, _, cx| {
+        if name.is_empty() || name == current {
+            return;
+        }
+        let Some(uplink) = super::uplink(cx) else { return };
+        let request = Request::RenameWorkspace { workspace: current.clone(), name: name.clone() };
+        let answered = uplink.update(cx, |uplink, _| uplink.ask(key, request));
+        let id = view.workspace.clone();
+        cx.spawn(async move |_, cx| match answered.await {
+            Ok(Response::Failed { reason }) => cx.update(|cx| actions::alert(&id, "Not renamed", reason, cx)),
+            Ok(_) => cx.update(|cx| {
+                store::store(cx).update(cx, |store, cx| {
+                    if let Some(remote) = store.remotes.iter_mut().find(|remote| remote.id == id) {
+                        remote.name = name.clone();
+                    }
+                    store.changed(cx);
+                });
+                if let Some(uplink) = super::uplink(cx) {
+                    uplink.update(cx, |uplink, cx| uplink.sync_remotes(&key, cx));
+                }
+            }),
+            Err(_) => {}
+        })
+        .detach();
+    });
+}
+
+pub fn workspace_menu(view: &WorkspaceView, cx: &App) -> Vec<Item> {
+    let mut items = vec![menu::command("Open Project…", "open_project", cx)];
+    if control(&view.workspace, cx) {
+        items.push(menu::command("Rename Workspace…", "rename_workspace", cx));
+    }
+    let Some(key) = host(&view.workspace, cx) else { return items };
+    let name = view.state(cx).map(|state| state.name.clone()).unwrap_or_default();
+    let muted = catalog(&key, cx)
+        .and_then(|catalog| catalog.workspaces.into_iter().find(|workspace| workspace.name == name))
+        .is_some_and(|workspace| workspace.muted);
+    if control(&view.workspace, cx) {
+        items.push(Item::Separator);
+        items.push(menu::action(actions::notifications_label(!muted), move |view, _, cx| {
+            let request = Request::MuteWorkspace { workspace: name.clone(), muted: !muted };
+            send(view.workspace.clone(), key, request, cx);
+        }));
+    }
+    items
+}
+
+fn conversations(
+    view: &WorkspaceView,
+    cx: &mut Context<WorkspaceView>,
+) -> Option<Vec<super::protocol::RemoteConversation>> {
+    let key = host(&view.workspace, cx)?;
+    let uplink = super::uplink(cx)?;
+    let (stale, list) = match uplink.read(cx).histories.get(&key) {
+        Some((at, list)) => (at.elapsed() > std::time::Duration::from_secs(15), list.clone()),
+        None => (true, None),
+    };
+    if stale {
+        let answered = uplink.update(cx, |uplink, _| {
+            uplink.histories.insert(key, (std::time::Instant::now(), list.clone()));
+            uplink.ask(key, Request::History)
+        });
+        cx.spawn(async move |_, cx| {
+            if let Ok(Response::History { conversations }) = answered.await {
+                cx.update(|cx| {
+                    if let Some(uplink) = super::uplink(cx) {
+                        uplink.update(cx, |uplink, _| {
+                            uplink.histories.insert(key, (std::time::Instant::now(), Some(conversations)));
+                        });
+                    }
+                    store::store(cx).update(cx, |_, cx| cx.notify());
+                });
+            }
+        })
+        .detach();
+    }
+    let projects: Vec<String> = view
+        .state(cx)
+        .map(|state| state.all_projects().map(|project| project.path.to_string_lossy().into_owned()).collect())
+        .unwrap_or_default();
+    list.map(|list| list.into_iter().filter(|item| projects.contains(&item.project)).collect())
+}
+
+pub fn history_rows(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> Vec<gpui::AnyElement> {
+    use gpui::{
+        InteractiveElement, IntoElement, MouseButton, ParentElement, StatefulInteractiveElement, Styled, div, px,
+    };
+    let theme = crate::ui::theme(cx);
+    let Some(list) = conversations(view, cx) else {
+        return vec![div().p(px(10.0)).text_color(theme.faint).child("loading…").into_any_element()];
+    };
+    let key = host(&view.workspace, cx);
+    let control = control(&view.workspace, cx);
+    let mut rows = Vec::new();
+    for (index, item) in list.into_iter().enumerate() {
+        if !crate::sidebar::matches(query, &[&item.title, &item.cwd]) {
+            continue;
+        }
+        let age = crate::history::relative_age(std::time::UNIX_EPOCH + std::time::Duration::from_secs(item.modified));
+        let (glyph, color) = icons::agent(&item.agent);
+        let (resume, menu_id, title) = (item.id.clone(), item.id.clone(), item.title.clone());
+        rows.push(
+            div()
+                .id(("remote-history", index))
+                .flex()
+                .flex_col()
+                .px(px(8.0))
+                .py(px(3.0))
+                .hover(|style| style.bg(theme.hover))
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(6.0))
+                        .child(div().text_color(color.color(theme.dark)).child(glyph))
+                        .child(div().flex_1().truncate().child(item.title.clone())),
+                )
+                .child(
+                    div()
+                        .pl(px(20.0))
+                        .truncate()
+                        .text_color(theme.faint)
+                        .child(format!("{} · {age} · {}", item.profile, item.cwd)),
+                )
+                .on_click(cx.listener(move |view, _, _, cx| {
+                    if let Some(key) = key.filter(|_| control) {
+                        send(view.workspace.clone(), key, Request::Resume { conversation: resume.clone() }, cx);
+                    }
+                }))
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |view, event: &gpui::MouseDownEvent, _, cx| {
+                        let mut items = Vec::new();
+                        if let Some(key) = key.filter(|_| control) {
+                            let id = menu_id.clone();
+                            items.push(menu::action("Resume", move |view, _, cx| {
+                                send(view.workspace.clone(), key, Request::Resume { conversation: id.clone() }, cx)
+                            }));
+                            items.push(Item::Separator);
+                        }
+                        items.push(menu::copy("Copy Title", title.clone()));
+                        items.push(menu::copy("Copy Conversation ID", menu_id.clone()));
+                        view.open_menu(event.position, items, cx);
+                    }),
+                )
+                .into_any_element(),
+        );
+    }
+    if rows.is_empty() {
+        rows.push(div().p(px(10.0)).text_color(theme.faint).child("no conversations").into_any_element());
+    }
+    rows
+}
+
+pub fn branches(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    let Some(root) = view.current_project_path(cx).filter(|path| !path.as_os_str().is_empty()) else { return };
+    let backend = crate::backend::Backend::of(&view.workspace, &root, cx);
+    let listed = backend.ask::<(Option<String>, Vec<String>)>(crate::backend::Query::Branches { limit: 30 }, cx);
+    let control = control(&view.workspace, cx);
+    cx.spawn_in(window, async move |this, cx| {
+        let Some((current, list)) = listed.await else { return };
+        let _ = this.update_in(cx, |view, window, cx| {
+            let mut items = Vec::new();
+            for branch in list {
+                let (target, name) = (root.clone(), branch.clone());
+                items.push(
+                    palette::Item::new(branch.clone(), move |view, _, cx| {
+                        if control {
+                            project_action(
+                                &view.workspace.clone(),
+                                &target,
+                                Action::Switch { branch: name.clone() },
+                                cx,
+                            );
+                        }
+                    })
+                    .glyph(icons::BRANCH, None)
+                    .detail(if Some(&branch) == current.as_ref() { "current" } else { "" }),
+                );
+            }
+            if control {
+                let target = root.clone();
+                items.push(
+                    palette::Item::new("New Branch…", move |view, window, cx| {
+                        let target = target.clone();
+                        actions::prompt(view, "new branch", "", window, cx, move |name, view, _, cx| {
+                            if !name.is_empty() {
+                                project_action(&view.workspace.clone(), &target, Action::Branch { name, at: None }, cx);
+                            }
+                        });
+                    })
+                    .glyph(icons::ADD, None),
+                );
+            }
+            let palette = cx.new(|cx| Palette::new("branch", "switch branch", items, 0, cx));
+            view.show_palette(palette, window, cx);
+        });
+    })
+    .detach();
+}

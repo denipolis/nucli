@@ -110,7 +110,7 @@ impl Uplink {
         id
     }
 
-    pub(super) fn sync_remotes(&mut self, key: &Key, cx: &mut Context<Self>) {
+    pub fn sync_remotes(&mut self, key: &Key, cx: &mut Context<Self>) {
         let encoded = wire::encode_key(key);
         let Some(catalog) = self.links.get(key).and_then(|link| link.catalog.clone()) else { return };
         let names: HashSet<String> = store::store(cx)

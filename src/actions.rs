@@ -43,6 +43,14 @@ pub fn launch(
     window: &mut Window,
     cx: &mut Context<WorkspaceView>,
 ) {
+    if remote(view, cx) {
+        let agent = match &launcher {
+            Launcher::Agent(_) | Launcher::Resume(_) => Some(true),
+            Launcher::Shell(_) | Launcher::Terminal => Some(false),
+        };
+        crate::uplink::remote_actions::launch(view, project, agent, window, cx);
+        return;
+    }
     if let Launcher::Resume(conversation) = &launcher
         && let Some(id) = view.state(cx).and_then(|state| {
             state.ordered_tabs().into_iter().find(|id| {
@@ -291,6 +299,10 @@ pub fn choose_folder(
     cx: &mut Context<WorkspaceView>,
     done: impl FnOnce(PathBuf, &mut WorkspaceView, &mut Window, &mut Context<WorkspaceView>) + 'static,
 ) {
+    if remote(view, cx) {
+        crate::uplink::remote_actions::browse(view, String::new(), window, cx);
+        return;
+    }
     let receiver = cx.prompt_for_paths(PathPromptOptions {
         files: false,
         directories: true,
@@ -314,6 +326,9 @@ pub fn open_folder(
     window: &mut Window,
     cx: &mut Context<WorkspaceView>,
 ) -> PathBuf {
+    if remote(view, cx) {
+        return PathBuf::new();
+    }
     let workspace = view.workspace.clone();
     let (owner, path) = store::store(cx).update(cx, |store, cx| store.add_project(&workspace, path, cx));
     if owner == view.workspace {
@@ -341,6 +356,10 @@ pub fn show_project(view: &mut WorkspaceView, path: &Path, window: &mut Window, 
 }
 
 pub fn new_terminal_in(view: &mut WorkspaceView, path: &Path, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    if remote(view, cx) {
+        crate::uplink::remote_actions::launch_first(view, path, false, window, cx);
+        return;
+    }
     let workspace = view.workspace.clone();
     let path = path.to_path_buf();
     let id = store::store(cx).update(cx, |store, cx| store.open_tab(&workspace, &path, Launcher::Terminal, None, cx));
@@ -705,6 +724,9 @@ pub fn move_project_to_workspace(
 }
 
 pub fn workspace_menu(view: &WorkspaceView, cx: &App) -> Vec<Item> {
+    if remote(view, cx) {
+        return crate::uplink::remote_actions::workspace_menu(view, cx);
+    }
     let mut items = vec![Item::Header("workspaces".into())];
     for workspace in view.store(cx).workspaces.iter() {
         let id = workspace.id.clone();
@@ -1187,6 +1209,10 @@ fn new_workspace(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context
 }
 
 fn rename_workspace(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    if remote(view, cx) {
+        crate::uplink::remote_actions::rename_workspace(view, window, cx);
+        return;
+    }
     let current = view.state(cx).map(|state| state.name.clone()).unwrap_or_default();
     prompt(view, "rename workspace", &current, window, cx, |name, view, _, cx| {
         if !name.is_empty() {
@@ -1211,6 +1237,9 @@ pub fn set_workspace_name(id: &str, name: String, cx: &mut App) {
 }
 
 fn delete_workspace(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    if remote(view, cx) {
+        return;
+    }
     let name = view.state(cx).map(|state| state.name.clone()).unwrap_or_default();
     let answer = window.prompt(
         PromptLevel::Critical,

@@ -96,7 +96,7 @@ Paths are under `src/` unless they start with `core/` or `grammars/`.
 | `uplink/act.rs` | `Request::Act` and `Request::Tab` with control: file operations and git on the background executor (through `file_ops`, `git` and `changes::discard`), project and tab changes on the main thread through the same helpers as the desktop's menus, without the desktop's confirmations. `target` keeps new paths inside the project, symbolic links included; names and hashes cannot start with `-`. |
 | `uplink/page.rs`, `uplink/sidebar.rs` | Settings › Uplink; remote agents for the Agents view and remote tabs and workspaces for the palette. |
 | `uplink/remote.rs` | Remote workspaces: `open_remote` and `sync_remotes`, which rebuild each open remote workspace's projects, tabs and panel terminals from its computer's catalog and keep one mirror per tab. |
-| `uplink/remote_actions.rs` | What the menus, `⌘T`, `⌘W` and rename do in a remote window: requests to the computer (`Request::Tab`, `Request::Act`, `Message::Open`). |
+| `uplink/remote_actions.rs` | What a remote window does instead of acting locally: the menus, `⌘T`, `⌘W`, rename, the file menu, the folder browser (`browse`), the branch picker, the workspace menu and the History view's conversations (`Request::History`, cached per computer in `Uplink::histories` for 15 seconds). `actions` and the views check `Workspace::host` and hand over here. |
 | `uplink/pairing.rs` | Connect a device: the full-window pairing dialog drawn over one workspace window, its step in `Uplink::dialog` (connect, asked, waiting, permissions), the pairing code it keeps fresh, and how pairing events move it on. |
 
 ## State
