@@ -20,10 +20,6 @@ pub struct DraggedView(pub View);
 pub type PanelBounds =
     std::rc::Rc<std::cell::RefCell<std::collections::HashMap<(Dock, usize, usize), gpui::Bounds<gpui::Pixels>>>>;
 
-fn available(view: View, cx: &App) -> bool {
-    view != View::Uplink || crate::uplink::Uplink::enabled(cx)
-}
-
 pub fn update(cx: &mut App, change: impl FnOnce(&mut Docks)) {
     store::store(cx).update(cx, |store, cx| {
         change(&mut store.ui.docks);
@@ -128,9 +124,7 @@ fn stack_element(
         .panels
         .iter()
         .enumerate()
-        .map(|(position, panel)| {
-            (position, panel, panel.views.iter().copied().filter(|item| available(*item, cx)).collect::<Vec<_>>())
-        })
+        .map(|(position, panel)| (position, panel, panel.views.clone()))
         .filter(|(_, _, views)| !views.is_empty())
         .collect();
     if panels.is_empty() {

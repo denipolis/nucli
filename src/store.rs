@@ -7,7 +7,9 @@ use gpui::{App, AppContext, Context, Entity, Global, Task, WindowHandle};
 use crate::agents::{AgentProfile, ShellProfile};
 use crate::history::Conversation;
 use crate::paths;
-use crate::persist::{FileGroup, Layout, ProjectFile, SavedTab, Selected, StateFile, Ui, WindowState, WorkspaceFile};
+use crate::persist::{
+    FileGroup, Layout, ProjectFile, RemoteFile, SavedTab, Selected, StateFile, Ui, WindowState, WorkspaceFile,
+};
 use crate::session::{self, Kind, Session, SessionEvent, Spec};
 use crate::settings;
 use crate::splits::{self, Direction, Zone};
@@ -296,10 +298,17 @@ impl Project {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct Host {
+    pub key: String,
+    pub device: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct Workspace {
     pub id: String,
     pub name: String,
+    pub host: Option<Host>,
     pub closed: bool,
     pub projects: Vec<Project>,
     pub scratch: Project,
@@ -315,6 +324,7 @@ impl Workspace {
         Workspace {
             id: uuid::Uuid::new_v4().to_string(),
             name: name.into(),
+            host: None,
             closed: false,
             projects: Vec::new(),
             scratch: Project::default(),
@@ -323,6 +333,13 @@ impl Workspace {
             mru: Vec::new(),
             layouts: Vec::new(),
             notifications: None,
+        }
+    }
+
+    pub fn title(&self) -> String {
+        match &self.host {
+            Some(host) => format!("{} › {}", host.device, self.name),
+            None => self.name.clone(),
         }
     }
 
@@ -424,6 +441,7 @@ impl Workspace {
         Workspace {
             id: file.id,
             name: file.name,
+            host: None,
             closed: file.closed,
             projects: file.projects.into_iter().map(Project::from_file).collect(),
             scratch: Project::from_file(ProjectFile { path: PathBuf::new(), ..file.scratch }),
@@ -446,6 +464,7 @@ pub enum Launcher {
 
 pub struct Store {
     pub workspaces: Vec<Workspace>,
+    pub remotes: Vec<Workspace>,
     pub sessions: HashMap<String, Entity<Session>>,
     pub windows: HashMap<String, WindowHandle<WorkspaceView>>,
     pub titles: HashMap<String, String>,
@@ -480,8 +499,20 @@ impl Store {
         if workspaces.is_empty() {
             workspaces.push(Workspace::new("Personal"));
         }
+        let remotes = state
+            .remotes
+            .into_iter()
+            .map(|file| Workspace {
+                id: file.id,
+                host: Some(Host { key: file.key, device: file.device }),
+                closed: file.closed,
+                window: file.window,
+                ..Workspace::new(&file.name)
+            })
+            .collect();
         Store {
             workspaces,
+            remotes,
             sessions: HashMap::new(),
             windows: HashMap::new(),
             titles: HashMap::new(),
@@ -509,16 +540,20 @@ impl Store {
         }
     }
 
+    pub fn every_workspace(&self) -> impl Iterator<Item = &Workspace> {
+        self.workspaces.iter().chain(&self.remotes)
+    }
+
     pub fn workspace(&self, id: &str) -> Option<&Workspace> {
-        self.workspaces.iter().find(|workspace| workspace.id == id)
+        self.every_workspace().find(|workspace| workspace.id == id)
     }
 
     pub fn workspace_mut(&mut self, id: &str) -> Option<&mut Workspace> {
-        self.workspaces.iter_mut().find(|workspace| workspace.id == id)
+        self.workspaces.iter_mut().chain(&mut self.remotes).find(|workspace| workspace.id == id)
     }
 
     pub fn workspace_of(&self, tab: &str) -> Option<&Workspace> {
-        self.workspaces.iter().find(|workspace| workspace.project_of(tab).is_some())
+        self.every_workspace().find(|workspace| workspace.project_of(tab).is_some())
     }
 
     pub fn workspace_of_project(&self, path: &Path) -> Option<&Workspace> {
@@ -655,7 +690,7 @@ impl Store {
         if self.sessions.remove(id).is_none() {
             return;
         }
-        for workspace in &mut self.workspaces {
+        for workspace in self.workspaces.iter_mut().chain(&mut self.remotes) {
             workspace.mru.retain(|tab| tab != id);
             if matches!(&workspace.selected, Some(Selected::Tab(tab)) if tab == id) {
                 workspace.selected = None;
@@ -666,8 +701,7 @@ impl Store {
 
     pub fn shower_of(&self, id: &str) -> Option<&Workspace> {
         self.workspace_of(id).or_else(|| {
-            self.workspaces
-                .iter()
+            self.every_workspace()
                 .find(|workspace| matches!(&workspace.selected, Some(Selected::Tab(tab)) if tab == id))
         })
     }
@@ -866,6 +900,21 @@ impl Store {
                     notifications: workspace.notifications,
                 })
                 .collect(),
+            remotes: self
+                .remotes
+                .iter()
+                .filter_map(|workspace| {
+                    let host = workspace.host.as_ref()?;
+                    Some(RemoteFile {
+                        id: workspace.id.clone(),
+                        name: workspace.name.clone(),
+                        key: host.key.clone(),
+                        device: host.device.clone(),
+                        closed: workspace.closed,
+                        window: workspace.window.clone(),
+                    })
+                })
+                .collect(),
             last_launcher: self.last_launcher.clone(),
             last_agent: self.last_agent.clone(),
             last_shell: self.last_shell.clone(),
@@ -950,6 +999,22 @@ impl Store {
     }
 
     pub fn close_workspace(&mut self, workspace: &str, cx: &mut Context<Self>) {
+        if let Some(remote) = self.remotes.iter_mut().find(|remote| remote.id == workspace) {
+            let ids: Vec<String> = remote
+                .all_projects()
+                .flat_map(|project| project.tabs.iter().chain(&project.terminals).cloned())
+                .collect();
+            remote.closed = true;
+            remote.projects.clear();
+            remote.scratch = Project::default();
+            remote.selected = None;
+            for id in ids {
+                self.sessions.remove(&id);
+            }
+            self.windows.remove(workspace);
+            self.changed(cx);
+            return;
+        }
         let state = self.snapshot(true, cx);
         let Some(file) = state.workspaces.into_iter().find(|file| file.id == workspace) else { return };
         let ids: Vec<String> = self

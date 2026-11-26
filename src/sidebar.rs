@@ -695,8 +695,7 @@ pub fn render(view: &mut WorkspaceView, kind: View, cx: &mut Context<WorkspaceVi
     let rows = match kind {
         View::Projects => projects(view, &query, cx),
         View::Agents => board(view, &query, cx),
-        View::History => history(view, &query, cx),
-        _ => crate::uplink::sidebar::rows(view, &query, cx),
+        _ => history(view, &query, cx),
     };
     let empty_click = cx.listener(|view, _: &gpui::MouseDownEvent, window, cx| {
         view.select(None, window, cx);

@@ -202,8 +202,20 @@ pub struct WorkspaceFile {
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
 #[serde(default)]
+pub struct RemoteFile {
+    pub id: String,
+    pub name: String,
+    pub key: String,
+    pub device: String,
+    pub closed: bool,
+    pub window: WindowState,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
+#[serde(default)]
 pub struct StateFile {
     pub workspaces: Vec<WorkspaceFile>,
+    pub remotes: Vec<RemoteFile>,
     pub last_launcher: Option<String>,
     pub last_agent: Option<String>,
     pub last_shell: Option<String>,

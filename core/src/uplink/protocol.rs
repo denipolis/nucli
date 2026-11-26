@@ -38,6 +38,7 @@ pub struct RemoteTab {
     pub muted: bool,
     pub changes: Option<DiffStat>,
     pub info: Option<AgentInfo>,
+    pub panel: bool,
 }
 
 impl RemoteTab {
@@ -75,6 +76,7 @@ impl Default for RemoteTab {
             muted: false,
             changes: None,
             info: None,
+            panel: false,
         }
     }
 }

@@ -92,7 +92,9 @@ Paths are under `src/` unless they start with `core/` or `grammars/`.
 | `uplink/transfers.rs` | Both sides of file transfer: serving downloads and accepting uploads of shared projects, routing chunk frames to the receiving file by device and request id, and the desktop's own `download`, `upload` and `ask` to another computer. |
 | `uplink/files.rs` | The remote project's Download File… palette with its save dialog, Upload Files… and file drops, files and images sent into a remote tab (`attach`, `attach_image`), with progress in the status bar. |
 | `uplink/act.rs` | `Request::Act` and `Request::Tab` with control: file operations and git on the background executor (through `file_ops`, `git` and `changes::discard`), project and tab changes on the main thread through the same helpers as the desktop's menus, without the desktop's confirmations. `target` keeps new paths inside the project, symbolic links included; names and hashes cannot start with `-`. |
-| `uplink/page.rs`, `uplink/sidebar.rs` | Settings › Uplink and the Uplink sidebar tab. |
+| `uplink/page.rs`, `uplink/sidebar.rs` | Settings › Uplink; remote agents for the Agents view and remote tabs and workspaces for the palette. |
+| `uplink/remote.rs` | Remote workspaces: `open_remote` and `sync_remotes`, which rebuild each open remote workspace's projects, tabs and panel terminals from its computer's catalog and keep one mirror per tab. |
+| `uplink/remote_actions.rs` | What the menus, `⌘T`, `⌘W` and rename do in a remote window: requests to the computer (`Request::Tab`, `Request::Act`, `Message::Open`). |
 | `uplink/pairing.rs` | Connect a device: the full-window pairing dialog drawn over one workspace window, its step in `Uplink::dialog` (connect, asked, waiting, permissions), the pairing code it keeps fresh, and how pairing events move it on. |
 
 ## State
@@ -165,7 +167,9 @@ Requests carry an id that the `Message::Response` repeats. A project in a reques
 
 All rules are checked on the host on every request: shared (`uplink::shared`), the device's access, blocked, and that the connection watches the tab. `Uplink::enforce` runs after every store change, stops watchers of tabs that stop being shared and pushes changed catalogs. A `Watch` for a tab the connection already watches is ignored; a viewer watches again only after `Stop::Behind`, which ends the old watcher first. A tap returns false to remove itself: when its connection closes, when the watcher is stopped, or when more than 8 MB wait on the connection, in which case the host sends `Stop::Behind` and the viewer watches again with a fresh snapshot.
 
-Mirrors are `Session`s whose `Terminal` has no pty (`Backend::Mirror`). They sit in `Store.sessions` under `uplink:<key prefix>:<tab id>` and are selected like tabs, but belong to no project: `Store::shower_of` finds the window showing one, `remove_tab` closes them, and the status poll skips them because they have no process.
+A remote workspace is a `Workspace` with a `host` (the computer's key and name) kept in `Store.remotes`, apart from `Store.workspaces`: everything that walks the local workspaces (persisting tabs, sharing, file watching, git polls) never sees it, while `Store::workspace` and `workspace_mut` find both, so a window and its views work unchanged. `persist::RemoteFile` saves only its name, computer, window and whether it is open. `sync_remotes` runs on every catalog: it makes a mirror for every tab of an open remote workspace (unwatched until `hide_unseen` finds it shown), closes the rest of that computer's mirrors and rebuilds the projects, keeping this window's own state per project (folded, active tab, terminal panel). Opening a window from inside an `Uplink` update is deferred, since the new window reads `Uplink`.
+
+Mirrors are `Session`s whose `Terminal` has no pty (`Backend::Mirror`). They sit in `Store.sessions` under `uplink:<key prefix>:<tab id>` and belong to remote projects; `remove_tab` closes them and the status poll skips them because they have no process. `RemoteTab.panel` tells a panel terminal from a tab.
 
 ## Mobile
 

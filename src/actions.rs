@@ -112,8 +112,16 @@ fn last_shell(view: &WorkspaceView, cx: &App) -> Option<agents::ShellProfile> {
     shells.clone().find(|shell| Some(&shell.path) == last).or_else(|| shells.clone().next()).cloned()
 }
 
+fn remote(view: &WorkspaceView, cx: &App) -> bool {
+    view.state(cx).is_some_and(|state| state.host.is_some())
+}
+
 pub fn open_launch(view: &mut WorkspaceView, kind: Launch, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     let target = current_target(view, cx);
+    if remote(view, cx) {
+        crate::uplink::remote_actions::launch_first(view, &target, kind == Launch::Agent, window, cx);
+        return;
+    }
     let launcher = match kind {
         Launch::Shell => last_shell(view, cx).map(Launcher::Shell),
         Launch::Agent => last_agent(view, &target, cx).map(Launcher::Agent),
@@ -126,10 +134,18 @@ pub fn open_launch(view: &mut WorkspaceView, kind: Launch, window: &mut Window, 
 
 pub fn choose_launch(view: &mut WorkspaceView, kind: Launch, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     let target = current_target(view, cx);
+    if remote(view, cx) {
+        crate::uplink::remote_actions::launch(view, &target, Some(kind == Launch::Agent), window, cx);
+        return;
+    }
     pick(view, &target, Some(kind), window, cx);
 }
 
 pub fn picker(view: &mut WorkspaceView, project: &Path, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    if remote(view, cx) {
+        crate::uplink::remote_actions::launch(view, project, None, window, cx);
+        return;
+    }
     pick(view, project, None, window, cx);
 }
 
@@ -374,10 +390,7 @@ fn running_agent(view: &WorkspaceView, id: &str, cx: &App) -> bool {
 
 pub fn close_tab(view: &mut WorkspaceView, id: &str, window: &mut Window, cx: &mut Context<WorkspaceView>) {
     if crate::uplink::is_mirror(id) {
-        if let Some(uplink) = crate::uplink::uplink(cx) {
-            uplink.update(cx, |uplink, cx| uplink.close_mirror(id, cx));
-        }
-        view.focus_current(window, cx);
+        crate::uplink::remote_actions::close_tab(view, id, window, cx);
         return;
     }
     let skip = view.store(cx).skip_close_confirm_until > crate::terminal::now_ms();
@@ -427,6 +440,10 @@ fn close(view: &mut WorkspaceView, window: &mut Window, cx: &mut Context<Workspa
 }
 
 pub fn close_project(view: &mut WorkspaceView, path: &Path, window: &mut Window, cx: &mut Context<WorkspaceView>) {
+    if remote(view, cx) {
+        crate::uplink::remote_actions::close_project(view, path, window, cx);
+        return;
+    }
     let Some(project) = view.state(cx).and_then(|state| state.project(path)).cloned() else { return };
     if project.is_scratch() {
         return;
@@ -524,6 +541,10 @@ fn finish_rename(view: &mut WorkspaceView, apply: bool, window: &mut Window, cx:
 }
 
 pub fn rename(workspace: &str, target: &Rename, text: &str, cx: &mut App) {
+    if store::store(cx).read(cx).workspace(workspace).is_some_and(|state| state.host.is_some()) {
+        crate::uplink::remote_actions::rename(workspace, target, text, cx);
+        return;
+    }
     let text = text.trim().to_string();
     let name = (!text.is_empty()).then_some(text);
     store::store(cx).update(cx, |store, cx| {
@@ -557,6 +578,9 @@ pub fn move_tab(
     window: &mut Window,
     cx: &mut Context<WorkspaceView>,
 ) {
+    if remote(view, cx) {
+        return;
+    }
     let workspace = view.workspace.clone();
     let id = id.to_string();
     let project = project.to_path_buf();
@@ -616,6 +640,9 @@ fn regroup(layouts: &mut Vec<crate::persist::Layout>, id: &str, order: &[String]
 }
 
 pub fn move_project(view: &mut WorkspaceView, from: &Path, to: &Path, cx: &mut Context<WorkspaceView>) {
+    if remote(view, cx) {
+        return;
+    }
     let workspace = view.workspace.clone();
     store::store(cx).update(cx, |store, cx| {
         let Some(state) = store.workspace_mut(&workspace) else { return };
@@ -634,6 +661,9 @@ pub fn move_project_to_workspace(
     window: &mut Window,
     cx: &mut Context<WorkspaceView>,
 ) {
+    if remote(view, cx) {
+        return;
+    }
     let source = view.workspace.clone();
     let path = path.to_path_buf();
     let move_to = move |target: String, cx: &mut App| {
@@ -750,6 +780,9 @@ pub fn add_menu(cx: &App) -> Vec<Item> {
 }
 
 pub fn project_menu(view: &WorkspaceView, path: &Path, cx: &App) -> Vec<Item> {
+    if remote(view, cx) {
+        return crate::uplink::remote_actions::project_menu(view, path, cx);
+    }
     let project = view.state(cx).and_then(|state| state.project(path)).cloned().unwrap_or_default();
     let target = path.to_path_buf();
     let mut items = Vec::new();
@@ -842,24 +875,9 @@ pub fn set_tab_shared(id: &str, on: bool, cx: &mut App) {
     store::store(cx).update(cx, |store, cx| store.changed(cx));
 }
 
-fn mirror_menu(id: &str) -> Vec<Item> {
-    let close = id.to_string();
-    vec![
-        menu::action("Close View", move |_, _, cx| {
-            if let Some(uplink) = crate::uplink::uplink(cx) {
-                uplink.update(cx, |uplink, cx| uplink.close_mirror(&close, cx));
-            }
-        }),
-        Item::Separator,
-        menu::action("Uplink Settings…", |view, window, cx| {
-            crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx)
-        }),
-    ]
-}
-
 pub fn tab_menu(view: &WorkspaceView, id: &str, cx: &App) -> Vec<Item> {
     if crate::uplink::is_mirror(id) {
-        return mirror_menu(id);
+        return crate::uplink::remote_actions::tab_menu(view, id, cx);
     }
     let color = view.store(cx).session(id).and_then(|session| session.read(cx).color);
     let grouped = view.state(cx).is_some_and(|state| crate::splits::group(&state.layouts, id).is_some());
@@ -1421,7 +1439,7 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
             let kind = View::ALL
                 .into_iter()
                 .filter(|kind| kind.list())
-                .find(|kind| docks.shown(*kind) && (*kind != View::Uplink || crate::uplink::Uplink::enabled(cx)))
+                .find(|kind| docks.shown(*kind))
                 .unwrap_or(View::Projects);
             docks_view::show(kind, cx);
             if let Some(filter) = view.filters.get(&kind) {
@@ -1432,13 +1450,14 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|_, _: &ShowAgents, _, cx| docks_view::show(View::Agents, cx)))
         .on_action(cx.listener(|_, _: &ShowHistory, _, cx| docks_view::show(View::History, cx)))
         .on_action(cx.listener(|view, _: &ShowUplink, window, cx| {
-            if crate::uplink::Uplink::enabled(cx) {
-                docks_view::show(View::Uplink, cx);
-            } else {
-                crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx);
-            }
+            crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx);
         }))
         .on_action(cx.listener(|_, _: &ToggleUplink, _, cx| crate::uplink::Uplink::toggle(cx)))
+        .on_action(cx.listener(|view, _: &OpenRemoteWorkspace, window, cx| {
+            let items = crate::uplink::sidebar::workspace_items(cx);
+            let palette = cx.new(|cx| Palette::new("remote", "workspaces of other computers", items, 0, cx));
+            view.show_palette(palette, window, cx);
+        }))
         .on_action(cx.listener(|view, _: &PairDevice, window, cx| {
             settings::update(cx, |settings| settings.uplink.enabled = true);
             crate::uplink::pairing::show(view, window, cx);

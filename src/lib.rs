@@ -243,6 +243,7 @@ pub fn launch(cx: &mut App) {
         let fallback = store.read(cx).workspaces.first().map(|workspace| workspace.id.clone());
         open.extend(last.or(fallback));
     }
+    open.extend(store.read(cx).remotes.iter().filter(|remote| !remote.closed).map(|remote| remote.id.clone()));
     let last = store.read(cx).last_workspace.clone();
     open.sort_by_key(|id| Some(id) == last.as_ref());
     for id in open {

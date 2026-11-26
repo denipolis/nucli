@@ -329,7 +329,7 @@ fn menu_bar(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Div {
 
 pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
-    let name = view.state(cx).map(|state| state.name.clone()).unwrap_or_default();
+    let name = view.state(cx).map(|state| state.title()).unwrap_or_default();
     let height = px((settings::get(cx).ui_font_size() * 2.4).round());
     let client_decorated = matches!(window.window_decorations(), gpui::Decorations::Client { .. });
     let location = location(view, cx);

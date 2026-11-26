@@ -34,16 +34,8 @@ impl Dock {
 }
 
 impl View {
-    pub const ALL: [View; 8] = [
-        View::Projects,
-        View::Agents,
-        View::History,
-        View::Uplink,
-        View::Files,
-        View::Search,
-        View::Changes,
-        View::Commits,
-    ];
+    pub const ALL: [View; 7] =
+        [View::Projects, View::Agents, View::History, View::Files, View::Search, View::Changes, View::Commits];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -71,7 +63,7 @@ impl View {
     }
 
     pub fn list(self) -> bool {
-        matches!(self, View::Projects | View::Agents | View::History | View::Uplink)
+        matches!(self, View::Projects | View::Agents | View::History)
     }
 
     fn home(self) -> Dock {
@@ -90,7 +82,7 @@ impl Default for Docks {
         Docks {
             left: vec![Stack {
                 size: 290.0,
-                panels: vec![Panel::new(vec![View::Projects, View::Agents, View::History, View::Uplink])],
+                panels: vec![Panel::new(vec![View::Projects, View::Agents, View::History])],
             }],
             right: vec![Stack {
                 size: 280.0,
@@ -219,7 +211,7 @@ impl Docks {
             let stacks = self.dock_mut(dock);
             for stack in stacks.iter_mut() {
                 for panel in &mut stack.panels {
-                    panel.views.retain(|view| seen.insert(*view));
+                    panel.views.retain(|view| View::ALL.contains(view) && seen.insert(*view));
                     if !panel.views.contains(&panel.active)
                         && let Some(first) = panel.views.first()
                     {
@@ -276,7 +268,7 @@ mod tests {
         assert_eq!(views(&docks, Dock::Bottom), vec![vec![vec![View::Changes, View::Files]]]);
         assert_eq!(
             views(&docks, Dock::Left),
-            vec![vec![vec![View::Projects, View::Agents, View::History, View::Uplink], vec![View::Commits]]]
+            vec![vec![vec![View::Projects, View::Agents, View::History], vec![View::Commits]]]
         );
         assert_eq!(docks.bottom[0].panels[0].active, View::Changes);
     }
@@ -316,7 +308,7 @@ mod tests {
         assert_eq!(docks.left[0].size, 280.0);
         assert_eq!(
             views(&docks, Dock::Left),
-            vec![vec![vec![View::Files, View::Projects, View::Agents, View::History, View::Uplink]]]
+            vec![vec![vec![View::Files, View::Projects, View::Agents, View::History]]]
         );
         assert_eq!(views(&docks, Dock::Right), vec![vec![vec![View::Search, View::Changes, View::Commits]]]);
     }

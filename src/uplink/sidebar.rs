@@ -1,11 +1,11 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, Context, ExternalPaths, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled, div, px,
+    AnyElement, App, Context, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, div, px,
 };
 
 use super::devices::Device;
-use super::protocol::{Catalog, RemoteProject, RemoteTab};
+use super::protocol::RemoteTab;
 use super::wire::Key;
 use super::{Uplink, mirror_id};
 use crate::icons;
@@ -44,162 +44,6 @@ pub fn seen(device: &Device) -> String {
     }
     let time = std::time::UNIX_EPOCH + std::time::Duration::from_secs(device.seen);
     format!("seen {}", crate::history::relative_age(time))
-}
-
-fn note(text: impl Into<SharedString>, theme: &Theme) -> AnyElement {
-    div().pl(px(26.0)).pr(px(8.0)).text_color(theme.faint).truncate().child(text.into()).into_any_element()
-}
-
-fn open_settings(view: &mut WorkspaceView, window: &mut gpui::Window, cx: &mut Context<WorkspaceView>) {
-    crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx);
-}
-
-fn pair(_: &mut WorkspaceView, window: &mut gpui::Window, cx: &mut Context<WorkspaceView>) {
-    window.dispatch_action(Box::new(crate::commands::PairDevice), cx);
-}
-
-fn connect_row(cx: &mut Context<WorkspaceView>) -> AnyElement {
-    let theme = ui::theme(cx);
-    div()
-        .id("uplink-connect")
-        .flex()
-        .items_center()
-        .gap(px(6.0))
-        .pl(px(8.0))
-        .pr(px(8.0))
-        .mt(px(8.0))
-        .text_color(theme.accent)
-        .hover(|style| style.bg(theme.hover))
-        .child(icons::ADD)
-        .child("connect device")
-        .on_click(cx.listener(|view, _, window, cx| pair(view, window, cx)))
-        .into_any_element()
-}
-
-fn device_row(device: &Device, key: Key, online: bool, cx: &mut Context<WorkspaceView>) -> AnyElement {
-    let theme = ui::theme(cx);
-    let (status, color) = match (device.blocked, online) {
-        (true, _) => ("blocked", theme.red),
-        (false, true) => ("online", theme.green),
-        (false, false) => ("offline", theme.faint),
-    };
-    div()
-        .id(SharedString::from(format!("uplink-device-{}", device.key)))
-        .flex()
-        .items_center()
-        .gap(px(6.0))
-        .pl(px(8.0))
-        .pr(px(8.0))
-        .mt(px(4.0))
-        .hover(|style| style.bg(theme.hover))
-        .child(div().text_color(if online { theme.accent } else { theme.faint }).child(icons::os(&device.os)))
-        .child(div().flex_1().min_w_0().truncate().child(device.name.clone()))
-        .child(div().text_color(color).child(status))
-        .on_click(cx.listener(|view, _, window, cx| open_settings(view, window, cx)))
-        .on_mouse_down(
-            MouseButton::Right,
-            cx.listener(move |view, event: &gpui::MouseDownEvent, _, cx| {
-                let mut items = vec![menu::action("Uplink Settings…", open_settings)];
-                if online {
-                    items.push(menu::action("Disconnect", move |_, _, cx| {
-                        if let Some(uplink) = super::uplink(cx) {
-                            uplink.update(cx, |uplink, cx| uplink.disconnect(&key, cx));
-                        }
-                    }));
-                }
-                view.open_menu(event.position, items, cx);
-            }),
-        )
-        .into_any_element()
-}
-
-fn launcher_menu(key: Key, project: &RemoteProject, catalog: &Catalog, device: &str) -> Vec<Item> {
-    let mut items = vec![Item::Header(format!("new tab on {device}").into())];
-    for launcher in &catalog.launchers {
-        let (path, name) = (project.path.clone(), launcher.name.clone());
-        let label =
-            if launcher.agent { format!("  {}", launcher.name) } else { format!("  {} (shell)", launcher.name) };
-        items.push(menu::action(label, move |view, _, cx| {
-            let workspace = view.workspace.clone();
-            if let Some(uplink) = super::uplink(cx) {
-                uplink.update(cx, |uplink, cx| uplink.request_open(key, &path, &name, &workspace, cx));
-            }
-        }));
-    }
-    items
-}
-
-fn project_row(
-    key: Key,
-    project: &RemoteProject,
-    catalog: &Catalog,
-    device: &str,
-    cx: &mut Context<WorkspaceView>,
-) -> AnyElement {
-    let theme = ui::theme(cx);
-    let tint = project.color.map(|color| color.color(theme.dark)).unwrap_or(theme.accent);
-    let name = if project.name.is_empty() { "~".to_string() } else { project.name.clone() };
-    let group = SharedString::from(format!("uplink-project-{}-{}", &super::wire::encode_key(&key)[..12], project.path));
-    let can_open = catalog.control && !catalog.launchers.is_empty();
-    let button_items = launcher_menu(key, project, catalog, device);
-    let mut menu_items = if can_open { button_items.clone() } else { Vec::new() };
-    if can_open {
-        menu_items.push(Item::Separator);
-    }
-    {
-        let path = project.path.clone();
-        menu_items.push(menu::action("Download File…", move |view, window, cx| {
-            super::files::pick_download(view, key, path.clone(), window, cx)
-        }));
-    }
-    if catalog.control {
-        let path = project.path.clone();
-        menu_items.push(menu::action("Upload Files…", move |view, _, cx| {
-            super::files::pick_upload(key, path.clone(), view.workspace.clone(), cx)
-        }));
-    }
-    let (drop_path, control) = (project.path.clone(), catalog.control);
-    div()
-        .id(group.clone())
-        .group(group.clone())
-        .flex()
-        .items_center()
-        .gap(px(6.0))
-        .pl(px(18.0))
-        .pr(px(8.0))
-        .hover(|style| style.bg(theme.hover))
-        .child(div().text_color(tint).child(icons::FOLDER))
-        .child(div().flex_1().min_w_0().truncate().child(name))
-        .when(can_open, |this| {
-            this.child(
-                div()
-                    .id(SharedString::from(format!("{group}-add")))
-                    .text_color(theme.muted)
-                    .invisible()
-                    .group_hover(group.clone(), |style| style.visible())
-                    .hover(|style| style.text_color(theme.accent))
-                    .child(icons::ADD)
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_click(cx.listener(move |view, event: &gpui::ClickEvent, _, cx| {
-                        view.open_menu(event.position(), button_items.clone(), cx);
-                        cx.stop_propagation();
-                    })),
-            )
-        })
-        .on_mouse_down(
-            MouseButton::Right,
-            cx.listener(move |view, event: &gpui::MouseDownEvent, _, cx| {
-                view.open_menu(event.position, menu_items.clone(), cx);
-            }),
-        )
-        .when(control, |this| {
-            this.drag_over::<ExternalPaths>(move |style, _, _, _| style.bg(theme.selection)).on_drop(cx.listener(
-                move |view, paths: &ExternalPaths, _, cx| {
-                    super::files::upload(key, &drop_path, paths.paths().to_vec(), &view.workspace.clone(), cx);
-                },
-            ))
-        })
-        .into_any_element()
 }
 
 pub fn tab_row(
@@ -286,7 +130,6 @@ pub fn tab_row(
         .on_mouse_down(
             MouseButton::Right,
             cx.listener(move |view, event: &gpui::MouseDownEvent, _, cx| {
-                let id = mirror_id(&key, &menu_id);
                 let open = menu_id.clone();
                 let mut items = vec![menu::action("Open", move |view, _, cx| {
                     let workspace = view.workspace.clone();
@@ -294,125 +137,12 @@ pub fn tab_row(
                         uplink.update(cx, |uplink, cx| uplink.open_mirror(key, &open, &workspace, cx));
                     }
                 })];
-                if opened {
-                    items.push(menu::action("Close View", move |_, _, cx| {
-                        if let Some(uplink) = super::uplink(cx) {
-                            uplink.update(cx, |uplink, cx| uplink.close_mirror(&id, cx));
-                        }
-                    }));
-                }
                 items.push(Item::Separator);
                 items.push(menu::copy("Copy Title", title.clone()));
                 view.open_menu(event.position, items, cx);
             }),
         )
         .into_any_element()
-}
-
-fn empty(
-    text: &'static str,
-    action: &'static str,
-    run: fn(&mut WorkspaceView, &mut gpui::Window, &mut Context<WorkspaceView>),
-    cx: &mut Context<WorkspaceView>,
-) -> Vec<AnyElement> {
-    let theme = ui::theme(cx);
-    vec![
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(6.0))
-            .p(px(10.0))
-            .text_color(theme.faint)
-            .child(text)
-            .child(
-                div()
-                    .id("uplink-empty-action")
-                    .text_color(theme.accent)
-                    .hover(|style| style.text_color(theme.text))
-                    .child(action)
-                    .on_click(cx.listener(move |view, _, window, cx| run(view, window, cx))),
-            )
-            .into_any_element(),
-    ]
-}
-
-pub fn rows(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> Vec<AnyElement> {
-    let theme = ui::theme(cx);
-    let Some(entity) = super::uplink(cx) else { return Vec::new() };
-    if !Uplink::enabled(cx) {
-        return empty("Uplink is off.", "[turn on in settings]", open_settings, cx);
-    }
-    let uplink = entity.read(cx);
-    if uplink.devices.is_empty() {
-        return empty("No paired devices yet.", "[connect a device]", pair, cx);
-    }
-    let selected = view.state(cx).and_then(|state| state.selected_tab()).map(String::from);
-    let mut devices: Vec<(Device, Key)> =
-        uplink.devices.iter().filter_map(|device| Some((device.clone(), device.public()?))).collect();
-    devices.sort_by_key(|(device, key)| (!uplink.links.contains_key(key), device.name.to_lowercase()));
-    let catalogs: Vec<Option<Catalog>> = devices
-        .iter()
-        .map(|(_, key)| uplink.links.get(key).map(|link| link.catalog.clone().unwrap_or_default()))
-        .collect();
-    let errors: Vec<Option<String>> = devices.iter().map(|(_, key)| uplink.dial_error(key).map(String::from)).collect();
-    let opened: Vec<String> = uplink.mirrors.keys().cloned().collect();
-    let mut rows = Vec::new();
-    for (((device, key), catalog), error) in devices.into_iter().zip(catalogs).zip(errors) {
-        let device_hit = matches(query, &[&device.name]);
-        let Some(catalog) = catalog else {
-            if device_hit {
-                rows.push(device_row(&device, key, false, cx));
-                let detail = if device.blocked {
-                    "blocked: it cannot connect".to_string()
-                } else {
-                    error.map(|error| format!("{} · {error}", seen(&device))).unwrap_or_else(|| seen(&device))
-                };
-                rows.push(note(detail, &theme));
-            }
-            continue;
-        };
-        let tab_hit = |tab: &RemoteTab, project: &str| device_hit || matches(query, &[&tab.title, project]);
-        let mut body = Vec::new();
-        for project in &catalog.projects {
-            let tabs: Vec<&RemoteTab> =
-                catalog.tabs.iter().filter(|tab| tab.project == project.path && tab_hit(tab, &project.name)).collect();
-            if tabs.is_empty() && !(device_hit || matches(query, &[&project.name])) {
-                continue;
-            }
-            let loose = project.path.is_empty();
-            if !loose {
-                body.push(project_row(key, project, &catalog, &device.name, cx));
-            }
-            for tab in tabs {
-                let id = mirror_id(&key, &tab.id);
-                let is_selected = selected.as_deref() == Some(id.as_str());
-                body.push(tab_row(
-                    key,
-                    tab,
-                    if loose { 18.0 } else { 30.0 },
-                    is_selected,
-                    opened.contains(&id),
-                    None,
-                    cx,
-                ));
-            }
-        }
-        if body.is_empty() && !device_hit {
-            continue;
-        }
-        rows.push(device_row(&device, key, true, cx));
-        if body.is_empty() {
-            body.push(note("nothing shared", &theme));
-        }
-        rows.extend(body);
-    }
-    if rows.is_empty() {
-        rows.push(div().p(px(10.0)).text_color(theme.faint).child("no matches").into_any_element());
-    }
-    if query.is_empty() {
-        rows.push(connect_row(cx));
-    }
-    rows
 }
 
 pub fn agents(query: &str, cx: &App) -> Vec<(usize, Key, RemoteTab, String)> {
@@ -486,6 +216,40 @@ pub fn palette_items(theme: &Theme, cx: &App) -> Vec<crate::palette::Item> {
                 .glyph(glyph, color.map(|color| color.color(theme.dark)))
                 .detail("remote tab")
                 .rank(7),
+            );
+        }
+    }
+    items.extend(workspace_items(cx));
+    items
+}
+
+pub fn workspace_items(cx: &App) -> Vec<crate::palette::Item> {
+    let Some(entity) = super::uplink(cx).filter(|_| Uplink::enabled(cx)) else { return Vec::new() };
+    let uplink = entity.read(cx);
+    let mut items = Vec::new();
+    for (key, link) in &uplink.links {
+        let Some(catalog) = &link.catalog else { continue };
+        let device = uplink.device_name(key);
+        for workspace in &catalog.workspaces {
+            let tabs = catalog.tabs.iter().filter(|tab| tab.workspace == workspace.name).count();
+            let (key, name) = (*key, workspace.name.clone());
+            items.push(
+                crate::palette::Item::new(format!("{device} › {}", workspace.name), move |_, _, cx| {
+                    let name = name.clone();
+                    cx.defer(move |cx| {
+                        let Some(uplink) = super::uplink(cx) else { return };
+                        let id = uplink.update(cx, |uplink, cx| uplink.open_remote(key, &name, cx));
+                        crate::window::open(&id, cx);
+                    });
+                })
+                .subtitle(format!(
+                    "{tabs} shared {}{}",
+                    if tabs == 1 { "tab" } else { "tabs" },
+                    if workspace.open { "" } else { ", closed there" }
+                ))
+                .glyph(icons::UPLINK, None)
+                .detail("remote workspace")
+                .rank(6),
             );
         }
     }

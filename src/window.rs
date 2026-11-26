@@ -76,7 +76,7 @@ pub fn open(workspace: &str, cx: &mut App) -> Option<WindowHandle<WorkspaceView>
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(TitlebarOptions {
-            title: Some(state.name.clone().into()),
+            title: Some(state.title().into()),
             appears_transparent: cfg!(any(target_os = "macos", windows)),
             traffic_light_position: Some(point(px(10.0), px(9.0))),
         }),

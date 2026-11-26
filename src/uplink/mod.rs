@@ -3,6 +3,8 @@ pub mod files;
 mod host;
 pub mod page;
 pub mod pairing;
+mod remote;
+pub mod remote_actions;
 pub mod sidebar;
 mod transfers;
 
@@ -78,6 +80,7 @@ pub struct Target {
     pub key: Key,
     pub tab: String,
     feeds: std::sync::mpsc::Sender<Feed>,
+    watched: bool,
 }
 
 struct Dialing {
@@ -490,8 +493,12 @@ impl Uplink {
         );
         self.save(cx);
         self.push_catalogs(cx);
-        let mirrors: Vec<String> =
-            self.mirrors.iter().filter(|(_, target)| target.key == key).map(|(id, _)| id.clone()).collect();
+        let mirrors: Vec<String> = self
+            .mirrors
+            .iter()
+            .filter(|(_, target)| target.key == key && target.watched)
+            .map(|(id, _)| id.clone())
+            .collect();
         for id in mirrors {
             self.watch(&id, cx);
         }
@@ -560,16 +567,24 @@ impl Uplink {
     fn hide_unseen(&mut self, cx: &mut Context<Self>) {
         let store = store::store(cx).read(cx);
         let shown: HashSet<String> = store
-            .workspaces
-            .iter()
+            .every_workspace()
             .filter(|workspace| !workspace.closed && store.windows.contains_key(&workspace.id))
             .flat_map(|workspace| workspace.visible_tabs())
             .collect();
         let tabs = self.watchers.iter().map(|watcher| &watcher.tab).chain(self.mirrors.keys());
         let hidden: Vec<Entity<Session>> =
             tabs.filter(|tab| !shown.contains(*tab)).filter_map(|tab| store.session(tab).cloned()).collect();
+        let unwatched: Vec<String> = self
+            .mirrors
+            .iter()
+            .filter(|(id, target)| !target.watched && shown.contains(*id))
+            .map(|(id, _)| id.clone())
+            .collect();
         for session in hidden {
             session.update(cx, |session, _| session.terminal.hide());
+        }
+        for id in unwatched {
+            self.watch(&id, cx);
         }
     }
 
@@ -972,6 +987,7 @@ impl Uplink {
         if let Some(previous) = previous {
             self.notify_changes(key, &previous, &catalog, cx);
         }
+        self.sync_remotes(&key, cx);
         self.update_mirrors(&key, cx);
         cx.notify();
     }
@@ -1050,7 +1066,22 @@ impl Uplink {
         store::store(cx).update(cx, |_, cx| cx.notify());
     }
 
-    pub fn open_mirror(&mut self, key: Key, tab: &str, workspace: &str, cx: &mut Context<Self>) {
+    pub fn open_mirror(&mut self, key: Key, tab: &str, _workspace: &str, cx: &mut Context<Self>) {
+        let Some(catalog) = self.links.get(&key).and_then(|link| link.catalog.clone()) else { return };
+        let Some(meta) = catalog.tabs.iter().find(|item| item.id == tab) else { return };
+        let workspace = self.open_remote(key, &meta.workspace, cx);
+        let id = mirror_id(&key, tab);
+        self.watch(&id, cx);
+        if let Some(link) = self.links.get(&key) {
+            link.outbox.send(&Message::Seen { tab: tab.to_string() });
+        }
+        cx.defer(move |cx| {
+            crate::window::open(&workspace, cx);
+            crate::actions::in_window(&workspace, cx, move |view, window, cx| view.select_tab(&id, window, cx));
+        });
+    }
+
+    fn ensure_mirror(&mut self, key: Key, tab: &str, cx: &mut Context<Self>) {
         if !valid_tab(tab) {
             return;
         }
@@ -1108,18 +1139,14 @@ impl Uplink {
             });
             let (session, feeds) = Session::mirror(id.clone(), remote, &meta, requests, cx);
             store_entity.update(cx, |store, cx| store.add_mirror(session, cx));
-            self.mirrors.insert(id.clone(), Target { key, tab: tab.to_string(), feeds });
-            self.watch(&id, cx);
+            self.mirrors.insert(id.clone(), Target { key, tab: tab.to_string(), feeds, watched: false });
         }
-        if let Some(link) = self.links.get(&key) {
-            link.outbox.send(&Message::Seen { tab: tab.to_string() });
-        }
-        let workspace = workspace.to_string();
-        crate::actions::in_window(&workspace, cx, move |view, window, cx| view.select_tab(&id, window, cx));
     }
 
     fn watch(&mut self, id: &str, cx: &mut Context<Self>) {
-        let Some(target) = self.mirrors.get(id) else { return };
+        let Some(target) = self.mirrors.get_mut(id) else { return };
+        target.watched = true;
+        let target = &self.mirrors[id];
         let Some(link) = self.links.get(&target.key) else { return };
         if let Ok(mut routes) = link.routes.lock() {
             routes.insert(target.tab.clone(), target.feeds.clone());
@@ -1161,7 +1188,7 @@ impl Uplink {
         link.outbox.send(&Message::Open {
             project: project.to_string(),
             launcher: launcher.to_string(),
-            workspace: String::new(),
+            workspace: workspace.to_string(),
         });
         self.opening = Some((key, workspace.to_string()));
         let _ = cx;
@@ -1244,6 +1271,7 @@ fn catalog(device: &Device, cx: &App) -> Catalog {
                     muted: !store.notifies(id, cx),
                     changes: store.diffstats.get(&project.path).copied().filter(|stat| stat.files > 0),
                     info: session.agent_info.clone(),
+                    panel: project.terminals.contains(id),
                 });
             }
             if project_on || any {
