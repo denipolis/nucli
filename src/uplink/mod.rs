@@ -107,7 +107,8 @@ pub struct Uplink {
     pub mirrors: HashMap<String, Target>,
     outboxes: Arc<Mutex<HashMap<Key, Outbox>>>,
     push: Option<Task<()>>,
-    opening: Option<(Key, String)>,
+    opening: Option<(Key, Option<(String, crate::splits::Direction)>)>,
+    pub split: Option<(String, crate::splits::Direction)>,
     transfers: transfers::Transfers,
     pub histories: HashMap<Key, (Instant, Option<Vec<protocol::RemoteConversation>>)>,
 }
@@ -136,6 +137,7 @@ pub fn init(cx: &mut App) {
             outboxes: Default::default(),
             push: None,
             opening: None,
+            split: None,
             transfers: Default::default(),
             histories: HashMap::new(),
         };
@@ -839,10 +841,23 @@ impl Uplink {
                 self.host_open(key, &project, &launcher, &workspace, panel, cx)
             }
             Message::Opened { tab } => {
-                if let Some((opener, workspace)) = self.opening.take()
+                if let Some((opener, split)) = self.opening.take()
                     && opener == key
                 {
-                    self.open_mirror(key, &tab, &workspace, cx);
+                    self.open_mirror(key, &tab, "", cx);
+                    if let Some((target, direction)) = split {
+                        let id = mirror_id(&key, &tab);
+                        cx.defer(move |cx| {
+                            let store = store::store(cx).read(cx);
+                            let Some(workspace) = store.workspace_of(&target).map(|state| state.id.clone()) else {
+                                return;
+                            };
+                            crate::actions::in_window(&workspace, cx, move |view, window, cx| {
+                                let zone = crate::splits::Zone::Edge(direction);
+                                crate::splits_view::arrange(view, &target, &id, zone, window, cx)
+                            });
+                        });
+                    }
                 }
             }
             Message::Stop { tab, reason } => {
@@ -1212,7 +1227,7 @@ impl Uplink {
             workspace: workspace.to_string(),
             panel,
         });
-        self.opening = Some((key, workspace.to_string()));
+        self.opening = Some((key, self.split.take()));
         let _ = cx;
     }
 

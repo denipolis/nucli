@@ -468,6 +468,14 @@ pub fn split(view: &mut WorkspaceView, row: bool, window: &mut Window, cx: &mut 
     else {
         return;
     };
+    if view.state(cx).is_some_and(|state| state.host.is_some()) {
+        let direction = if row { Direction::Right } else { Direction::Down };
+        if let Some(uplink) = crate::uplink::uplink(cx) {
+            uplink.update(cx, |uplink, _| uplink.split = Some((current, direction)));
+        }
+        crate::uplink::remote_actions::launch_first(view, &project, false, window, cx);
+        return;
+    }
     let launcher = crate::actions::last_launcher(view, &project, cx).unwrap_or(Launcher::Terminal);
     let launcher = if matches!(launcher, Launcher::Terminal) {
         match settings_shell(cx) {
