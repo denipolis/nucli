@@ -80,7 +80,8 @@ pub fn editor_for(
         .and_then(|state| state.project(project))
         .and_then(|project| project.languages.get(file))
         .and_then(|name| crate::highlight::known_language(name));
-    let editor = cx.new(|cx| Editor::new(root, path, commit, language, cx));
+    let backend = crate::backend::Backend::of(&view.workspace, &root, cx);
+    let editor = cx.new(|cx| Editor::new(root, path, commit, language, backend, cx));
     cx.observe(&editor, |_, _, cx| cx.notify()).detach();
     cx.subscribe(&editor, |view, editor, event: &EditorEvent, cx| match event {
         EditorEvent::Menu(position) => {
@@ -839,6 +840,12 @@ pub fn path_menu(full: &Path, relative: &str) -> Vec<Item> {
 }
 
 pub fn file_menu(view: &WorkspaceView, full: &Path, relative: &str, cx: &App) -> Vec<Item> {
+    if view.state(cx).is_some_and(|state| state.host.is_some()) {
+        return vec![
+            menu::copy("Copy Path", full.to_string_lossy().into_owned()),
+            menu::copy("Copy Relative Path", relative.to_string()),
+        ];
+    }
     let mut items = open_with_menu(view, full.to_path_buf(), cx);
     items.push(Item::Separator);
     items.extend(path_menu(full, relative));
@@ -1085,6 +1092,7 @@ fn crumbs(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> Vec<AnyEl
         (crate::settings::get(cx).breadcrumb_icons, crate::settings::get(cx).breadcrumb_symbols);
     let data = editor.read(cx);
     let full = data.full.clone();
+    let local = !data.backend.is_remote();
     let mut dirs: Vec<(String, PathBuf)> = Vec::new();
     if Path::new(&data.path).is_absolute() {
         let home = dirs::home_dir();
@@ -1117,7 +1125,9 @@ fn crumbs(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> Vec<AnyEl
         elements.push(
             crumb(SharedString::from(format!("crumb-{index}")), glyph, label, cx)
                 .on_click(cx.listener(move |_, event: &gpui::ClickEvent, window, cx| {
-                    dir_picker(dir.clone(), Some(selected.clone()), Some(below(event)), window, cx)
+                    if local {
+                        dir_picker(dir.clone(), Some(selected.clone()), Some(below(event)), window, cx)
+                    }
                 }))
                 .into_any_element(),
         );
@@ -1130,7 +1140,9 @@ fn crumbs(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> Vec<AnyEl
         crumb("crumb-file".into(), with_icons.then_some((glyph, color.color(theme.dark))), name, cx)
             .text_color(theme.text)
             .on_click(cx.listener(move |_, event: &gpui::ClickEvent, window, cx| {
-                dir_picker(parent.clone(), Some(selected.clone()), Some(below(event)), window, cx)
+                if local {
+                    dir_picker(parent.clone(), Some(selected.clone()), Some(below(event)), window, cx)
+                }
             }))
             .into_any_element(),
     );
@@ -1168,6 +1180,7 @@ fn path_bar(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> impl In
     let data = editor.read(cx);
     let (changes, content) = (data.added + data.removed, data.content.clone());
     let full = data.full.clone();
+    let local = !data.backend.is_remote();
     let button = |id: &'static str, glyph: &'static str| {
         div().id(id).px(px(5.0)).text_color(theme.muted).hover(|style| style.text_color(theme.accent)).child(glyph)
     };
@@ -1203,7 +1216,7 @@ fn path_bar(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> impl In
                     .on_click(move |_, _, cx| next.update(cx, |editor, cx| editor.jump_change(true, cx))),
             )
         })
-        .when(content != Content::Missing, |this| {
+        .when(content != Content::Missing && local, |this| {
             this.child(button("file-open", icons::LINK).on_click(cx.listener(
                 move |view, event: &gpui::ClickEvent, _, cx| {
                     let items = open_with_menu(view, default_app.clone(), cx);
@@ -1287,6 +1300,7 @@ fn body(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> AnyElement 
     let theme = ui::theme(cx);
     let content = editor.read(cx).content.clone();
     let full = editor.read(cx).full.clone();
+    let local = !editor.read(cx).backend.is_remote();
     match content {
         Content::Image => image_view(editor, cx),
         Content::Binary(bytes) => div()
@@ -1299,15 +1313,17 @@ fn body(editor: &Entity<Editor>, cx: &mut Context<WorkspaceView>) -> AnyElement 
             .gap(px(8.0))
             .text_color(theme.muted)
             .child(format!("binary file, {}", human_size(bytes)))
-            .child(
-                div()
-                    .id("binary-open")
-                    .px(px(8.0))
-                    .bg(theme.accent)
-                    .text_color(theme.on_accent)
-                    .child("Open in Default App")
-                    .on_click(move |_, _, cx| cx.open_with_system(&full)),
-            )
+            .when(local, |this| {
+                this.child(
+                    div()
+                        .id("binary-open")
+                        .px(px(8.0))
+                        .bg(theme.accent)
+                        .text_color(theme.on_accent)
+                        .child("Open in Default App")
+                        .on_click(move |_, _, cx| cx.open_with_system(&full)),
+                )
+            })
             .into_any_element(),
         Content::Missing => div()
             .size_full()

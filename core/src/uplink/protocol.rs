@@ -5,7 +5,7 @@ use crate::session::{Activity, Kind};
 use crate::terminal::Feed;
 use crate::theme::ItemColor;
 
-pub const PROTOCOL: u32 = 2;
+pub const PROTOCOL: u32 = 3;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(default)]
@@ -234,6 +234,7 @@ pub enum Action {
     MoveProject { workspace: String },
     MuteProject { muted: bool },
     CloseProject,
+    Write { path: String, text: String },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]

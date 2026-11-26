@@ -77,10 +77,61 @@ fn uplink(line: &str, cx: &mut App) {
     });
 }
 
+static TARGET: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+fn target(cx: &App) -> Option<gpui::WindowHandle<crate::window::WorkspaceView>> {
+    let store = crate::store::store(cx).read(cx);
+    let wanted = TARGET.lock().ok().and_then(|target| target.clone());
+    let chosen = wanted.and_then(|wanted| {
+        store
+            .every_workspace()
+            .find(|workspace| workspace.title().contains(&wanted))
+            .map(|workspace| workspace.id.clone())
+    });
+    match chosen {
+        Some(id) => store.windows.get(&id).copied(),
+        None => store.windows.values().next().copied(),
+    }
+}
+
 fn run(line: &str, cx: &mut App) {
     let (command, rest) = line.split_once(' ').unwrap_or((line, ""));
+    if command == "window" {
+        if let Ok(mut target) = TARGET.lock() {
+            *target = Some(rest.trim().to_string()).filter(|text| !text.is_empty());
+        }
+        return;
+    }
+    if command == "edit" {
+        if let Some(handle) = target(cx) {
+            let relative = rest.trim().to_string();
+            let _ = handle.update(cx, |view, window, cx| {
+                let project = view.current_project_path(cx).unwrap_or_default();
+                crate::file_view::open_file(view, &project, &relative, None, window, cx)
+            });
+        }
+        return;
+    }
+    if command == "select" {
+        if let Some(handle) = target(cx) {
+            let title = rest.trim().to_string();
+            let _ = handle.update(cx, |view, window, cx| {
+                let found = view.state(cx).and_then(|state| {
+                    state.ordered_tabs().into_iter().find(|id| {
+                        view.store(cx)
+                            .session(id)
+                            .is_some_and(|session| session.read(cx).display_title().contains(&title))
+                    })
+                });
+                if let Some(id) = found {
+                    view.select_tab(&id, window, cx);
+                }
+            });
+        }
+        return;
+    }
     if command == "file" {
-        let handle = crate::store::store(cx).read(cx).windows.values().next().copied();
+        let handle = target(cx);
         if let Some(handle) = handle {
             let path = std::path::PathBuf::from(rest.trim());
             let _ = handle.update(cx, |view, window, cx| view.open_path(&path, None, window, cx));
@@ -120,11 +171,9 @@ fn run(line: &str, cx: &mut App) {
         cx.spawn(async move |_| inspect_app(&path, true)).detach();
         return;
     }
-    let windows: Vec<gpui::AnyWindowHandle> =
-        crate::store::store(cx).read(cx).windows.values().map(|handle| (*handle).into()).collect();
-    let active =
-        cx.active_window().filter(|active| windows.iter().any(|window| window.window_id() == active.window_id()));
-    let Some(window) = active.or(windows.first().copied()).or_else(|| cx.windows().first().copied()) else { return };
+    let Some(window) = target(cx).map(gpui::AnyWindowHandle::from).or_else(|| cx.windows().first().copied()) else {
+        return;
+    };
     let _ = window.update(cx, |_, window, cx| match command {
         "keys" => {
             for key in rest.split_whitespace() {
@@ -210,6 +259,7 @@ fn send_event(line: &str) {
         }
         if *kind == "front" {
             let _: () = msg_send![window, orderFrontRegardless];
+            let _: () = msg_send![window, makeKeyWindow];
             return;
         }
         if *kind == "key" {

@@ -10,6 +10,7 @@ use crate::uplink::protocol::{Action, Request, Response};
 use crate::uplink::wire::Key;
 
 const QUERY_PROTOCOL: u32 = 2;
+pub const WRITE_PROTOCOL: u32 = 3;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Backend {
@@ -29,6 +30,7 @@ pub enum Query {
     Files,
     Branches { limit: usize },
     Search { request: crate::search::Request },
+    Load { path: String, commit: Option<String> },
 }
 
 fn hash(text: &str) -> Result<&str, String> {
@@ -61,6 +63,13 @@ pub fn compute(root: &Path, query: Query) -> Result<Value, String> {
             json((crate::git::current_branch(root), crate::git::branches(root, limit.min(500))))
         }
         Query::Search { request } => json(crate::search::search(root, &request, &|| false)),
+        Query::Load { path, commit } => {
+            if Path::new(&path).is_absolute() || crate::uplink::host::inside(root, &path).is_none() {
+                return Err("This file is outside the project.".into());
+            }
+            let commit = commit.map(|text| hash(&text).map(String::from)).transpose()?;
+            json(crate::editor::load(root, &path, commit.as_deref()))
+        }
     }
 }
 
@@ -80,6 +89,16 @@ impl Backend {
 
     pub fn is_remote(&self) -> bool {
         matches!(self, Backend::Remote { .. })
+    }
+
+    pub fn writable(&self, cx: &App) -> bool {
+        match self {
+            Backend::Local(_) => true,
+            Backend::Remote { key, .. } => {
+                crate::uplink::uplink(cx).is_some_and(|uplink| uplink.read(cx).protocol(key) >= WRITE_PROTOCOL)
+                    && crate::uplink::remote_actions::catalog(key, cx).is_some_and(|catalog| catalog.control)
+            }
+        }
     }
 
     pub fn act(&self, action: Action, cx: &mut App) -> Task<Result<(), String>> {

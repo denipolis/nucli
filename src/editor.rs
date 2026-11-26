@@ -117,7 +117,7 @@ pub fn bindings() -> Vec<KeyBinding> {
     keys
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Row {
     pub kind: LineKind,
     pub text: String,
@@ -131,7 +131,7 @@ pub struct Pos {
     pub col: usize,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Content {
     Loading,
     Text,
@@ -156,6 +156,7 @@ struct SavedHistory {
 static HISTORIES: std::sync::LazyLock<std::sync::Mutex<HashMap<PathBuf, SavedHistory>>> =
     std::sync::LazyLock::new(Default::default);
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Loaded {
     pub content: Content,
     pub rows: Vec<Row>,
@@ -400,6 +401,8 @@ pub struct Editor {
     pub added: usize,
     pub removed: usize,
     pub language: Option<&'static str>,
+    pub backend: crate::backend::Backend,
+    writable: bool,
 }
 
 impl EventEmitter<EditorEvent> for Editor {}
@@ -410,9 +413,11 @@ impl Editor {
         path: String,
         commit: Option<String>,
         language: Option<&'static str>,
+        backend: crate::backend::Backend,
         cx: &mut Context<Self>,
     ) -> Self {
         let full = if Path::new(&path).is_absolute() { PathBuf::from(&path) } else { project.join(&path) };
+        let writable = backend.writable(cx);
         let mut editor = Editor {
             find: None,
             project,
@@ -454,6 +459,8 @@ impl Editor {
             added: 0,
             removed: 0,
             language,
+            backend,
+            writable,
         };
         editor.reload(cx);
         let store = crate::store::store(cx);
@@ -482,7 +489,7 @@ impl Editor {
     }
 
     fn check_disk(&mut self, cx: &mut Context<Self>) {
-        if self.dirty || self.commit.is_some() {
+        if self.dirty || self.commit.is_some() || self.backend.is_remote() {
             return;
         }
         let modified = std::fs::metadata(&self.full).ok().and_then(|meta| meta.modified().ok());
@@ -551,6 +558,9 @@ impl Editor {
     }
 
     fn resolve_at(&mut self, pos: Pos, hover: Option<u64>, cx: &mut Context<Self>) -> Option<gpui::Task<Outcome>> {
+        if self.backend.is_remote() {
+            return None;
+        }
         let (text, offset) = self.text_and_offset(pos)?;
         let (project, full) = (self.project.clone(), self.full.clone());
         let language = self.current_language().filter(|language| *language != highlight::PLAIN_TEXT);
@@ -866,7 +876,7 @@ impl Editor {
     }
 
     pub fn is_editable(&self) -> bool {
-        self.commit.is_none() && self.content == Content::Text
+        self.commit.is_none() && self.content == Content::Text && self.writable
     }
 
     pub fn reload(&mut self, cx: &mut Context<Self>) {
@@ -875,17 +885,59 @@ impl Editor {
         }
         let (project, path, commit) = (self.project.clone(), self.path.clone(), self.commit.clone());
         let language = self.current_language();
+        self.writable = self.backend.writable(cx);
+        let remote = self.backend.is_remote().then(|| {
+            self.backend.ask::<Loaded>(crate::backend::Query::Load { path: path.clone(), commit: commit.clone() }, cx)
+        });
         cx.spawn(async move |this, cx| {
+            let remote = match remote {
+                Some(asked) => Some(asked.await.unwrap_or_else(|| Loaded {
+                    content: Content::Missing,
+                    rows: Vec::new(),
+                    text: String::new(),
+                    trailing_newline: false,
+                    modified: None,
+                })),
+                None => None,
+            };
             let (loaded, tokens, outline) = cx
                 .background_executor()
                 .spawn(async move {
-                    let loaded = load(&project, &path, commit.as_deref());
+                    let loaded = remote.unwrap_or_else(|| load(&project, &path, commit.as_deref()));
                     let tokens = highlights(language, &loaded.rows);
                     let outline = outline(language, &loaded.rows);
                     (loaded, tokens, outline)
                 })
                 .await;
-            let _ = this.update(cx, |editor, cx| editor.apply(loaded, tokens, outline, cx));
+            let _ = this.update(cx, |editor, cx| {
+                editor.apply(loaded, tokens, outline, cx);
+                if editor.content == Content::Image {
+                    editor.fetch_image(cx);
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn fetch_image(&mut self, cx: &mut Context<Self>) {
+        let crate::backend::Backend::Remote { key, root } = self.backend.clone() else { return };
+        let cache = crate::paths::cache_dir().join("remote");
+        if self.full.starts_with(&cache) {
+            return;
+        }
+        let Some(uplink) = crate::uplink::uplink(cx) else { return };
+        let name = self.full.file_name().map(|name| name.to_os_string()).unwrap_or_default();
+        let target = cache.join(uuid::Uuid::new_v4().to_string()).join(name);
+        let project = root.to_string_lossy().into_owned();
+        let path = self.path.clone();
+        let fetched = uplink.update(cx, |uplink, cx| uplink.download(key, &project, &path, target, cx));
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(file)) = fetched.await {
+                let _ = this.update(cx, |editor, cx| {
+                    editor.full = file;
+                    cx.notify();
+                });
+            }
         })
         .detach();
     }
@@ -1112,6 +1164,29 @@ impl Editor {
             return;
         }
         let text = file_text(&self.rows, self.trailing_newline);
+        if self.backend.is_remote() {
+            let action = crate::uplink::protocol::Action::Write { path: self.path.clone(), text: text.clone() };
+            let written = self.backend.act(action, cx);
+            cx.spawn(async move |this, cx| {
+                let result = written.await;
+                let _ = this.update(cx, |editor, cx| {
+                    match result {
+                        Ok(()) => {
+                            editor.original = text;
+                            editor.dirty = false;
+                            editor.reload(cx);
+                        }
+                        Err(reason) => {
+                            let at = editor.cursor;
+                            editor.notice = Some((at, format!("not saved: {reason}")));
+                        }
+                    }
+                    cx.notify();
+                });
+            })
+            .detach();
+            return;
+        }
         if std::fs::write(&self.full, &text).is_ok() {
             self.original = text;
             self.dirty = false;

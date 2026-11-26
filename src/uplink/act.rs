@@ -96,6 +96,10 @@ fn files(root: &Path, source: Option<PathBuf>, action: Action) -> Result<Moved, 
             trash::delete(existing(root, &path)?).map_err(|error| error.to_string())?;
             Ok(Moved::Path(path, None))
         }
+        Action::Write { path, text } => {
+            std::fs::write(existing(root, &path)?, text).map_err(error)?;
+            Ok(Moved::Nothing)
+        }
         Action::Paste { from, folder, cut, .. } => {
             let source_root = source.ok_or("The copied file is not in a shared project.")?;
             let source = existing(&source_root, &from)?;
@@ -211,6 +215,7 @@ pub fn act(outbox: Outbox, id: u64, root: PathBuf, source: Option<PathBuf>, acti
         | Action::Rename { .. }
         | Action::Duplicate { .. }
         | Action::Delete { .. }
+        | Action::Write { .. }
         | Action::Paste { .. } => {
             let task = cx.background_executor().spawn({
                 let root = root.clone();
