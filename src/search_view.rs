@@ -367,8 +367,8 @@ impl SearchPanel {
     }
 
     fn replace(&mut self, targets: Vec<(String, Vec<Hit>)>, cx: &mut Context<Self>) {
-        if crate::backend::Backend::of(&self.workspace, &self.root, cx).is_remote() {
-            self.notice = Some("replace works in projects of this computer".into());
+        if !crate::backend::Backend::of(&self.workspace, &self.root, cx).replaceable(cx) {
+            self.notice = Some("replacing there needs control and the latest Nucli on that computer".into());
             cx.notify();
             return;
         }
@@ -385,23 +385,20 @@ impl SearchPanel {
     }
 
     fn write(&mut self, targets: Vec<(String, Vec<Hit>)>, skipped: usize, request: Request, cx: &mut Context<Self>) {
-        let (root, workspace) = (self.root.clone(), self.workspace.clone());
+        let workspace = self.workspace.clone();
+        let backend = crate::backend::Backend::of(&workspace, &self.root, cx);
         let progress = store::begin_progress("replacing", cx);
+        let tasks: Vec<_> =
+            targets.into_iter().map(|(path, hits)| (backend.replace(&path, &request, hits, cx), path)).collect();
         cx.spawn(async move |this, cx| {
-            let (count, files, errors) = cx
-                .background_executor()
-                .spawn(async move {
-                    let (mut count, mut files, mut errors) = (0, 0, Vec::new());
-                    for (path, hits) in &targets {
-                        match search::replace(&root.join(path), &request, hits) {
-                            Ok(0) => {}
-                            Ok(changed) => (count, files) = (count + changed, files + 1),
-                            Err(error) => errors.push(format!("{path}: {error}")),
-                        }
-                    }
-                    (count, files, errors)
-                })
-                .await;
+            let (mut count, mut files, mut errors) = (0, 0, Vec::new());
+            for (task, path) in tasks {
+                match task.await {
+                    Ok(0) => {}
+                    Ok(changed) => (count, files) = (count + changed, files + 1),
+                    Err(error) => errors.push(format!("{path}: {error}")),
+                }
+            }
             let _ = this.update(cx, |panel, cx| {
                 store::finish_progress(progress, cx);
                 let mut notice = format!("replaced {} in {}", count, plural(files, "file"));

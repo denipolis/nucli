@@ -100,6 +100,12 @@ fn files(root: &Path, source: Option<PathBuf>, action: Action) -> Result<Moved, 
             std::fs::write(existing(root, &path)?, text).map_err(error)?;
             Ok(Moved::Nothing)
         }
+        Action::Replace { path, request, hits } => {
+            let request: crate::search::Request = serde_json::from_value(request).map_err(|error| error.to_string())?;
+            let hits: Vec<crate::find::Hit> = serde_json::from_value(hits).map_err(|error| error.to_string())?;
+            crate::search::replace(&existing(root, &path)?, &request, &hits)?;
+            Ok(Moved::Nothing)
+        }
         Action::Paste { from, folder, cut, .. } => {
             let source_root = source.ok_or("The copied file is not in a shared project.")?;
             let source = existing(&source_root, &from)?;
@@ -216,6 +222,7 @@ pub fn act(outbox: Outbox, id: u64, root: PathBuf, source: Option<PathBuf>, acti
         | Action::Duplicate { .. }
         | Action::Delete { .. }
         | Action::Write { .. }
+        | Action::Replace { .. }
         | Action::Paste { .. } => {
             let task = cx.background_executor().spawn({
                 let root = root.clone();

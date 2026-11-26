@@ -11,6 +11,7 @@ use crate::uplink::wire::Key;
 
 const QUERY_PROTOCOL: u32 = 2;
 pub const WRITE_PROTOCOL: u32 = 3;
+const REPLACE_PROTOCOL: u32 = 4;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Backend {
@@ -98,6 +99,41 @@ impl Backend {
                 crate::uplink::uplink(cx).is_some_and(|uplink| uplink.read(cx).protocol(key) >= WRITE_PROTOCOL)
                     && crate::uplink::remote_actions::catalog(key, cx).is_some_and(|catalog| catalog.control)
             }
+        }
+    }
+
+    pub fn replaceable(&self, cx: &App) -> bool {
+        match self {
+            Backend::Local(_) => true,
+            Backend::Remote { key, .. } => {
+                self.writable(cx)
+                    && crate::uplink::uplink(cx).is_some_and(|uplink| uplink.read(cx).protocol(key) >= REPLACE_PROTOCOL)
+            }
+        }
+    }
+
+    pub fn replace(
+        &self,
+        path: &str,
+        request: &crate::search::Request,
+        hits: Vec<crate::find::Hit>,
+        cx: &mut App,
+    ) -> Task<Result<usize, String>> {
+        let Backend::Remote { .. } = self else {
+            let (full, request) = (self.root().join(path), request.clone());
+            return cx.background_executor().spawn(async move { crate::search::replace(&full, &request, &hits) });
+        };
+        let count = hits.len();
+        let (Ok(request), Ok(hits)) = (serde_json::to_value(request), serde_json::to_value(hits)) else {
+            return Task::ready(Err("The replacement could not be sent.".into()));
+        };
+        let done = self.act(Action::Replace { path: path.to_string(), request, hits }, cx);
+        cx.background_executor().spawn(async move { done.await.map(|_| count) })
+    }
+
+    fn root(&self) -> &Path {
+        match self {
+            Backend::Local(root) | Backend::Remote { root, .. } => root,
         }
     }
 
