@@ -200,7 +200,7 @@ enum Backend {
         work: std::sync::mpsc::Sender<Work>,
         taps: Taps,
         local: Option<GridSize>,
-        votes: Vec<(u64, usize, usize)>,
+        votes: Vec<(usize, usize)>,
     },
     Mirror {
         requests: Box<dyn Fn(Request) + Send>,
@@ -381,19 +381,9 @@ impl Terminal {
         }
     }
 
-    pub fn vote(&mut self, voter: u64, size: Option<(usize, usize)>) {
+    pub fn set_votes(&mut self, sizes: Vec<(usize, usize)>) {
         if let Backend::Pty { votes, .. } = &mut self.backend {
-            votes.retain(|(id, ..)| *id != voter);
-            if let Some((cols, rows)) = size {
-                votes.push((voter, cols.clamp(2, 500), rows.clamp(1, 200)));
-            }
-        }
-        self.agree();
-    }
-
-    pub fn keep_votes(&mut self, voters: &[u64]) {
-        if let Backend::Pty { votes, .. } = &mut self.backend {
-            votes.retain(|(id, ..)| voters.contains(id));
+            *votes = sizes.into_iter().map(|(cols, rows)| (cols.clamp(2, 500), rows.clamp(1, 200))).collect();
         }
         self.agree();
     }
@@ -421,8 +411,7 @@ impl Terminal {
 
     fn agree(&mut self) {
         let Backend::Pty { local, votes, .. } = &self.backend else { return };
-        let sizes =
-            local.iter().map(|size| (size.cols, size.rows)).chain(votes.iter().map(|(_, cols, rows)| (*cols, *rows)));
+        let sizes = local.iter().map(|size| (size.cols, size.rows)).chain(votes.iter().copied());
         let Some((cols, rows)) = sizes.reduce(|a, b| (a.0.min(b.0), a.1.min(b.1))) else { return };
         let cell = local.unwrap_or(self.size);
         self.apply_size(GridSize { cols, rows, ..cell });
@@ -833,13 +822,13 @@ mod tests {
         let size = |terminal: &Terminal| (terminal.size().cols, terminal.size().rows);
         let local = GridSize { cols: 120, rows: 40, cell_width: 8.0, cell_height: 16.0 };
         terminal.resize(local);
-        terminal.vote(1, Some((80, 50)));
+        terminal.set_votes(vec![(80, 50)]);
         assert_eq!(size(&terminal), (80, 40));
         terminal.resize(local);
         assert_eq!(size(&terminal), (80, 40));
         terminal.hide();
         assert_eq!(size(&terminal), (80, 50));
-        terminal.keep_votes(&[]);
+        terminal.set_votes(Vec::new());
         assert_eq!(size(&terminal), (80, 50));
         terminal.resize(local);
         assert_eq!(size(&terminal), (120, 40));

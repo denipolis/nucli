@@ -71,6 +71,7 @@ struct Watcher {
     key: Key,
     tab: String,
     alive: Arc<AtomicBool>,
+    size: Option<(usize, usize)>,
 }
 
 pub struct Target {
@@ -530,20 +531,28 @@ impl Uplink {
     }
 
     fn release(&mut self, tab: &str, cx: &mut Context<Self>) {
-        let voters: Vec<u64> = self
+        let votes: Vec<(usize, usize)> = self
             .watchers
             .iter()
             .filter(|watcher| watcher.tab == tab && watcher.alive.load(Ordering::Acquire))
             .filter(|watcher| {
                 self.device(&watcher.key).is_some_and(|device| !device.blocked && device.access == Access::Control)
             })
-            .map(|watcher| watcher.conn)
+            .filter_map(|watcher| watcher.size)
             .collect();
         if let Some(session) = store::store(cx).read(cx).session(tab).cloned() {
             session.update(cx, |session, cx| {
-                session.terminal.keep_votes(&voters);
+                session.terminal.set_votes(votes);
                 cx.notify();
             });
+        }
+    }
+
+    fn size_watcher(&mut self, conn: u64, tab: &str, size: Option<(usize, usize)>, cx: &mut Context<Self>) {
+        let watcher = self.watchers.iter_mut().find(|watcher| watcher.conn == conn && watcher.tab == tab);
+        if let Some(watcher) = watcher {
+            watcher.size = size;
+            self.release(tab, cx);
         }
     }
 
@@ -793,21 +802,9 @@ impl Uplink {
                 cx.notify();
             }
             Message::Resize { tab, cols, rows } => {
-                if let Some(session) = self.controlled(conn, key, &tab, cx) {
-                    session.update(cx, |session, cx| {
-                        session.terminal.vote(conn, Some((cols as usize, rows as usize)));
-                        cx.notify();
-                    });
-                }
+                self.size_watcher(conn, &tab, Some((cols as usize, rows as usize)), cx)
             }
-            Message::Hide { tab } => {
-                if let Some(session) = store::store(cx).read(cx).session(&tab).cloned() {
-                    session.update(cx, |session, cx| {
-                        session.terminal.vote(conn, None);
-                        cx.notify();
-                    });
-                }
-            }
+            Message::Hide { tab } => self.size_watcher(conn, &tab, None, cx),
             Message::Clear { tab } => {
                 if let Some(session) = self.controlled(conn, key, &tab, cx) {
                     session.update(cx, |session, cx| {
@@ -904,7 +901,7 @@ impl Uplink {
             false
         });
         session.read(cx).terminal.watch(tap);
-        self.watchers.push(Watcher { conn, key, tab, alive });
+        self.watchers.push(Watcher { conn, key, tab, alive, size: None });
         cx.notify();
         store::store(cx).update(cx, |_, cx| cx.notify());
     }
