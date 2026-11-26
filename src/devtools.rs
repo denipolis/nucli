@@ -112,7 +112,8 @@ fn run(line: &str, cx: &mut App) {
         cx.spawn(async move |_| inspect_app(&path, true)).detach();
         return;
     }
-    let Some(window) = cx.active_window().or_else(|| cx.windows().first().copied()) else { return };
+    let workspace = crate::store::store(cx).read(cx).windows.values().next().map(|handle| (*handle).into());
+    let Some(window) = workspace.or(cx.active_window()).or_else(|| cx.windows().first().copied()) else { return };
     let _ = window.update(cx, |_, window, cx| match command {
         "keys" => {
             for key in rest.split_whitespace() {
