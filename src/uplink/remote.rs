@@ -112,7 +112,10 @@ impl Uplink {
 
     pub fn sync_remotes(&mut self, key: &Key, cx: &mut Context<Self>) {
         let encoded = wire::encode_key(key);
-        let Some(catalog) = self.links.get(key).and_then(|link| link.catalog.clone()) else { return };
+        let Some((conn, catalog)) = self.links.get(key).and_then(|link| Some((link.conn, link.catalog.clone()?)))
+        else {
+            return;
+        };
         let names: HashSet<String> = store::store(cx)
             .read(cx)
             .remotes
@@ -145,9 +148,10 @@ impl Uplink {
             }
             for project in catalog.projects.iter().filter(|project| names.contains(&project.workspace)) {
                 let path = PathBuf::from(&project.path);
-                if store.revision(&path) != project.revision {
-                    store.revisions.insert(path.clone(), project.revision);
-                    store.git_revisions.insert(path, project.revision);
+                let revision = project.revision.wrapping_add((conn + 1) << 40);
+                if store.revision(&path) != revision {
+                    store.revisions.insert(path.clone(), revision);
+                    store.git_revisions.insert(path, revision);
                 }
             }
             cx.notify();

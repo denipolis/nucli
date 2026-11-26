@@ -507,6 +507,10 @@ impl Store {
                 host: Some(Host { key: file.key, device: file.device }),
                 closed: file.closed,
                 window: file.window,
+                selected: file.selected,
+                projects: file.projects.into_iter().map(Project::from_file).collect(),
+                scratch: Project::from_file(ProjectFile { path: PathBuf::new(), ..file.scratch }),
+                layouts: file.layouts,
                 ..Workspace::new(&file.name)
             })
             .collect();
@@ -905,6 +909,11 @@ impl Store {
                 .iter()
                 .filter_map(|workspace| {
                     let host = workspace.host.as_ref()?;
+                    let remote_file = |project: &Project| ProjectFile {
+                        tabs: Vec::new(),
+                        terminals: Vec::new(),
+                        ..project_file(project)
+                    };
                     Some(RemoteFile {
                         id: workspace.id.clone(),
                         name: workspace.name.clone(),
@@ -912,6 +921,10 @@ impl Store {
                         device: host.device.clone(),
                         closed: workspace.closed,
                         window: workspace.window.clone(),
+                        selected: workspace.selected.clone(),
+                        projects: workspace.projects.iter().map(remote_file).collect(),
+                        scratch: remote_file(&workspace.scratch),
+                        layouts: workspace.layouts.clone(),
                     })
                 })
                 .collect(),

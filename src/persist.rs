@@ -209,6 +209,10 @@ pub struct RemoteFile {
     pub device: String,
     pub closed: bool,
     pub window: WindowState,
+    pub selected: Option<Selected>,
+    pub projects: Vec<ProjectFile>,
+    pub scratch: ProjectFile,
+    pub layouts: Vec<Layout>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
