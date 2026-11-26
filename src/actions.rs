@@ -1484,9 +1484,6 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|_, _: &ShowProjects, _, cx| docks_view::show(View::Projects, cx)))
         .on_action(cx.listener(|_, _: &ShowAgents, _, cx| docks_view::show(View::Agents, cx)))
         .on_action(cx.listener(|_, _: &ShowHistory, _, cx| docks_view::show(View::History, cx)))
-        .on_action(cx.listener(|view, _: &ShowUplink, window, cx| {
-            crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx);
-        }))
         .on_action(cx.listener(|_, _: &ToggleUplink, _, cx| crate::uplink::Uplink::toggle(cx)))
         .on_action(cx.listener(|view, _: &PairDevice, window, cx| {
             settings::update(cx, |settings| settings.uplink.enabled = true);

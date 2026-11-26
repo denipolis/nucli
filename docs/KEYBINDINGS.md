@@ -33,7 +33,6 @@ On Linux and Windows every default uses the same key as on macOS with the modifi
 | Reset the panel layout | `reset_layout` | | |
 | Filter the shown list | `filter_list` | `cmd-alt-f` | `ctrl-alt-f` |
 | Show Projects / Agents / History (conversations) | `show_projects` / `show_agents` / `show_history` | | |
-| Uplink Settings | `show_uplink` | | |
 | Turn Uplink on or off | `toggle_uplink` | | |
 | Uplink: pair a device (shows a one-time code) | `pair_device` | | |
 | Show Files / Changes / History (commits) | `show_files` / `show_changes` / `show_commits` | | |
