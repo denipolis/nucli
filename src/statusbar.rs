@@ -506,7 +506,8 @@ fn mirror_chips(
     }
     chips.extend(program_chip(session, theme, cx));
     if let Some(info) = session.agent_info.clone() {
-        chips.extend(agent_chips(Rc::new(info), None, theme, cx));
+        let root = Some(PathBuf::from(&remote.root)).filter(|root| !root.as_os_str().is_empty());
+        chips.extend(agent_chips(Rc::new(info), root, theme, cx));
     }
     chips
 }
@@ -674,6 +675,7 @@ fn entries_palette(
     cx: &mut Context<WorkspaceView>,
 ) {
     let theme = ui::theme(cx);
+    let remote = view.state(cx).is_some_and(|state| state.host.is_some());
     let (glyph, sections, placeholder) = match chip {
         Chip::Skills => (SKILLS, ("used", "available"), "find a skill"),
         Chip::Mcp => (MCP, ("called", "connected"), "find a server"),
@@ -682,7 +684,7 @@ fn entries_palette(
     let items = entries
         .iter()
         .map(|entry| {
-            let open = entry.path.clone().filter(|_| root.is_some());
+            let open = entry.path.clone().filter(|path| root.is_some_and(|root| !remote || path.starts_with(root)));
             let title = match (&entry.path, chip) {
                 (Some(path), Chip::Instructions) => shown_path(path, root),
                 _ => entry.name.clone(),
@@ -704,7 +706,7 @@ fn entries_palette(
             .glyph(glyph, entry.used.then_some(theme.accent))
             .section(if entry.used { sections.0 } else { sections.1 });
             item.path = chip == Chip::Instructions;
-            if let Some(path) = open.clone() {
+            if let Some(path) = open.clone().filter(|_| !remote) {
                 item.alternate = Some(Rc::new(move |_, _, cx| cx.open_with_system(&path)));
             }
             item
