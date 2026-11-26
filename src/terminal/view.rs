@@ -355,7 +355,7 @@ impl Session {
         let cwd = remote.cwd.as_deref().map(std::path::Path::new).unwrap_or(root);
         let known = |path: &std::path::Path| {
             let relative = path.strip_prefix(root).ok().and_then(|relative| relative.to_str());
-            relative.zip(files).is_some_and(|(relative, files)| files.contains(relative))
+            relative.zip(files).is_some_and(|(relative, files)| files.contains(&relative.replace('\\', "/")))
         };
         links::find(token, cwd, root, &known)
     }
