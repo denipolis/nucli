@@ -1225,6 +1225,7 @@ impl Uplink {
         panel: bool,
         cx: &mut Context<Self>,
     ) {
+        let split = self.split.take();
         let Some(link) = self.links.get(&key) else { return };
         link.outbox.send(&Message::Open {
             project: project.to_string(),
@@ -1232,7 +1233,7 @@ impl Uplink {
             workspace: workspace.to_string(),
             panel,
         });
-        self.opening = Some((key, self.split.take()));
+        self.opening = Some((key, split));
         let _ = cx;
     }
 

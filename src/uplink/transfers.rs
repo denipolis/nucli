@@ -294,6 +294,10 @@ impl Uplink {
         let name = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
         let size = match file.metadata() {
             Ok(metadata) if metadata.is_file() => metadata.len(),
+            Ok(metadata) if metadata.is_dir() => {
+                let _ = result.send(Err(format!("{name} is a folder; only files are sent.")));
+                return received;
+            }
             _ => {
                 let _ = result.send(Err(format!("{name} cannot be read.")));
                 return received;
