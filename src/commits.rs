@@ -121,10 +121,11 @@ impl CommitsPanel {
         let progress = store::begin_progress("git log", cx);
         let asked = self.backend.ask::<(Option<Vec<Commit>>, Vec<GraphRow>)>(Query::Log { limit: 500 }, cx);
         cx.spawn(async move |this, cx| {
-            let (commits, graph) = asked.await.unwrap_or_default();
+            let answer = asked.await;
             let _ = this.update(cx, |panel, cx| {
                 store::finish_progress(progress, cx);
                 panel.loading = false;
+                let Some((commits, graph)) = answer else { return };
                 panel.cache.insert(root.clone(), (commits.clone(), graph.clone()));
                 if panel.root != root {
                     if std::mem::take(&mut panel.stale) {

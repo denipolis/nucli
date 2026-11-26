@@ -201,7 +201,7 @@ impl FilesPanel {
         let expanded = self.expanded(cx).into_iter().collect();
         let listed = Backend::of(&self.workspace, &root, cx).ask(Query::List { expanded }, cx);
         cx.spawn(async move |this, cx| {
-            let entries = listed.await.unwrap_or_default();
+            let Some(entries) = listed.await else { return };
             let _ = this.update(cx, |panel, cx| {
                 if panel.listing == listing {
                     panel.scans.entry(root).or_default().entries = entries;
@@ -222,10 +222,11 @@ impl FilesPanel {
         let progress = store::begin_progress("git status", cx);
         let decorated = Backend::of(&self.workspace, &root, cx).ask::<Scan>(Query::Decorations, cx);
         cx.spawn(async move |this, cx| {
-            let found = decorated.await.unwrap_or_default();
+            let answer = decorated.await;
             let _ = this.update(cx, |panel, cx| {
                 store::finish_progress(progress, cx);
                 panel.decorating = false;
+                let Some(found) = answer else { return };
                 let scan = panel.scans.entry(root.clone()).or_default();
                 (scan.letters, scan.folders, scan.ignored) = (found.letters, found.folders, found.ignored);
                 if panel.root == root {

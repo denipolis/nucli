@@ -99,15 +99,17 @@ impl ChangesPanel {
         let progress = store::begin_progress("git status", cx);
         let asked = self.backend.ask::<Option<Status>>(Query::Status, cx);
         cx.spawn(async move |this, cx| {
-            let status = asked.await.flatten();
+            let answer = asked.await;
             let _ = this.update(cx, |panel, cx| {
                 store::finish_progress(progress, cx);
                 panel.loading = false;
-                panel.cache.insert(root.clone(), status.clone());
-                if panel.root == root {
-                    panel.loaded = true;
-                    panel.status = status;
-                    cx.notify();
+                if let Some(status) = answer {
+                    panel.cache.insert(root.clone(), status.clone());
+                    if panel.root == root {
+                        panel.loaded = true;
+                        panel.status = status;
+                        cx.notify();
+                    }
                 }
                 if std::mem::take(&mut panel.stale) {
                     panel.reload(cx);
