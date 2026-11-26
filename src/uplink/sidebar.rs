@@ -145,40 +145,40 @@ pub fn tab_row(
         .into_any_element()
 }
 
-pub fn agents(query: &str, cx: &App) -> Vec<(usize, Key, RemoteTab, String)> {
+pub fn agents(host: &str, workspace: &str, query: &str, cx: &App) -> Vec<(usize, Key, RemoteTab)> {
     let Some(entity) = super::uplink(cx).filter(|_| Uplink::enabled(cx)) else { return Vec::new() };
     let uplink = entity.read(cx);
+    let Some((key, catalog)) = uplink
+        .links
+        .iter()
+        .find(|(key, _)| super::wire::encode_key(key) == host)
+        .and_then(|(key, link)| Some((*key, link.catalog.as_ref()?)))
+    else {
+        return Vec::new();
+    };
     let mut agents = Vec::new();
-    for (key, link) in &uplink.links {
-        let Some(catalog) = &link.catalog else { continue };
-        let device = uplink.device_name(key);
-        for tab in &catalog.tabs {
-            if !tab.running || (tab.kind != Kind::Agent && tab.agent.is_none()) {
-                continue;
-            }
-            let project = catalog
-                .projects
-                .iter()
-                .find(|project| project.path == tab.project)
-                .map(|project| project.name.clone())
-                .filter(|name| !name.is_empty());
-            let place = match project {
-                Some(project) => format!("{device} · {project}"),
-                None => device.clone(),
-            };
-            if !matches(query, &[&tab.title, &place]) {
-                continue;
-            }
-            let group = match (tab.activity, tab.attention) {
-                (Activity::Waiting, _) => 0,
-                (_, true) => 1,
-                (Activity::Working, _) => 2,
-                _ => 3,
-            };
-            agents.push((group, *key, tab.clone(), place));
+    for tab in catalog.tabs.iter().filter(|tab| tab.workspace == workspace) {
+        if !tab.running || (tab.kind != Kind::Agent && tab.agent.is_none()) {
+            continue;
         }
+        let project = catalog
+            .projects
+            .iter()
+            .find(|project| project.path == tab.project)
+            .map(|project| project.name.as_str())
+            .unwrap_or_default();
+        if !matches(query, &[&tab.title, project]) {
+            continue;
+        }
+        let group = match (tab.activity, tab.attention) {
+            (Activity::Waiting, _) => 0,
+            (_, true) => 1,
+            (Activity::Working, _) => 2,
+            _ => 3,
+        };
+        agents.push((group, key, tab.clone()));
     }
-    agents.sort_by(|a, b| a.3.cmp(&b.3).then_with(|| a.2.title.cmp(&b.2.title)));
+    agents.sort_by(|a, b| a.2.title.cmp(&b.2.title));
     agents
 }
 

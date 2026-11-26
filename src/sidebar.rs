@@ -597,9 +597,13 @@ fn board(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> 
         }
     }
     let shown: Vec<String> = state.ordered_tabs();
-    let remote: Vec<_> = crate::uplink::sidebar::agents(query, cx)
+    let remote: Vec<_> = state
+        .host
+        .as_ref()
+        .map(|host| crate::uplink::sidebar::agents(&host.key, &state.name, query, cx))
+        .unwrap_or_default()
         .into_iter()
-        .filter(|(_, key, tab, _)| !shown.contains(&crate::uplink::mirror_id(key, &tab.id)))
+        .filter(|(_, key, tab)| !shown.contains(&crate::uplink::mirror_id(key, &tab.id)))
         .collect();
     let opened: Vec<String> =
         crate::uplink::uplink(cx).map(|uplink| uplink.read(cx).mirrors.keys().cloned().collect()).unwrap_or_default();
@@ -623,11 +627,11 @@ fn board(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> 
             let info = TabInfo::new(session.read(cx), &theme, tick);
             rows.push(tab_row(view, &project, info, 0, selected, None, cx));
         }
-        for (_, key, tab, place) in others {
+        for (_, key, tab) in others {
             let id = crate::uplink::mirror_id(key, &tab.id);
             let selected = state.selected_tab() == Some(id.as_str());
             let opened = opened.contains(&id);
-            rows.push(crate::uplink::sidebar::tab_row(*key, tab, 38.0, selected, opened, Some(place.clone()), cx));
+            rows.push(crate::uplink::sidebar::tab_row(*key, tab, 38.0, selected, opened, None, cx));
         }
     }
     if rows.is_empty() {
