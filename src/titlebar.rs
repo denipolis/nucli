@@ -329,7 +329,13 @@ fn menu_bar(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Div {
 
 pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceView>) -> AnyElement {
     let theme = ui::theme(cx);
+    let offline = view
+        .state(cx)
+        .and_then(|state| state.host.as_ref())
+        .and_then(|host| crate::uplink::wire::decode_key(&host.key))
+        .is_some_and(|key| crate::uplink::uplink(cx).is_none_or(|uplink| !uplink.read(cx).links.contains_key(&key)));
     let name = view.state(cx).map(|state| state.title()).unwrap_or_default();
+    let name = if offline { format!("{name} · offline") } else { name };
     let height = px((settings::get(cx).ui_font_size() * 2.4).round());
     let client_decorated = matches!(window.window_decorations(), gpui::Decorations::Client { .. });
     let location = location(view, cx);

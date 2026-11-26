@@ -569,7 +569,11 @@ fn board(view: &WorkspaceView, query: &str, cx: &mut Context<WorkspaceView>) -> 
             groups[index].1.push((id.clone(), session.clone(), project.path.clone()));
         }
     }
-    let remote = crate::uplink::sidebar::agents(query, cx);
+    let shown: Vec<String> = state.ordered_tabs();
+    let remote: Vec<_> = crate::uplink::sidebar::agents(query, cx)
+        .into_iter()
+        .filter(|(_, key, tab, _)| !shown.contains(&crate::uplink::mirror_id(key, &tab.id)))
+        .collect();
     let opened: Vec<String> =
         crate::uplink::uplink(cx).map(|uplink| uplink.read(cx).mirrors.keys().cloned().collect()).unwrap_or_default();
     let mut rows = Vec::new();

@@ -150,7 +150,7 @@ impl Uplink {
                     store.git_revisions.insert(path, project.revision);
                 }
             }
-            store.changed(cx);
+            cx.notify();
         });
     }
 }
