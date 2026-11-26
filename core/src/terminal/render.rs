@@ -97,9 +97,21 @@ fn symbol_fonts() -> impl Iterator<Item = &'static str> {
     ["STIX Two Math", "Zapf Dingbats"].into_iter()
 }
 
-#[cfg(not(target_os = "ios"))]
+#[cfg(target_os = "windows")]
+fn symbol_fonts() -> impl Iterator<Item = &'static str> {
+    ["Segoe UI Symbol"].into_iter()
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "windows")))]
 fn symbol_fonts() -> impl Iterator<Item = &'static str> {
     std::iter::empty()
+}
+
+fn shown(character: char) -> char {
+    match character {
+        '\u{23fa}' => '\u{25cf}',
+        _ => character,
+    }
 }
 
 struct Run {
@@ -185,7 +197,7 @@ pub fn layout<T: EventListener>(
         } else if bg != background {
             frame.rects.push((cell_bounds, to_hsla(bg)));
         }
-        let character = cell_data.c;
+        let character = shown(cell_data.c);
         if character == ' ' || character == '\0' || cell_data.flags.contains(Flags::HIDDEN) {
             continue;
         }
