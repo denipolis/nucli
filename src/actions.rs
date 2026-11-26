@@ -724,9 +724,6 @@ pub fn move_project_to_workspace(
 }
 
 pub fn workspace_menu(view: &WorkspaceView, cx: &App) -> Vec<Item> {
-    if remote(view, cx) {
-        return crate::uplink::remote_actions::workspace_menu(view, cx);
-    }
     let mut items = vec![Item::Header("workspaces".into())];
     for workspace in view.store(cx).workspaces.iter() {
         let id = workspace.id.clone();
@@ -744,7 +741,12 @@ pub fn workspace_menu(view: &WorkspaceView, cx: &App) -> Vec<Item> {
             });
         }));
     }
+    items.extend(crate::uplink::sidebar::workspace_menu_items(view, cx));
     items.push(Item::Separator);
+    if remote(view, cx) {
+        items.extend(crate::uplink::remote_actions::workspace_menu(view, cx));
+        return items;
+    }
     items.push(menu::command("Open Project…", "open_project", cx));
     items.push(menu::command("New Workspace…", "new_workspace", cx));
     items.push(menu::command("Rename Workspace…", "rename_workspace", cx));
@@ -1486,11 +1488,6 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
             crate::settings_view::show(view, Some(crate::persist::SettingsSection::Uplink), window, cx);
         }))
         .on_action(cx.listener(|_, _: &ToggleUplink, _, cx| crate::uplink::Uplink::toggle(cx)))
-        .on_action(cx.listener(|view, _: &OpenRemoteWorkspace, window, cx| {
-            let items = crate::uplink::sidebar::workspace_items(cx);
-            let palette = cx.new(|cx| Palette::new("remote", "workspaces of other computers", items, 0, cx));
-            view.show_palette(palette, window, cx);
-        }))
         .on_action(cx.listener(|view, _: &PairDevice, window, cx| {
             settings::update(cx, |settings| settings.uplink.enabled = true);
             crate::uplink::pairing::show(view, window, cx);

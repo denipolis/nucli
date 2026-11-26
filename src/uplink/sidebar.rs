@@ -235,12 +235,7 @@ pub fn workspace_items(cx: &App) -> Vec<crate::palette::Item> {
             let (key, name) = (*key, workspace.name.clone());
             items.push(
                 crate::palette::Item::new(format!("{device} › {}", workspace.name), move |_, _, cx| {
-                    let name = name.clone();
-                    cx.defer(move |cx| {
-                        let Some(uplink) = super::uplink(cx) else { return };
-                        let id = uplink.update(cx, |uplink, cx| uplink.open_remote(key, &name, cx));
-                        crate::window::open(&id, cx);
-                    });
+                    open_workspace(key, name.clone(), cx)
                 })
                 .subtitle(format!(
                     "{tabs} shared {}{}",
@@ -254,4 +249,43 @@ pub fn workspace_items(cx: &App) -> Vec<crate::palette::Item> {
         }
     }
     items
+}
+
+pub fn workspace_menu_items(view: &WorkspaceView, cx: &App) -> Vec<Item> {
+    let Some(entity) = super::uplink(cx).filter(|_| Uplink::enabled(cx)) else { return Vec::new() };
+    let uplink = entity.read(cx);
+    let current = view.state(cx).and_then(|state| Some((state.host.as_ref()?.key.clone(), state.name.clone())));
+    let mut devices: Vec<_> = uplink
+        .links
+        .iter()
+        .filter_map(|(key, link)| Some((uplink.device_name(key), *key, link.catalog.as_ref()?)))
+        .filter(|(_, _, catalog)| !catalog.workspaces.is_empty())
+        .collect();
+    devices.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut items = Vec::new();
+    for (device, key, catalog) in devices {
+        let encoded = super::wire::encode_key(&key);
+        items.push(Item::Header(device.into()));
+        for workspace in &catalog.workspaces {
+            let here = current.as_ref().is_some_and(|(host, name)| *host == encoded && *name == workspace.name);
+            let label = if here {
+                format!("● {}", workspace.name)
+            } else if workspace.open {
+                format!("  {}", workspace.name)
+            } else {
+                format!("  {} (closed)", workspace.name)
+            };
+            let name = workspace.name.clone();
+            items.push(menu::action(label, move |_, _, cx| open_workspace(key, name.clone(), cx)));
+        }
+    }
+    items
+}
+
+fn open_workspace(key: Key, name: String, cx: &mut App) {
+    cx.defer(move |cx| {
+        let Some(uplink) = super::uplink(cx) else { return };
+        let id = uplink.update(cx, |uplink, cx| uplink.open_remote(key, &name, cx));
+        crate::window::open(&id, cx);
+    });
 }

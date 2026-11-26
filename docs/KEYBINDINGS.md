@@ -34,7 +34,6 @@ On Linux and Windows every default uses the same key as on macOS with the modifi
 | Filter the shown list | `filter_list` | `cmd-alt-f` | `ctrl-alt-f` |
 | Show Projects / Agents / History (conversations) | `show_projects` / `show_agents` / `show_history` | | |
 | Uplink Settings | `show_uplink` | | |
-| Open Workspace of Another Computer… | `open_remote_workspace` | | |
 | Turn Uplink on or off | `toggle_uplink` | | |
 | Uplink: pair a device (shows a one-time code) | `pair_device` | | |
 | Show Files / Changes / History (commits) | `show_files` / `show_changes` / `show_commits` | | |
