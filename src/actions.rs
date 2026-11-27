@@ -1520,6 +1520,7 @@ pub fn register(root: Stateful<gpui::Div>, cx: &mut Context<WorkspaceView>) -> S
         .on_action(cx.listener(|_, _: &FontReset, _, cx| change_font(0.0, cx)))
         .on_action(cx.listener(|_, _: &DetectAgents, _, cx| detect(cx, true)))
         .on_action(cx.listener(|_, _: &DetectShells, _, cx| detect(cx, false)))
+        .on_action(cx.listener(|_, _: &ToggleKeepAwake, _, cx| crate::awake::toggle(cx)))
         .on_action(cx.listener(|_, _: &ToggleNotifications, _, cx| {
             settings::update(cx, |settings| settings.notifications = !settings.notifications)
         }))

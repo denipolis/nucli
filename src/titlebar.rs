@@ -277,6 +277,25 @@ fn status(view: &WorkspaceView, cx: &mut Context<WorkspaceView>) -> Div {
     line.child(chip)
 }
 
+fn keep_awake(cx: &mut Context<WorkspaceView>) -> AnyElement {
+    let theme = ui::theme(cx);
+    let on = crate::awake::is_on(cx);
+    div()
+        .id("keep-awake")
+        .occlude()
+        .flex()
+        .flex_none()
+        .items_center()
+        .h_full()
+        .px(px(8.0))
+        .text_color(if on { theme.accent } else { theme.faint })
+        .hover(|style| style.bg(theme.hover).text_color(if on { theme.accent } else { theme.text }))
+        .child(if on { icons::COFFEE } else { icons::COFFEE_OUTLINE })
+        .tooltip(ui::tooltip(if on { "Keeping the computer awake" } else { "Keep the computer awake" }))
+        .on_click(|_, _, cx| crate::awake::toggle(cx))
+        .into_any_element()
+}
+
 fn open_menu(view: &mut WorkspaceView, index: usize, cx: &mut Context<WorkspaceView>) {
     let Some(bounds) = view.title_menu_bounds.borrow().get(index).copied() else { return };
     let items = crate::menu::from_commands(&commands::window_menu(index), cx);
@@ -402,6 +421,7 @@ pub fn render(view: &WorkspaceView, window: &Window, cx: &mut Context<WorkspaceV
                 .h_full()
                 .items_center()
                 .child(status)
+                .child(keep_awake(cx))
                 .when(client_decorated, |this| {
                     let control = |id: &'static str, glyph: &'static str| {
                         div()

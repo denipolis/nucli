@@ -69,7 +69,8 @@ Paths are under `src/` unless they start with `core/` or `grammars/`.
 | `prompt.rs` | Confirmation dialogs, installed with `set_prompt_builder`. |
 | `text_input.rs` | Single line input with IME. |
 | `resize.rs` | Resize handles of stacks, panels and the terminal panel. A drag keeps its start point and start sizes, so sizes follow the pointer's distance from where the drag began. |
-| `titlebar.rs` | Title bar: workspace name, menus on Linux and Windows, location, status messages and their list, Windows caption buttons. |
+| `titlebar.rs` | Title bar: workspace name, menus on Linux and Windows, location, status messages and their list, the keep awake cup, Windows caption buttons. |
+| `awake.rs` | Keep awake (`Awake`, one global): on macOS and Linux a child process holds the system's sleep lock (`caffeinate -i cat`, `systemd-inhibit … cat`) with its stdin piped from Nucli, so the lock ends when the child is killed or when Nucli exits or crashes and `cat` reads end of file. On Windows `SetThreadExecutionState`, which is per thread, so it is set and cleared on the main thread. |
 | `statusbar.rs` | Status chips under the viewport: `Chip` ids, toggles and order (drag a chip onto another), agent chips, their comboboxes and menus. A remote tab's chips come from its `RemoteTab`. |
 | `core/src/chips.rs` | What the status chips show and Uplink carries in `RemoteTab`: `AgentInfo`, `Entry`, `Limit`, `DiffStat`, and the number, duration and level formatting. The transcript path stays local; entry paths are sent lossy, since a message that fails to serialize panics. |
 | `settings_view.rs` | Settings page in the viewport. |

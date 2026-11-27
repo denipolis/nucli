@@ -64,6 +64,8 @@ pub const COLLAPSE_ALL: &str = "\u{eac5}";
 pub const EXPAND_ALL: &str = "\u{eb95}";
 pub const CLEAR_ALL: &str = "\u{eabf}";
 pub const ELLIPSIS: &str = "\u{ea7c}";
+pub const COFFEE: &str = "\u{f0176}";
+pub const COFFEE_OUTLINE: &str = "\u{f06ca}";
 
 pub fn os(name: &str) -> &'static str {
     match name {

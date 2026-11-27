@@ -1,6 +1,7 @@
 mod actions;
 mod agent_info;
 mod agents;
+mod awake;
 mod backend;
 mod changes;
 mod claude;

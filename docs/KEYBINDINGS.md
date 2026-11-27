@@ -64,6 +64,7 @@ On Linux and Windows every default uses the same key as on macOS with the modifi
 | Rename / delete workspace | `rename_workspace` / `delete_workspace` | | |
 | Detect agents / shells | `detect_agents` / `detect_shells` | | |
 | Toggle notifications | `toggle_notifications` | | |
+| Turn keep awake on or off | `toggle_keep_awake` | | |
 | Quit | `quit` | `cmd-q` | `ctrl-shift-q` |
 
 While a shell in the terminal panel has focus, `close`, `tab_switcher`, `tab_switcher_back`, `next_tab`, `previous_tab` and `select_tab_1` … `select_tab_9` act on the panel's shells instead of the tabs.
